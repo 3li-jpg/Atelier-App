@@ -1,18 +1,24 @@
+/* Theme tokens lifted verbatim from @openchamber/web@1.14.0's default theme
+   (dist/assets/index-*.css :root/.dark) so the hub and the workspace read as
+   one product. Dark is the default (matches openchamber); light via media query. */
 :root {
-  --bg: #0d1117;
-  --panel: #161b22;
-  --panel-2: #1c232c;
-  --border: #2a313a;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #2f81f7;
-  --ok: #3fb950;
-  --warn: #d29922;
-  --bad: #f85149;
-  --bubble: #1f2630;
-  --user: #1b3a5f;
-  --radius: 10px;
+  --bg: oklch(16% 0.01 30);
+  --panel: oklch(19% 0.01 40);
+  --panel-2: oklch(24% 0.01 40);
+  --border: oklch(31% 0.01 35);
+  --text: oklch(85% 0.02 90);
+  --muted: oklch(64% 0.02 80);
+  --accent: oklch(77% 0.17 85);
+  --accent-fg: oklch(16% 0.01 30);
+  --ok: oklch(68% 0.12 145);
+  --warn: oklch(70% 0.13 95);
+  --bad: oklch(65% 0.15 30);
+  --bubble: oklch(19% 0.01 40);
+  --user: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  --radius: 0.625rem;
   --maxw: 760px;
+  --font-sans: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Menlo", "Cascadia Mono", "Segoe UI Mono", monospace;
 }
 
 * { box-sizing: border-box; }
@@ -21,7 +27,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font: 15px/1.5 var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -41,7 +47,7 @@ body {
   background: var(--panel);
 }
 .nav button { flex: 1; }
-.nav button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.nav button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 
 .content { flex: 1; overflow-y: auto; }
 .padded { padding: 1rem; }
@@ -84,7 +90,7 @@ body {
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  background: rgba(13, 17, 23, 0.9);
+  background: color-mix(in oklab, var(--bg) 90%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
@@ -102,11 +108,11 @@ button {
 }
 button:disabled { opacity: 0.5; cursor: default; }
 button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 
 .muted { color: var(--muted); }
 .small { font-size: 0.78rem; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.mono { font-family: var(--font-mono); }
 
 .error { color: var(--bad); padding: 0.5rem 1rem; }
 
@@ -156,8 +162,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .cell.assistant { align-self: flex-start; }
 .cell.user { align-self: flex-end; align-items: flex-end; }
 .cell.user .bubble { background: var(--user); }
-.cell.error .bubble { background: rgba(248,81,73,0.12); border-color: var(--bad); }
-.cell.question .bubble { background: rgba(47,129,247,0.1); border-color: var(--accent); }
+.cell.error .bubble { background: color-mix(in srgb, var(--bad) 10%, var(--bg)); border-color: var(--bad); }
+.cell.question .bubble { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); border-color: var(--accent); }
 .cell.question.answered .bubble { opacity: 0.6; }
 .cell.state { flex-direction: row; align-items: center; gap: 0.5rem; align-self: center; }
 .cell.commit, .cell.diff { color: var(--muted); font-size: 0.85rem; }
@@ -202,6 +208,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   padding: 0.6rem;
   overflow-x: auto;
   font-size: 0.82rem;
+  font-family: var(--font-mono);
 }
 .badge {
   font-size: 0.72rem;
@@ -220,7 +227,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   display: flex;
   gap: 0.4rem;
   padding: 0.6rem;
-  background: rgba(13, 17, 23, 0.92);
+  background: color-mix(in oklab, var(--bg) 92%, transparent);
   backdrop-filter: blur(8px);
   border-top: 1px solid var(--border);
 }
@@ -253,8 +260,18 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #ffffff; --panel: #f6f8fa; --panel-2: #eef1f4; --border: #d0d7de;
-    --text: #1f2328; --muted: #59636e; --bubble: #f0f3f6; --user: #ddf4ff;
+    --bg: oklch(97% 0.02 85);
+    --panel: oklch(99% 0.01 90);
+    --panel-2: oklch(92% 0.02 80);
+    --border: oklch(85% 0.02 70);
+    --text: oklch(25% 0.02 40);
+    --muted: oklch(45% 0.02 50);
+    --accent: oklch(65% 0.2 55);
+    --accent-fg: oklch(99% 0.01 90);
+    --ok: oklch(58% 0.15 145);
+    --warn: oklch(60% 0.16 85);
+    --bad: oklch(55% 0.25 25);
+    --bubble: oklch(99% 0.01 90);
+    --user: color-mix(in srgb, var(--accent) 12%, var(--bg));
   }
-  .topbar, .composer { background: rgba(255,255,255,0.92); }
 }
