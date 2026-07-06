@@ -2,7 +2,7 @@ app = "atelier-sandboxes"
 primary_region = "sjc"
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "../runner/Dockerfile"
 
 [[vm]]
   size = "shared-cpu-1x"

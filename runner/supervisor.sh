@@ -81,8 +81,12 @@ OC_PID=$!
 # openchamber workspace UI — attaches to the opencode server above; reachable
 # from the workspace proxy over Fly 6PN on :3000 (egress firewall only filters
 # outbound; established-state replies to inbound connections pass).
+# Auth is handled by the workspace proxy (signed cookies); openchamber runs
+# unauthenticated on the VM's private network interface.
+# --host :: binds IPv6 any (Fly 6PN is IPv6-only); dual-stack accepts IPv4 too.
 OPENCODE_SKIP_START=true OPENCODE_HOST=http://127.0.0.1:4096 \
-  openchamber --lan --port 3000 >"$WORKSPACE/openchamber.log" 2>&1 &
+  OPENCHAMBER_ALLOW_UNAUTHENTICATED_LAN=true \
+  openchamber --host :: --port 3000 >"$WORKSPACE/openchamber.log" 2>&1 &
 CHAMBER_PID=$!
 
 finalize() {  # graceful stop (fly machine stop -> SIGINT; kill_timeout=120s window)
