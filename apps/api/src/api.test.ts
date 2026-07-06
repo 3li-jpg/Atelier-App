@@ -304,3 +304,23 @@ test("supervisor /replies endpoint returns user_message events after a cursor", 
 
   assert.equal((await app.request(`/internal/sessions/${id}/replies`, { headers: { Authorization: "Bearer wrong" } })).status, 401);
 });
+
+test("redaction scrubs real provider/cloud key formats (T10 fuzz)", () => {
+  const samples = [
+    "key sk-proj-AbCd1234EfGh5678IjKlMn9012OpQr3456StUv",
+    "sk-ant-api03-1234567890abcdefghij",
+    "token ghp_1234567890abcdefghij1234567890abcd",
+    "github_pat_11ABCDEFG0123456789abcdefghij0123456789klmnop",
+    "gho_1234567890abcdefghij1234567890abcd",
+    "sk-or-v1-abcdef1234567890xyz",
+    "creds AKIAIOSFODNN7EXAMPLE here",
+    "xoxb-1234567890123-abcdef",
+    "glpat-AbCdEf1234567890AbCdEf1234",
+  ];
+  for (const s of samples) {
+    const out = redact(s);
+    assert.match(out, /\[redacted\]/, `failed to redact: ${s}`);
+    assert.notEqual(out, s, `redaction was a no-op: ${s}`);
+  }
+  assert.equal(redact("no secrets here, just a normal log line"), "no secrets here, just a normal log line");
+});

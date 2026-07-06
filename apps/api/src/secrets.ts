@@ -68,8 +68,10 @@ export function openSealed(supervisorPrivPem: string, sealed: SealedConfig): obj
   return JSON.parse(Buffer.concat([d.update(Buffer.from(sealed.ct, "base64")), d.final()]).toString("utf8"));
 }
 
-// Redaction filter for streamed output (PRD §9.3): known prefixes + long-token entropy.
-const KEY_PATTERNS = /\b(sk-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gho_[A-Za-z0-9]{20,})\b/g;
+// Redaction filter for streamed output (PRD §9.3): known secret prefixes.
+// ponytail: prefix allow-list only (no high-entropy fallback) — avoids false
+// positives on diff/code content; add an entropy heuristic if a leak slips past.
+const KEY_PATTERNS = /\b(sk-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gho_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{10,}|glpat-[A-Za-z0-9_-]{20,})\b/g;
 
 export function redact(text: string): string {
   return text.replace(KEY_PATTERNS, "[redacted]");
