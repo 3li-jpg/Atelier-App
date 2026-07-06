@@ -6,3 +6,7 @@ node_modules
 docs
 handoff.md
 Atelier-*.md
+# never bake real secrets into the image (audit C1): .env.fly holds live Fly keys
+.env
+.env*
+*.local

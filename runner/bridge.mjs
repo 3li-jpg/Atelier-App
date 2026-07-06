@@ -80,12 +80,12 @@ async function createSession() {
   return body.id;
 }
 
-async function sendPrompt(sid) {
+async function sendPrompt(sid, text = TASK) {
   const res = await fetch(`${BASE}/session/${sid}/prompt_async`, {
     method: "POST",
     headers: OC_HEADERS,
-    // ponytail: assuming prompt_async body shape is {parts:[{type:"text",text:TASK}]}
-    body: JSON.stringify({ parts: [{ type: "text", text: TASK }] }),
+    // ponytail: assuming prompt_async body shape is {parts:[{type:"text",text}]}
+    body: JSON.stringify({ parts: [{ type: "text", text }] }),
     ...T(30_000),
   });
   // ponytail: assuming prompt_async returns 204 on success
@@ -133,11 +133,19 @@ function mapEvent(eventName, data, sid, state) {
   const type = data.type ?? eventName ?? "";
   const p = data.properties ?? data;
 
-  // session.diff with real hunks -> file_diff; empty -> drop
+  // session.diff -> file_diff; forward whatever per-file content opencode
+  // exposes (paths always; hunks/patch if present) so the web can render it
+  // once a diff viewer lands (audit M2 — full viewer still pending T1).
   if (type === "session.diff") {
     const diff = Array.isArray(p.diff) ? p.diff : [];
     if (!diff.length) return {};
-    return { atelier: { type: "file_diff", payload: { paths: diff.map((d) => d.path ?? d.file ?? "?") } } };
+    return { atelier: { type: "file_diff", payload: {
+      paths: diff.map((d) => d.path ?? d.file ?? "?"),
+      files: diff.map((d) => ({
+        path: d.path ?? d.file ?? "?",
+        content: d.content ?? d.diff ?? d.patch ?? d.hunks ?? null,
+      })),
+    } } };
   }
 
   if (NOISE.has(type)) return {};
@@ -172,7 +180,10 @@ function mapEvent(eventName, data, sid, state) {
 
   // file edited
   if (type === "file.edited" || type === "file") {
-    return { atelier: { type: "file_diff", payload: { path: p.path ?? p.file ?? "" } } };
+    return { atelier: { type: "file_diff", payload: {
+      path: p.path ?? p.file ?? "",
+      content: p.content ?? p.diff ?? p.patch ?? null,
+    } } };
   }
 
   // session idle -> interactive lull: hand to user, keep relaying
@@ -269,10 +280,10 @@ async function pollReplies(sid, state) {
               await replyPermission(sid, pending.id, response);
             }
           } else {
-            // No pending request — message consumed but not relayed.
-            // ponytail: if opencode supports injecting free-form user input mid-session,
-            // we could POST it as a new prompt_async. Needs T1 spike confirmation.
-            console.error(`bridge: user_message with no pending request (seq=${reply.seq})`);
+            // No pending question/permission — treat as free-form steering and
+            // inject the message as a new prompt. ponytail: assumes prompt_async
+            // accepts follow-up prompts mid-session (T1 verification pending — audit M1).
+            await sendPrompt(sid, text);
           }
         }
       }

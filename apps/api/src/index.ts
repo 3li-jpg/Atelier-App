@@ -207,6 +207,7 @@ export function buildApp(store: Store, orch: Orchestrator) {
     if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
     const { text } = await c.req.json();
     if (!text) return c.json({ error: "text required" }, 400);
+    if (["completed", "failed", "cancelled"].includes(s.state)) return c.json({ error: "session ended" }, 409); // audit M5
     store.appendEvent(id, { ts: new Date().toISOString(), type: "user_message", payload: { text } });
     await orch.wake(id);
     return c.json({ ok: true });
@@ -225,10 +226,16 @@ export function buildApp(store: Store, orch: Orchestrator) {
         await stream.writeSSE({ id: String(e.seq), data: JSON.stringify(e) });
       }
       let open = true;
-      const onEvent = (e: any) => { stream.writeSSE({ id: String(e.seq), data: JSON.stringify(e) }).catch(() => {}); };
+      const onEvent = (e: any) => { stream.writeSSE({ id: String(e.seq), data: JSON.stringify(e) }).catch(() => { open = false; }); };
       bus.on(`events:${id}`, onEvent);
       stream.onAbort(() => { open = false; bus.off(`events:${id}`, onEvent); });
-      while (open) await new Promise((r) => setTimeout(r, 15_000)).then(() => stream.writeSSE({ event: "ping", data: "" }).catch(() => { open = false; }));
+      // Shorter ping (audit L3): abort is detected within ~5s instead of 15s,
+      // and a failed write flips `open` so the loop exits promptly.
+      while (open) {
+        await new Promise((r) => setTimeout(r, 5_000));
+        if (!open) break;
+        await stream.writeSSE({ event: "ping", data: "" }).catch(() => { open = false; });
+      }
     });
   });
 
@@ -321,6 +328,9 @@ if (process.env.NODE_ENV !== "test" && process.argv[1]?.endsWith("index.ts")) {
         process.env.FLY_SANDBOX_APP ?? "atelier-sandboxes",
         process.env.FLY_SANDBOX_TOKEN ?? "",
       );
+  if (process.env.SANDBOX !== "local" && !process.env.FLY_SANDBOX_TOKEN) {
+    console.warn("WARNING: FLY_SANDBOX_TOKEN is not set — every session will fail at provisioning with a Fly 401. Set it (see .env.example) or run with SANDBOX=local.");
+  }
   const orch = new Orchestrator(store, sandbox);
   orch.startReaper();
   const app = buildApp(store, orch);

@@ -517,3 +517,47 @@ test("internal workspace endpoints gate on PROXY_TOKEN", async (t) => {
   assert.equal(res.status, 200);
   assert.ok(store.getSession(id).last_activity !== null);
 });
+
+test("supervisor-driven completed accrues the final billable segment (audit H3)", () => {
+  let t = 1_000_000;
+  const { store, sandbox } = setup();
+  const orch = new Orchestrator(store, sandbox, () => t);
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: {}, session_token: "tok" });
+  orch.transition(id, "provisioning");
+  store.setSessionState(id, "provisioning", "m-1");
+  for (const s of ["cloning", "setup", "running"]) orch.transition(id, s as any);
+  t += 5_000;
+  orch.onSupervisorState(id, "finalizing");  // running→finalizing (billable→billable)
+  t += 1_000;
+  orch.onSupervisorState(id, "completed");   // finalizing→completed → accrue (H3)
+  assert.equal(store.getSession(id).state, "completed");
+  assert.equal(store.getSession(id).billed_seconds, 6); // 5s + 1s; would be 0 before the fix
+});
+
+test("max_turns budget kills a runaway session (audit H5)", () => {
+  const { store, sandbox, orch } = setup();
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 1800, max_turns: 2 }, session_token: "tok" });
+  store.setSessionState(id, "provisioning", "m-1");
+  for (const st of ["cloning", "setup"]) store.setSessionState(id, st as any);
+  orch.onSupervisorState(id, "running");       // setup→running, turn 1
+  assert.equal(store.getSession(id).state, "running");
+  orch.onSupervisorState(id, "awaiting_user");
+  orch.onSupervisorState(id, "running");       // turn 2
+  assert.equal(store.getSession(id).state, "running");
+  orch.onSupervisorState(id, "awaiting_user");
+  orch.onSupervisorState(id, "running");       // turn 3 > 2 → kill
+  assert.equal(store.getSession(id).state, "failed");
+});
+
+test("reply to a terminal session is rejected (audit M5)", async () => {
+  const { store, app } = setup();
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: {}, session_token: "tok" });
+  store.setSessionState(id, "provisioning", "m-1");
+  for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
+  store.setSessionState(id, "completed");
+  const res = await app.request(`/sessions/${id}/reply`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "hi" }),
+  });
+  assert.equal(res.status, 409);
+});

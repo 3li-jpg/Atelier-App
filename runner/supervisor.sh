@@ -42,12 +42,21 @@ emit() { # emit <type> <json-payload> — stdout always, control plane if config
 trap 'ec=$?; if [ $ec -ne 0 ]; then emit error "{\"message\":\"supervisor exited ($ec)\"}" 2>/dev/null || true; emit state_change "{\"state\":\"failed\"}" 2>/dev/null || true; fi' EXIT
 
 emit state_change '{"state":"cloning"}'
+CAN_PUSH=0
+CRED_FILE=""
 if [[ -n "$GIT_TOKEN" ]]; then
   git clone --depth 50 --branch "$BRANCH" \
     "https://x-access-token:${GIT_TOKEN}@${REPO_URL#https://}" "$WORKSPACE/repo"
+  CAN_PUSH=1
+  # Stash the token in tmpfs (RAM) for the finalize push and strip it from the
+  # stored remote URL so it's not left in .git/config on disk (audit C2/C3).
+  CRED_FILE=/dev/shm/atelier-git-cred
+  if printf '%s' "$GIT_TOKEN" > "$CRED_FILE" 2>/dev/null; then chmod 600 "$CRED_FILE"; else CRED_FILE=""; fi
+  git -C "$WORKSPACE/repo" remote set-url origin "$REPO_URL"
 else
   git clone --depth 50 --branch "$BRANCH" "$REPO_URL" "$WORKSPACE/repo"
 fi
+unset GIT_TOKEN   # scrub from PID 1 env (audit C3)
 cd "$WORKSPACE/repo"
 git config user.email "agent@atelier.dev"
 git config user.name "Atelier Agent"
@@ -60,15 +69,25 @@ if [[ -z "${SKIP_FIREWALL:-}" ]]; then
     codeload.github.com registry.npmjs.org models.dev "${EVENTS_URL:-github.com}"
 fi
 
-# Point OpenCode at the custom endpoint (OpenAI-compatible /chat/completions)
-mkdir -p ~/.config/opencode
+# Point OpenCode at the custom endpoint. Config lives on tmpfs (RAM) so the key
+# is never written to the persistent rootfs (audit C2: PRD §9.3 "never on disk").
+# ~/.config/opencode symlinks to the tmpfs dir so opencode finds its default path.
+OC_CFG=/dev/shm/opencode
+if mkdir -p "$OC_CFG" 2>/dev/null && [ -w "$OC_CFG" ]; then
+  mkdir -p "$HOME/.config"
+  ln -sfn "$OC_CFG" "$HOME/.config/opencode"   # opencode reads ~/.config/opencode -> tmpfs
+else
+  OC_CFG="$HOME/.config/opencode"               # ponytail: fallback if tmpfs unavailable
+  mkdir -p "$OC_CFG"
+fi
 jq -n --arg url "$LLM_BASE_URL" --arg key "$LLM_API_KEY" --arg model "$LLM_MODEL" '{
   provider: { custom: {
     npm: "@ai-sdk/openai-compatible",
     options: { baseURL: $url, apiKey: $key },
     models: { ($model): { name: $model } } } },
   model: ("custom/" + $model)
-}' > ~/.config/opencode/opencode.json
+}' > "$OC_CFG/opencode.json"
+unset LLM_API_KEY   # scrub from PID 1 env (audit C3) — opencode reads the key from its config
 
 emit state_change '{"state":"running"}'
 REPLIES_URL="${EVENTS_URL%/events}/replies"
@@ -98,8 +117,16 @@ finalize() {  # graceful stop (fly machine stop -> SIGINT; kill_timeout=120s win
     git checkout -b "atelier/$(date +%s)" 2>/dev/null || true
     git add -A
     git diff --cached --quiet || git commit -m "Atelier: ${TASK:0:60}"
-    if [[ -n "$GIT_TOKEN" ]]; then
-      git push -u origin HEAD && emit commit "{\"branch\":\"$(git branch --show-current)\"}"
+    if [[ "$CAN_PUSH" == 1 ]]; then
+      if [[ -n "$CRED_FILE" && -f "$CRED_FILE" ]]; then
+        # push with the token from the tmpfs cred file (origin URL has no token)
+        local auth; auth=$(printf 'x-access-token:%s' "$(cat "$CRED_FILE")" | base64 | tr -d '\n')
+        git -c http.extraHeader="Authorization: Basic $auth" push -u origin HEAD \
+          && emit commit "{\"branch\":\"$(git branch --show-current)\"}"
+        shred -u "$CRED_FILE" 2>/dev/null || rm -f "$CRED_FILE"
+      else
+        emit error '{"message":"git credential unavailable — changes committed locally only"}'
+      fi
     else
       emit error '{"message":"no git token — changes committed locally only"}'
     fi
@@ -113,6 +140,8 @@ trap finalize TERM INT
 # task; it now runs for the whole session (idle no longer stops it).
 OC_PORT=4096 REPLIES_URL="$REPLIES_URL" TASK="$TASK" node "${RUNNER_BIN}/bridge.mjs" &
 BRIDGE_PID=$!
-wait "$BRIDGE_PID" || true
-# reaching here without a signal = opencode/bridge died -> EXIT trap emits failed
-exit 1
+wait "$BRIDGE_PID" || ec=$?; ec=${ec:-0}
+# propagate the bridge's exit code: a clean exit (0) must not be misreported as
+# failed. The EXIT trap only emits on non-zero, so exit 0 leaves the session in
+# its last reported state for the reaper to finalize (audit M3).
+exit "$ec"

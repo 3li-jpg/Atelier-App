@@ -1,5 +1,6 @@
 // Provider validation (FR-1.3): cheap completion + tool-call round-trip.
 import type { ProviderConfig } from "@atelier/schema";
+import { redact } from "./secrets.ts"; // audit L1: endpoint error bodies can echo the key
 
 export interface ValidationResult {
   ok: boolean;
@@ -25,7 +26,7 @@ export async function validateProvider(
       method: "POST", headers,
       body: JSON.stringify({ model: modelId, max_tokens: 16, messages: [{ role: "user", content: "Say ok" }] }),
     });
-    if (!c.ok) return { ok: false, latency_ms: Date.now() - t0, completion: false, tool_calls: false, error: `completion: ${c.status} ${await c.text()}` };
+    if (!c.ok) return { ok: false, latency_ms: Date.now() - t0, completion: false, tool_calls: false, error: redact(`completion: ${c.status} ${await c.text()}`) };
     const latency_ms = Date.now() - t0;
 
     // 2. Tool-call round-trip

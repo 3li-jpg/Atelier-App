@@ -46,6 +46,20 @@ function sessionOf(req, res) {
   return sid;
 }
 
+// Strip our own attach cookie before forwarding to the sandbox (audit L2):
+// openchamber is unauthenticated and must not see the proxy's session secret.
+function fwdHeaders(rawHeaders, hostHeader) {
+  const out = { ...rawHeaders };
+  if (out.cookie) {
+    const kept = parseCookies(out.cookie);
+    delete kept[COOKIE];
+    const c = Object.keys(kept).map((k) => `${k}=${kept[k]}`).join("; ");
+    if (c) out.cookie = c; else delete out.cookie;
+  }
+  out.host = hostHeader;
+  return out;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   if (url.pathname === "/healthz") { res.writeHead(200); return res.end("ok"); }
@@ -69,7 +83,7 @@ const server = http.createServer(async (req, res) => {
 
   const { host, port } = target(entry);
   const preq = http.request(
-    { host, port, path: req.url, method: req.method, headers: { ...req.headers, host: `${host}:${port}` } },
+    { host, port, path: req.url, method: req.method, headers: fwdHeaders(req.headers, `${host}:${port}`) },
     (pres) => { res.writeHead(pres.statusCode ?? 502, pres.headers); pres.pipe(res); },
   );
   preq.on("error", () => {
@@ -87,7 +101,7 @@ server.on("upgrade", async (req, socket) => {
   const entry = await lookup(sid).catch(() => null);
   if (!entry?.machine_id || entry.state === "hibernated") return bail();
   const { host, port } = target(entry);
-  const preq = http.request({ host, port, path: req.url, method: req.method, headers: { ...req.headers, host: `${host}:${port}` } });
+  const preq = http.request({ host, port, path: req.url, method: req.method, headers: fwdHeaders(req.headers, `${host}:${port}`) });
   preq.on("upgrade", (pres, psocket, phead) => {
     const lines = [`HTTP/1.1 101 Switching Protocols`];
     for (let i = 0; i < pres.rawHeaders.length; i += 2) lines.push(`${pres.rawHeaders[i]}: ${pres.rawHeaders[i + 1]}`);

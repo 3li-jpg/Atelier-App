@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Egress allow-list: drop all outbound except DNS + HTTPS to the given hosts.
 # Usage: firewall.sh <url-or-host> [host...]
+#
+# Cross-session isolation boundary (audit M4): the default-drop policy here is
+# what stops one sandbox machine reaching another's openchamber (:3000) over Fly
+# 6PN. Inbound is intentionally unfiltered (the workspace proxy is the legit
+# ingress). This is fail-closed — supervisor.sh runs under `set -e`, so if nft
+# fails to apply, the session never starts. Don't add broad allow rules without
+# considering cross-session reachability.
 set -euo pipefail
 
 hosts=()
@@ -24,12 +31,12 @@ resolve6() { dig +short "$1" AAAA | grep -E '^[0-9a-fA-F:]+$' || true; }
   echo "    udp dport 53 accept"
   echo "    tcp dport 53 accept"
   for h in "${hosts[@]}"; do
-    for ip in $(resolve "$h"); do
-      echo "    ip daddr $ip tcp dport 443 accept"
-    done
-    for ip in $(resolve6 "$h"); do
-      echo "    ip6 daddr $ip tcp dport 443 accept"
-    done
+    ips=$(resolve "$h"); ip6s=$(resolve6 "$h")
+    if [[ -z "$ips" && -z "$ip6s" ]]; then
+      echo "firewall: WARNING: no IPs resolved for $h — it will be unreachable" >&2
+    fi
+    for ip in $ips; do echo "    ip daddr $ip tcp dport 443 accept"; done
+    for ip in $ip6s; do echo "    ip6 daddr $ip tcp dport 443 accept"; done
   done
   echo "  }"
   echo "}"

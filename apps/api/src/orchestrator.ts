@@ -10,6 +10,9 @@ const PUBLIC_URL = process.env.PUBLIC_URL ?? "http://localhost:3000";
 // suspend→start ≈ 0.75 s, stop→start ≈ 1.6 s, so hold RAM only briefly.
 // Read lazily so tests (and ops) can override via env.
 const envMs = (name: string, dflt: number) => Number(process.env[name] ?? dflt);
+// 300 s, NOT PRD D6's 30 s: interactive workspaces (handoff-openchamber.md) ping
+// activity at most once per 60 s, so the fuse must exceed the ping throttle.
+// No stop-demotion: a stopped Fly machine loses its rootfs (= the workspace).
 const SUSPEND_AFTER_MS = () => envMs("SUSPEND_AFTER_MS", 300_000);  // awaiting_user → suspend
 const REAPER_INTERVAL_MS = () => envMs("REAPER_INTERVAL_MS", 60_000);
 
@@ -21,6 +24,9 @@ const BILLABLE_STATES = new Set<SessionState>(["provisioning", "cloning", "setup
 export class Orchestrator {
   private timers = new Map<string, NodeJS.Timeout>();
   private billStart = new Map<string, number>();
+  // ponytail: in-memory turn counter (one per `running` supervisor state) —
+  // lost on crash like billStart; re-seed from the events table if revival matters.
+  private turns = new Map<string, number>();
   private store: Store;
   private sandbox: SandboxProvider;
   private clock: () => number;
@@ -98,13 +104,35 @@ export class Orchestrator {
   }
 
   // Supervisor state reports arrive as state_change events; mirror them into the FSM.
+  // Routed through accrueBilling (not just setSessionState) so supervisor-driven
+  // terminal transitions settle the open billable segment — otherwise the final
+  // segment after the last wake is never accrued (audit H3).
   onSupervisorState(sessionId: string, state: string): void {
     const s = this.store.getSession(sessionId);
-    if (s && canTransition(s.state, state as SessionState)) {
-      this.store.setSessionState(sessionId, state as SessionState);
-      if (["completed", "failed"].includes(state)) this.reap(sessionId);
-      if (state === "awaiting_user") this.scheduleSuspend(sessionId);
+    if (!s || !canTransition(s.state, state as SessionState)) return;
+    this.accrueBilling(sessionId, s.state, state as SessionState);
+    this.store.setSessionState(sessionId, state as SessionState);
+    if (state === "running") {
+      // a busy report cancels a pending suspend armed while awaiting_user
+      // (audit H6) — otherwise a stale timer can suspend a working session.
+      this.clearTimer(sessionId, "suspend");
+      this.noteTurn(sessionId);
     }
+    if (state === "awaiting_user") this.scheduleSuspend(sessionId);
+    if (["completed", "failed"].includes(state)) this.reap(sessionId);
+  }
+
+  // Count agent turns (a `running` state = one model invocation cycle) and
+  // enforce the max_turns budget (audit H5). ponytail: in-memory counter.
+  private noteTurn(sessionId: string): void {
+    const s = this.store.getSession(sessionId);
+    if (!s) return;
+    const budgets = JSON.parse(s.budgets ?? "{}");
+    const maxTurns = budgets.max_turns;
+    if (typeof maxTurns !== "number" || maxTurns <= 0) return; // <=0 = unlimited
+    const n = (this.turns.get(sessionId) ?? 0) + 1;
+    this.turns.set(sessionId, n);
+    if (n > maxTurns) this.kill(sessionId, `budget: max_turns (${maxTurns}) exceeded`);
   }
 
   // --- Hibernation (PRD D6, thresholds from spike data) ---
@@ -120,11 +148,12 @@ export class Orchestrator {
   // User replied: wake the machine and hand the session back to the supervisor.
   async wake(sessionId: string): Promise<void> {
     this.clearTimer(sessionId, "suspend");
-    this.clearTimer(sessionId, "stop");
     this.clearTimer(sessionId, "finish");
     const s = this.store.getSession(sessionId);
     if (s?.state === "hibernated" && s.machine_id) {
-      await this.sandbox.resume({ id: s.machine_id, provider: "fly" });
+      const ref = { id: s.machine_id, provider: "fly" as const };
+      await this.sandbox.resume(ref);
+      await this.sandbox.waitFor(ref, "started", 30).catch(() => {}); // confirm resumed before handing back (audit L6)
       this.transition(sessionId, "awaiting_user");
     }
   }
@@ -170,6 +199,9 @@ export class Orchestrator {
         await this.kill(s.id, "reaper: absolute 24h cap exceeded");
         continue;
       }
+      // Idle budget (handoff-openchamber.md Task 4): an actively-used workspace
+      // must not be finished at max_wall_clock_s — the 24h cap above is the only
+      // absolute limit. Idle past budget → graceful finish (work gets pushed).
       const lastMs = new Date((s.last_activity ?? s.started_at) + "Z").getTime();
       if (now - lastMs > maxMs) await this.finish(s.id);
     }
@@ -230,6 +262,7 @@ export class Orchestrator {
   }
 
   private clearBudget(sessionId: string): void {
-    for (const kind of ["budget", "suspend", "stop", "finish"]) this.clearTimer(sessionId, kind);
+    for (const kind of ["budget", "suspend", "finish"]) this.clearTimer(sessionId, kind);
+    this.turns.delete(sessionId);
   }
 }

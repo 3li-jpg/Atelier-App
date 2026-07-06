@@ -77,7 +77,29 @@ export function EventCell({ event, onReply }: { event: Event; onReply: (text: st
   }
 
   if (variant === "diff") {
-    return <div className="cell diff">📝 {String(p.path ?? p.file ?? "diff")}</div>;
+    // Render path(s) always; if the bridge forwarded per-file content (hunks/
+    // patch), show it in an expandable <details> (audit M2). Full syntax-
+    // highlighted diff viewer still pending T1 + a server-side parser.
+    const files = (Array.isArray(p.files) ? p.files : []) as { path?: string; content?: unknown }[];
+    const label = String(p.path ?? p.file ?? (files[0]?.path ?? "diff"));
+    const inline = p.content ?? null;
+    const contentFiles = files.filter((f) => f && f.content != null);
+    if (contentFiles.length === 0 && inline == null) {
+      return <div className="cell diff">📝 {label}</div>;
+    }
+    return (
+      <details className="cell diff">
+        <summary className="muted small">📝 {label}</summary>
+        {inline != null && (
+          <pre className="tool-body">{typeof inline === "string" ? inline : JSON.stringify(inline, null, 2)}</pre>
+        )}
+        {contentFiles.map((f, i) => (
+          <pre key={i} className="tool-body">
+            {typeof f.content === "string" ? f.content : JSON.stringify(f.content, null, 2)}
+          </pre>
+        ))}
+      </details>
+    );
   }
 
   return (
