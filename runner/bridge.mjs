@@ -15,13 +15,13 @@ const {
   OC_PASSWORD = "",
 } = process.env;
 
-for (const [k, v] of [["TASK", TASK], ["OC_PASSWORD", OC_PASSWORD]]) {
+for (const [k, v] of [["TASK", TASK]]) {
   if (!v) { console.error(`bridge: ${k} is required`); process.exit(1); }
 }
 
 const BASE = `http://127.0.0.1:${OC_PORT}`;
 const AUTH = "Basic " + Buffer.from(`opencode:${OC_PASSWORD}`).toString("base64");
-const OC_HEADERS = { Authorization: AUTH, "Content-Type": "application/json" };
+const OC_HEADERS = { "Content-Type": "application/json", ...(OC_PASSWORD ? { Authorization: AUTH } : {}) };
 
 // Step trace to stderr -> machine logs; the only visibility inside the VM.
 const log = (...a) => console.error("bridge:", ...a);
@@ -55,7 +55,7 @@ async function waitForHealth() {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${BASE}/global/health`, { headers: { Authorization: AUTH }, ...T(5_000) });
+      const res = await fetch(`${BASE}/global/health`, { headers: OC_PASSWORD ? { Authorization: AUTH } : {}, ...T(5_000) });
       if (res.ok) {
         // ponytail: assuming /global/health returns {healthy:boolean, version:string}
         const body = await res.json();
@@ -175,11 +175,15 @@ function mapEvent(eventName, data, sid, state) {
     return { atelier: { type: "file_diff", payload: { path: p.path ?? p.file ?? "" } } };
   }
 
-  // session idle -> completed
+  // session idle -> interactive lull: hand to user, keep relaying
   if (type === "session.idle" || (type === "session.status" && (p.status?.type === "idle" || p.status === "idle"))) {
-    return { atelier: { type: "state_change", payload: { state: "completed" } }, stop: true };
+    return { atelier: { type: "state_change", payload: { state: "awaiting_user" } } };
   }
-  if (type === "session.status") return {}; // busy -> drop
+  // busy -> running (defers the control plane's suspend timer)
+  if (type === "session.status") {
+    const busy = p.status?.type === "busy" || p.status === "busy";
+    return busy ? { atelier: { type: "state_change", payload: { state: "running" } } } : {};
+  }
 
   // session error
   if (type === "session.error") {
@@ -193,7 +197,7 @@ function mapEvent(eventName, data, sid, state) {
 // ---- SSE consumer (manual parse, no EventSource dependency) ----
 
 async function consumeSSE(sid, state) {
-  const res = await fetch(`${BASE}/event`, { headers: { Authorization: AUTH } });
+  const res = await fetch(`${BASE}/event`, { headers: OC_PASSWORD ? { Authorization: AUTH } : {} });
   if (!res.ok) throw new Error(`GET /event failed: ${res.status}`);
   if (!res.body) throw new Error("GET /event returned no body");
   const reader = res.body.getReader();
@@ -202,10 +206,7 @@ async function consumeSSE(sid, state) {
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) {
-      if (!state.stopped) throw new Error("SSE stream ended without session.idle");
-      return;
-    }
+    if (done) throw new Error("opencode SSE stream ended");
     // Normalize \r\n -> \n (\r is a single byte, safe to strip per-chunk)
     buffer += decoder.decode(value, { stream: true }).replace(/\r/g, "");
 
@@ -234,13 +235,9 @@ async function consumeSSE(sid, state) {
         continue;
       }
 
-      const { atelier, stop } = mapEvent(eventName, data, sid, state);
+      const { atelier } = mapEvent(eventName, data, sid, state);
       if (atelier) {
         postEvents([{ ...atelier, ts: now() }]);
-      }
-      if (stop) {
-        state.stopped = true;
-        return;
       }
     }
   }
@@ -251,7 +248,7 @@ async function consumeSSE(sid, state) {
 async function pollReplies(sid, state) {
   if (!REPLIES_URL) return;
   let cursor = 0;
-  while (!state.stopped) {
+  while (true) {
     try {
       const res = await fetch(`${REPLIES_URL}?after=${cursor}`, {
         headers: { Authorization: `Bearer ${SESSION_TOKEN}` },
@@ -298,7 +295,7 @@ async function main() {
   log("prompt accepted; streaming events");
   await emit("state_change", { state: "running" });
 
-  const state = { stopped: false, pendingRequests: [] };
+  const state = { pendingRequests: [] };
 
   const pollPromise = pollReplies(sid, state);
   try {
@@ -306,12 +303,10 @@ async function main() {
   } catch (e) {
     log(`sse error: ${e.message}`);
     await emit("error", { message: e.message });
-    state.stopped = true;
     await pollPromise.catch(() => {});
     process.exit(1);
   }
   log("session idle; done");
-  state.stopped = true;
   await pollPromise.catch(() => {});
   process.exit(0);
 }

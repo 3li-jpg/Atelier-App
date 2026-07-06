@@ -40,8 +40,6 @@ emit() { # emit <type> <json-payload> — stdout always, control plane if config
 # ponytail: surface any crash (clone failure, opencode error, etc.) as a failed
 # state so the session doesn't hang in a transient state.
 trap 'ec=$?; if [ $ec -ne 0 ]; then emit error "{\"message\":\"supervisor exited ($ec)\"}" 2>/dev/null || true; emit state_change "{\"state\":\"failed\"}" 2>/dev/null || true; fi' EXIT
-# External kills (Fly stop, trial-plan reaper) bypass EXIT unless trapped.
-trap 'emit error "{\"message\":\"supervisor killed (SIGTERM/SIGINT)\"}" 2>/dev/null || true; emit state_change "{\"state\":\"failed\"}" 2>/dev/null || true; exit 143' TERM INT
 
 emit state_change '{"state":"cloning"}'
 if [[ -n "$GIT_TOKEN" ]]; then
@@ -73,31 +71,44 @@ jq -n --arg url "$LLM_BASE_URL" --arg key "$LLM_API_KEY" --arg model "$LLM_MODEL
 }' > ~/.config/opencode/opencode.json
 
 emit state_change '{"state":"running"}'
-OC_PASSWORD=$(openssl rand -hex 16)
-export OPENCODE_SERVER_PASSWORD="$OC_PASSWORD"
 REPLIES_URL="${EVENTS_URL%/events}/replies"
+# No server password: opencode binds 127.0.0.1 in a single-tenant VM; the
+# localhost boundary is the isolation. (openchamber's remote-auth support is
+# undocumented — password removed rather than guessed at.)
 opencode serve --hostname 127.0.0.1 --port 4096 >"$WORKSPACE/opencode.log" 2>&1 &
 OC_PID=$!
-set +e
-OC_PASSWORD=$OC_PASSWORD OC_PORT=4096 REPLIES_URL="$REPLIES_URL" TASK="$TASK" \
-  node "${RUNNER_BIN}/bridge.mjs"
-AGENT_EXIT=$?
-set -e
-kill "$OC_PID" 2>/dev/null || true
-wait "$OC_PID" 2>/dev/null || true
 
-emit state_change '{"state":"finalizing"}'
-if [[ -n "$(git status --porcelain)" || -n "$(git log origin/$BRANCH..HEAD --oneline 2>/dev/null)" ]]; then
-  git checkout -b "atelier/$(date +%s)" 2>/dev/null || true
-  git add -A
-  git diff --cached --quiet || git commit -m "Atelier: ${TASK:0:60}"
-  if [[ -n "$GIT_TOKEN" ]]; then
-    git push -u origin HEAD && emit commit "{\"branch\":\"$(git branch --show-current)\"}"
-  else
-    emit error '{"message":"no git token — changes committed locally (see $WORKSPACE/repo)"}'
+# openchamber workspace UI — attaches to the opencode server above; reachable
+# from the workspace proxy over Fly 6PN on :3000 (egress firewall only filters
+# outbound; established-state replies to inbound connections pass).
+OPENCODE_SKIP_START=true OPENCODE_HOST=http://127.0.0.1:4096 \
+  openchamber --lan --port 3000 >"$WORKSPACE/openchamber.log" 2>&1 &
+CHAMBER_PID=$!
+
+finalize() {  # graceful stop (fly machine stop -> SIGINT; kill_timeout=120s window)
+  trap - TERM INT EXIT
+  emit state_change '{"state":"finalizing"}'
+  kill "$BRIDGE_PID" "$CHAMBER_PID" "$OC_PID" 2>/dev/null || true
+  cd "$WORKSPACE/repo"
+  if [[ -n "$(git status --porcelain)" || -n "$(git log origin/$BRANCH..HEAD --oneline 2>/dev/null)" ]]; then
+    git checkout -b "atelier/$(date +%s)" 2>/dev/null || true
+    git add -A
+    git diff --cached --quiet || git commit -m "Atelier: ${TASK:0:60}"
+    if [[ -n "$GIT_TOKEN" ]]; then
+      git push -u origin HEAD && emit commit "{\"branch\":\"$(git branch --show-current)\"}"
+    else
+      emit error '{"message":"no git token — changes committed locally only"}'
+    fi
   fi
-else
-  emit error '{"message":"agent made no changes"}'
-fi
+  emit state_change '{"state":"completed"}'
+  exit 0
+}
+trap finalize TERM INT
 
-emit state_change "{\"state\":\"completed\",\"agent_exit\":${AGENT_EXIT:-0}}"
+# Bridge relays opencode events for the hub timeline and injects the initial
+# task; it now runs for the whole session (idle no longer stops it).
+OC_PORT=4096 REPLIES_URL="$REPLIES_URL" TASK="$TASK" node "${RUNNER_BIN}/bridge.mjs" &
+BRIDGE_PID=$!
+wait "$BRIDGE_PID" || true
+# reaching here without a signal = opencode/bridge died -> EXIT trap emits failed
+exit 1
