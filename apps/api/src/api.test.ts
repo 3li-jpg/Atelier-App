@@ -2,7 +2,6 @@ process.env.NODE_ENV = "test";
 process.env.MASTER_KEY = "test-master-key";
 process.env.DB_PATH = ":memory:";
 process.env.SUSPEND_AFTER_MS = "30";  // fast hibernation timers for tests
-process.env.STOP_AFTER_MS = "60";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -31,8 +30,9 @@ class FakeSandbox implements SandboxProvider {
 function setup() {
   const store = new Store(":memory:");
   const sandbox = new FakeSandbox();
-  const app = buildApp(store, new Orchestrator(store, sandbox));
-  return { store, sandbox, app };
+  const orch = new Orchestrator(store, sandbox);
+  const app = buildApp(store, orch);
+  return { store, sandbox, app, orch };
 }
 
 test("secrets round-trip and redaction", () => {
@@ -143,9 +143,8 @@ test("AUTH_TOKEN gates public routes but not health or internal", async (t) => {
   assert.equal((await app.request("/health")).status, 200);
 });
 
-test("hibernation: awaiting_user suspends, stop follows, reply wakes; reaper kills TTL breaches", async () => {
-  const { store, sandbox, app } = setup();
-  const orch = new Orchestrator(store, sandbox);
+test("hibernation: awaiting_user suspends, reply wakes", async () => {
+  const { store, sandbox, orch } = setup();
 
   const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 1800 }, session_token: "tok" });
   store.setSessionState(id, "provisioning", "m-1");
@@ -155,17 +154,10 @@ test("hibernation: awaiting_user suspends, stop follows, reply wakes; reaper kil
   await new Promise((r) => setTimeout(r, 50));  // > SUSPEND_AFTER_MS(30)
   assert.deepEqual(sandbox.calls, ["suspend"]);
   assert.equal(store.getSession(id).state, "hibernated");
-  await new Promise((r) => setTimeout(r, 80));  // > STOP_AFTER_MS(60)
-  assert.deepEqual(sandbox.calls, ["suspend", "stop"]);
 
   await orch.wake(id);
-  assert.deepEqual(sandbox.calls, ["suspend", "stop", "resume"]);
+  assert.deepEqual(sandbox.calls, ["suspend", "resume"]);
   assert.equal(store.getSession(id).state, "awaiting_user");
-
-  // reaper: session past wall-clock TTL gets killed and machine destroyed
-  await orch.sweep(Date.now() + 1801 * 1000);
-  assert.equal(store.getSession(id).state, "failed");
-  assert.ok(sandbox.destroyed.includes("m-1"));
 });
 
 test("event replay from cursor", async () => {
@@ -415,4 +407,113 @@ test("touchActivity stamps last_activity", async () => {
   store.touchActivity(id);
   const t = new Date(store.getSession(id).last_activity + "Z").getTime();
   assert.ok(Math.abs(Date.now() - t) < 5000);
+});
+
+test("activity while awaiting_user defers suspend", async () => {
+  const { store, sandbox, orch } = setup();
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 1800 }, session_token: "tok" });
+  store.setSessionState(id, "provisioning", "m-1");
+  for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
+  orch.onSupervisorState(id, "awaiting_user");
+
+  for (let i = 0; i < 5; i++) {
+    await new Promise((r) => setTimeout(r, 20));
+    orch.activity(id);
+  }
+  assert.ok(!sandbox.calls.includes("suspend"));
+  assert.ok(store.getSession(id).last_activity !== null);
+
+  await new Promise((r) => setTimeout(r, 60));
+  assert.ok(sandbox.calls.includes("suspend"));
+});
+
+test("finish stops the machine gracefully and reaps on completed", async () => {
+  const { store, sandbox, orch } = setup();
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 1800 }, session_token: "tok" });
+  store.setSessionState(id, "provisioning", "m-1");
+  for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
+
+  await orch.finish(id);
+  assert.ok(sandbox.calls.includes("stop"));
+  orch.onSupervisorState(id, "finalizing");
+  orch.onSupervisorState(id, "completed");
+  assert.equal(store.getSession(id).state, "completed");
+  assert.deepEqual(sandbox.destroyed, ["m-1"]);
+});
+
+test("finish resumes a hibernated machine before stopping it", async () => {
+  const { store, sandbox, orch } = setup();
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 1800 }, session_token: "tok" });
+  store.setSessionState(id, "provisioning", "m-1");
+  for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
+  orch.onSupervisorState(id, "awaiting_user");
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(store.getSession(id).state, "hibernated");
+
+  await orch.finish(id);
+  assert.ok(sandbox.calls.indexOf("resume") < sandbox.calls.indexOf("stop"));
+});
+
+test("reaper finishes idle sessions instead of killing", async () => {
+  const { store, sandbox, orch } = setup();
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 0 }, session_token: "tok" });
+  store.setSessionState(id, "provisioning", "m-1");
+  for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
+  orch.onSupervisorState(id, "awaiting_user");
+
+  await orch.sweep();
+  assert.ok(sandbox.calls.includes("stop"));
+  assert.notEqual(store.getSession(id).state, "failed");
+});
+
+test("workspace redirect round-trip", async (t) => {
+  t.after(() => { delete process.env.WORKSPACES_URL; });
+  process.env.WORKSPACES_URL = "https://ws.example";
+  const { store, app } = setup();
+  const uid = store.upsertUser(1, "alice", null, null);
+  const aliceCookie = `atelier_session=${signSession(uid)}`;
+
+  let res = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: aliceCookie },
+    body: JSON.stringify({ name: "A", base_url: "https://a.io/v1", dialect: "openai-chat", api_key: "sk-a", models: [{ id: "m", role: "coder" }] }),
+  });
+  const { id: providerId } = await res.json();
+  res = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: aliceCookie },
+    body: JSON.stringify({ repo_url: "https://github.com/a/b", provider_id: providerId, model_id: "m", task: "do it" }),
+  });
+  const { id } = await res.json();
+  await new Promise((r) => setTimeout(r, 20));
+
+  res = await app.request(`/sessions/${id}/workspace`, { headers: { Cookie: aliceCookie } });
+  assert.equal(res.status, 302);
+  const loc = res.headers.get("location")!;
+  assert.ok(loc.startsWith("https://ws.example/attach?token="));
+  assert.equal(verifyWorkspaceToken(new URL(loc).searchParams.get("token"))!.sid, id);
+
+  const bob = store.upsertUser(2, "bob", null, null);
+  const bobCookie = `atelier_session=${signSession(bob)}`;
+  res = await app.request(`/sessions/${id}/workspace`, { headers: { Cookie: bobCookie } });
+  assert.equal(res.status, 404);
+
+  const id2 = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: {}, session_token: "tok", user_id: uid });
+  res = await app.request(`/sessions/${id2}/workspace`, { headers: { Cookie: aliceCookie } });
+  assert.equal(res.status, 409);
+});
+
+test("internal workspace endpoints gate on PROXY_TOKEN", async (t) => {
+  t.after(() => { delete process.env.PROXY_TOKEN; });
+  process.env.PROXY_TOKEN = "pt";
+  const { store, app } = setup();
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: {}, session_token: "tok" });
+  store.setSessionState(id, "provisioning", "m-1");
+  for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
+
+  let res = await app.request(`/internal/workspace/${id}`);
+  assert.equal(res.status, 401);
+  res = await app.request(`/internal/workspace/${id}`, { headers: { Authorization: "Bearer pt" } });
+  assert.deepEqual(await res.json(), { machine_id: "m-1", state: store.getSession(id).state });
+  res = await app.request(`/internal/workspace/${id}/activity`, { method: "POST", headers: { Authorization: "Bearer pt" } });
+  assert.equal(res.status, 200);
+  assert.ok(store.getSession(id).last_activity !== null);
 });

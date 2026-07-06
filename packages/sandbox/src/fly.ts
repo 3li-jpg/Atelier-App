@@ -36,6 +36,7 @@ export class FlyMachinesProvider implements SandboxProvider {
         guest: { cpu_kind: "shared", cpus: cfg.cpus ?? 2, memory_mb: cfg.memory_mb ?? 4096 },
         auto_destroy: true,
         restart: { policy: "no" },
+        kill_timeout: 120,
         env: cfg.env,
         metadata: cfg.metadata,
       },

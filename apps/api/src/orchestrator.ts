@@ -10,8 +10,7 @@ const PUBLIC_URL = process.env.PUBLIC_URL ?? "http://localhost:3000";
 // suspend→start ≈ 0.75 s, stop→start ≈ 1.6 s, so hold RAM only briefly.
 // Read lazily so tests (and ops) can override via env.
 const envMs = (name: string, dflt: number) => Number(process.env[name] ?? dflt);
-const SUSPEND_AFTER_MS = () => envMs("SUSPEND_AFTER_MS", 30_000);   // awaiting_user → suspend
-const STOP_AFTER_MS = () => envMs("STOP_AFTER_MS", 120_000);        // suspended → stop
+const SUSPEND_AFTER_MS = () => envMs("SUSPEND_AFTER_MS", 300_000);  // awaiting_user → suspend
 const REAPER_INTERVAL_MS = () => envMs("REAPER_INTERVAL_MS", 60_000);
 
 // Billable while the machine is alive (started); pauses when suspended/hibernated
@@ -81,9 +80,6 @@ export class Orchestrator {
     });
 
     this.store.setSessionState(sessionId, "provisioning", ref.id);
-    const budgets = JSON.parse(s.budgets);
-    this.setTimer(sessionId, "budget", budgets.max_wall_clock_s * 1000,
-      () => this.kill(sessionId, "wall-clock budget exceeded"));
   }
 
   // Handshake: seal the full session config to the supervisor's pubkey.
@@ -118,12 +114,6 @@ export class Orchestrator {
       if (s?.state !== "awaiting_user" || !s.machine_id) return;
       await this.sandbox.suspend({ id: s.machine_id, provider: "fly" }).catch(() => {});
       this.transition(sessionId, "hibernated");
-      this.setTimer(sessionId, "stop", STOP_AFTER_MS(), async () => {
-        const s2 = this.store.getSession(sessionId);
-        if (s2?.state === "hibernated" && s2.machine_id) {
-          await this.sandbox.stop({ id: s2.machine_id, provider: "fly" }).catch(() => {});
-        }
-      });
     });
   }
 
@@ -131,11 +121,35 @@ export class Orchestrator {
   async wake(sessionId: string): Promise<void> {
     this.clearTimer(sessionId, "suspend");
     this.clearTimer(sessionId, "stop");
+    this.clearTimer(sessionId, "finish");
     const s = this.store.getSession(sessionId);
     if (s?.state === "hibernated" && s.machine_id) {
       await this.sandbox.resume({ id: s.machine_id, provider: "fly" });
       this.transition(sessionId, "awaiting_user");
     }
+  }
+
+  activity(sessionId: string): void {
+    this.store.touchActivity(sessionId);
+    const s = this.store.getSession(sessionId);
+    if (s?.state === "awaiting_user") this.scheduleSuspend(sessionId);
+  }
+
+  async finish(sessionId: string): Promise<void> {
+    const s = this.store.getSession(sessionId);
+    if (!s) return;
+    if (!s.machine_id) {
+      if (canTransition(s.state, "cancelled")) this.transition(sessionId, "cancelled");
+      return;
+    }
+    const ref = { id: s.machine_id, provider: "fly" as const };
+    if (s.state === "hibernated") {
+      await this.sandbox.resume(ref);
+      await this.sandbox.waitFor(ref, "started", 30).catch(() => {});
+      this.transition(sessionId, "awaiting_user");
+    }
+    await this.sandbox.stop(ref).catch(() => {});
+    this.setTimer(sessionId, "finish", 180_000, () => { void this.kill(sessionId, "finish timed out"); });
   }
 
   // --- Reaper: TTL enforcement independent of the happy path ---
@@ -152,7 +166,12 @@ export class Orchestrator {
       const budgets = JSON.parse(s.budgets ?? "{}");
       const maxMs = (budgets.max_wall_clock_s ?? 1800) * 1000;
       const started = new Date(s.started_at + "Z").getTime();
-      if (now - started > maxMs) await this.kill(s.id, "reaper: wall-clock TTL exceeded");
+      if (now - started > 24 * 60 * 60 * 1000) {
+        await this.kill(s.id, "reaper: absolute 24h cap exceeded");
+        continue;
+      }
+      const lastMs = new Date((s.last_activity ?? s.started_at) + "Z").getTime();
+      if (now - lastMs > maxMs) await this.finish(s.id);
     }
     await this.reapOrphans();
   }
@@ -211,6 +230,6 @@ export class Orchestrator {
   }
 
   private clearBudget(sessionId: string): void {
-    for (const kind of ["budget", "suspend", "stop"]) this.clearTimer(sessionId, kind);
+    for (const kind of ["budget", "suspend", "stop", "finish"]) this.clearTimer(sessionId, kind);
   }
 }

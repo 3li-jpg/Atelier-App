@@ -11,7 +11,7 @@ import { Orchestrator } from "./orchestrator.ts";
 import { encryptKey, redact } from "./secrets.ts";
 import { validateProvider } from "./validate.ts";
 import {
-  signSession, verifySession, exchangeGithubCode, loginUrl, newState, isSecure,
+  signSession, verifySession, signWorkspaceToken, exchangeGithubCode, loginUrl, newState, isSecure,
   authConfigured, oauthEnabled, OWNER_ID, SESSION_COOKIE,
 } from "./auth.ts";
 
@@ -176,6 +176,27 @@ export function buildApp(store: Store, orch: Orchestrator) {
     return c.json({ ok: true });
   });
 
+  app.get("/sessions/:id/workspace", (c) => {
+    const s = store.getSession(c.req.param("id"));
+    if (!s) return c.json({ error: "not found" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
+    if (!s.machine_id) return c.json({ error: "no machine" }, 409);
+    const wsUrl = process.env.WORKSPACES_URL;
+    if (!wsUrl) return c.json({ error: "workspaces not configured" }, 503);
+    const token = signWorkspaceToken(c.req.param("id"), uid ?? s.user_id ?? OWNER_ID);
+    return c.redirect(`${wsUrl}/attach?token=${token}`, 302);
+  });
+
+  app.post("/sessions/:id/finish", async (c) => {
+    const s = store.getSession(c.req.param("id"));
+    if (!s) return c.json({ error: "not found" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
+    await orch.finish(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
   // User answers a `question` event: record it and wake the machine if hibernated.
   // (Supervisor-side delivery of the message to the harness is handoff T7.2.)
   app.post("/sessions/:id/reply", async (c) => {
@@ -242,6 +263,7 @@ export function buildApp(store: Store, orch: Orchestrator) {
         orch.onSupervisorState(id, payload.state);
       }
     }
+    orch.activity(id);
     return c.json({ ok: true });
   });
 
@@ -255,6 +277,30 @@ export function buildApp(store: Store, orch: Orchestrator) {
       .filter((e) => e.type === "user_message")
       .map((e) => ({ seq: e.seq, text: (e.payload as Record<string, unknown>).text, ts: e.ts }));
     return c.json(replies);
+  });
+
+  const proxyAuth = (c: any) => {
+    const t = process.env.PROXY_TOKEN;
+    return Boolean(t && c.req.header("Authorization") === `Bearer ${t}`);
+  };
+
+  app.get("/internal/workspace/:id", (c) => {
+    if (!proxyAuth(c)) return c.json({ error: "unauthorized" }, 401);
+    const s = store.getSession(c.req.param("id"));
+    if (!s) return c.json({ error: "not found" }, 404);
+    return c.json({ machine_id: s.machine_id ?? null, state: s.state });
+  });
+
+  app.post("/internal/workspace/:id/wake", async (c) => {
+    if (!proxyAuth(c)) return c.json({ error: "unauthorized" }, 401);
+    await orch.wake(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
+  app.post("/internal/workspace/:id/activity", (c) => {
+    if (!proxyAuth(c)) return c.json({ error: "unauthorized" }, 401);
+    orch.activity(c.req.param("id"));
+    return c.json({ ok: true });
   });
 
   // ---- Static SPA (handoff T6: one deploy — Hono serves the web bundle) ----
