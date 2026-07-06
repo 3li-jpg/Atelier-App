@@ -219,7 +219,8 @@ export class Orchestrator {
       if (!sid || m.state === "destroyed") continue;
       const s = this.store.getSession(sid);
       if (!s || ["completed", "failed", "cancelled"].includes(s.state)) {
-        await this.sandbox.destroy({ id: m.id, provider: m.provider }).catch(() => {});
+        await this.sandbox.destroy({ id: m.id, provider: m.provider })
+          .catch((err) => console.warn(`reaper: failed to destroy orphan ${m.id}: ${err}`));
         if (s) this.store.appendEvent(sid, {
           ts: new Date().toISOString(), type: "error",
           payload: { message: `reaper: destroyed orphan machine ${m.id} (session ${s.state})` },
