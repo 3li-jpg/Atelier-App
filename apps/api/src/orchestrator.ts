@@ -14,13 +14,34 @@ const SUSPEND_AFTER_MS = () => envMs("SUSPEND_AFTER_MS", 30_000);   // awaiting_
 const STOP_AFTER_MS = () => envMs("STOP_AFTER_MS", 120_000);        // suspended → stop
 const REAPER_INTERVAL_MS = () => envMs("REAPER_INTERVAL_MS", 60_000);
 
+// Billable while the machine is alive (started); pauses when suspended/hibernated
+// or destroyed. ponytail: billStart is in-memory — the accrued total persists,
+// but the open interval is lost on crash (acceptable for the alpha).
+const BILLABLE_STATES = new Set<SessionState>(["provisioning", "cloning", "setup", "running", "awaiting_user", "finalizing"]);
+
 export class Orchestrator {
   private timers = new Map<string, NodeJS.Timeout>();
+  private billStart = new Map<string, number>();
   private store: Store;
   private sandbox: SandboxProvider;
+  private clock: () => number;
 
-  constructor(store: Store, sandbox: SandboxProvider) {
-    this.store = store; this.sandbox = sandbox;
+  constructor(store: Store, sandbox: SandboxProvider, now: () => number = Date.now) {
+    this.store = store; this.sandbox = sandbox; this.clock = now;
+  }
+
+  private accrueBilling(sessionId: string, from: SessionState, to: SessionState): void {
+    const wasBillable = BILLABLE_STATES.has(from);
+    const isBillable = BILLABLE_STATES.has(to);
+    if (wasBillable && !isBillable) {
+      const t0 = this.billStart.get(sessionId);
+      if (t0 !== undefined) {
+        this.store.addBilled(sessionId, this.clock() - t0);
+        this.billStart.delete(sessionId);
+      }
+    } else if (!wasBillable && isBillable) {
+      this.billStart.set(sessionId, this.clock());
+    }
   }
 
   transition(sessionId: string, to: SessionState): void {
@@ -29,6 +50,7 @@ export class Orchestrator {
     if (!canTransition(s.state, to)) {
       throw new Error(`illegal transition ${s.state} -> ${to}`);
     }
+    this.accrueBilling(sessionId, s.state, to);
     this.store.setSessionState(sessionId, to);
     this.store.appendEvent(sessionId, {
       ts: new Date().toISOString(), type: "state_change", payload: { from: s.state, state: to },
@@ -123,7 +145,7 @@ export class Orchestrator {
     return t;
   }
 
-  async sweep(now = Date.now()): Promise<void> {
+  async sweep(now: number = this.clock()): Promise<void> {
     for (const row of this.store.listSessions()) {
       if (["completed", "failed", "cancelled"].includes(row.state)) continue;
       const s = this.store.getSession(row.id);

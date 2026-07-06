@@ -324,3 +324,27 @@ test("redaction scrubs real provider/cloud key formats (T10 fuzz)", () => {
   }
   assert.equal(redact("no secrets here, just a normal log line"), "no secrets here, just a normal log line");
 });
+
+test("billed_seconds accrues while billable, pauses while hibernated, resumes on wake", () => {
+  let t = 1_000_000;
+  const { store, sandbox } = setup();
+  const orch = new Orchestrator(store, sandbox, () => t);
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: {}, session_token: "tok" });
+
+  orch.transition(id, "provisioning");        // created -> billable: start clock
+  store.setSessionState(id, "provisioning", "m-1");
+  for (const s of ["cloning", "setup", "running", "awaiting_user"]) orch.transition(id, s as any); // billable -> billable
+  t += 4_000;                                 // 4s of billable time
+  orch.transition(id, "hibernated");          // billable -> paused: accrue 4s
+  assert.equal(store.getSession(id).billed_seconds, 4);
+
+  t += 10_000;                                 // paused: no accrue
+  assert.equal(store.getSession(id).billed_seconds, 4);
+
+  orch.transition(id, "awaiting_user");       // paused -> billable: restart clock
+  t += 2_000;
+  orch.transition(id, "running");
+  orch.transition(id, "finalizing");
+  orch.transition(id, "completed");           // billable -> terminal: accrue 2s
+  assert.equal(store.getSession(id).billed_seconds, 6);
+});

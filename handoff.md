@@ -90,8 +90,8 @@ Stack: Vite + React SPA (ponytail: no Next.js — there's no SSR need; the API i
 `packages/conformance/`: `scoreToolCallFidelity` + `scoreEditRelability` + `scoreStreamingStability` + `runConformance(baseUrl, apiKey, model, fetchImpl)` → `{tool_call_fidelity, edit_reliability, streaming_stable, quirks, pass}`. OpenAI-compatible, mirrors `validate.ts` request shape. Zero deps (node builtins); 6 tests with a fake fetchImpl (offline). CLI prints the JSON report. **Open:** wire presets (Umans, OpenRouter, Together) into a remote-config JSON; nightly GitHub Action; bump canned-prompt count.
 
 ### T9 — Billing & quotas (PRD §6.6) — **UPDATED for web pivot**
-- `billed_seconds` accounting already has a column — write deltas at every start/suspend/stop transition in the orchestrator.
-- Stripe Checkout + webhooks → tier on `users` (RevenueCat/StoreKit deleted with the iOS app); middleware enforces concurrent-session cap + monthly hours; soft-cap → throttle to 1 concurrent.
+- ✅ `billed_seconds` accounting done — orchestrator accrues at every billable→non-billable transition (suspend/hibernate/terminal) via an injectable clock (`orchestrator.accrueBilling` + `store.addBilled`); tested with a fake clock. `billed_seconds` is whole seconds (Fly bills per-second).
+- Stripe Checkout + webhooks → tier on `users`; middleware enforces concurrent-session cap + monthly hours; soft-cap → throttle to 1 concurrent.
 - Must be optional for self-hosters: no Stripe keys configured → no quotas enforced.
 
 ### T10 — Launch checklist (guide §5)

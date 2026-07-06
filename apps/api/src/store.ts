@@ -105,6 +105,13 @@ export class Store {
     }
   }
 
+  // billed_seconds is in whole seconds (Fly bills per second); sub-second deltas
+  // round. ponytail: fine for the alpha; switch to ms if quota granularity matters.
+  addBilled(sessionId: string, ms: number): void {
+    this.db.prepare("update sessions set billed_seconds = billed_seconds + ? where id = ?")
+      .run(Math.max(0, Math.round(ms / 1000)), sessionId);
+  }
+
   appendEvent(sessionId: string, e: Omit<Event, "seq" | "session_id">): Event {
     const row: any = this.db.prepare("select coalesce(max(seq),0) + 1 as seq from events where session_id = ?").get(sessionId);
     const stored: Event = { ...e, session_id: sessionId, seq: row.seq };
