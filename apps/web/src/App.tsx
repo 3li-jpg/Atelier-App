@@ -18,6 +18,7 @@ const TABS: { id: "list" | "new" | "providers"; label: string }[] = [
 
 export function App() {
   const [view, setView] = useState<View>({ kind: "list" });
+  const authError = new URLSearchParams(window.location.search).get("auth_error");
 
   if (view.kind === "session") {
     return <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />;
@@ -32,6 +33,7 @@ export function App() {
           <AuthBar />
         </div>
       </header>
+      {authError && <div className="state-banner tone-bad">login failed: {authError}</div>}
       <nav className="nav">
         {TABS.map((t) => (
           <button
