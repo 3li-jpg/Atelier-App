@@ -6,7 +6,7 @@ Agentic coding from any browser (installable PWA, desktop + mobile) against **yo
 
 ```
 runner/              atelier-runner image: Dockerfile, supervisor.sh (opencode-serve bridge), firewall.sh, bridge.mjs
-apps/api/            control plane: Hono + node:sqlite, FSM orchestrator, SSE stream, GitHub OAuth + per-user scoping
+apps/api/            control plane: Hono + sqlite-or-Postgres store (DATABASE_URL, e.g. Supabase), FSM orchestrator, SSE stream, GitHub OAuth + per-user scoping
 apps/web/            installable PWA: Vite + React (sessions, chat timeline, NewTask, providers, cancel, workspace, finish)
 apps/workspace-proxy/  cookie-routing reverse proxy (HTTP+WS) to per-session sandbox machines over Fly 6PN
 packages/schema/     zod schemas: events, session FSM, provider config
@@ -49,7 +49,7 @@ Local API without Fly credentials will fail sessions at `provisioning` (by desig
 
 | Shortcut | Upgrade when |
 |---|---|
-| node:sqlite + in-process EventEmitter + in-memory timers | >1 API instance → Postgres (Neon) + Redis Streams |
+| sqlite default, Postgres via DATABASE_URL (Supabase); SSE fanout + timers still in-process | >1 API instance → pg LISTEN/NOTIFY for fanout, seq-conflict retry |
 | SSE instead of WebSocket | never, probably — native EventSource is all the PWA needs |
 | Stateless session cookie (no revocation) | before public launch → server-side sessions table for revocation |
 | Single MASTER_KEY AES-GCM | before storing others' keys → KMS envelope encryption |

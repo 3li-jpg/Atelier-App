@@ -7,6 +7,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { Event, ProviderConfig, CreateSession } from "@atelier/schema";
 import { FlyMachinesProvider, LocalSandboxProvider } from "@atelier/sandbox";
 import { Store, bus } from "./store.ts";
+import { PgStore, type AnyStore } from "./pg-store.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import { encryptKey, redact } from "./secrets.ts";
 import { validateProvider } from "./validate.ts";
@@ -17,7 +18,7 @@ import {
 
 const uidOf = (c: any): string | undefined => c.get("userId") as string | undefined;
 
-export function buildApp(store: Store, orch: Orchestrator) {
+export function buildApp(store: AnyStore, orch: Orchestrator) {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
@@ -49,10 +50,10 @@ export function buildApp(store: Store, orch: Orchestrator) {
   });
 
   // ---- Auth routes ----
-  app.get("/auth/status", (c) => {
+  app.get("/auth/status", async (c) => {
     const uid = verifySession(getCookie(c, SESSION_COOKIE));
     const owner = uid === OWNER_ID;
-    const user = uid ? (owner ? { login: "owner" } : store.getUser(uid)) : null;
+    const user = uid ? (owner ? { login: "owner" } : await store.getUser(uid)) : null;
     return c.json({ oauth: oauthEnabled(), authed: Boolean(uid), owner, user });
   });
 
@@ -74,8 +75,8 @@ export function buildApp(store: Store, orch: Orchestrator) {
     deleteCookie(c, "atelier_oauth_state", { path: "/" });
     try {
       const { user, token } = await exchangeGithubCode(code);
-      const uid = store.upsertUser(user.id, user.login, user.name, user.avatar_url);
-      store.storeUserToken(uid, token);
+      const uid = await store.upsertUser(user.id, user.login, user.name, user.avatar_url);
+      await store.storeUserToken(uid, token);
       setCookie(c, SESSION_COOKIE, signSession(uid), {
         httpOnly: true, sameSite: "Lax", secure: isSecure(), maxAge: 60 * 60 * 24 * 7, path: "/",
       });
@@ -96,7 +97,7 @@ export function buildApp(store: Store, orch: Orchestrator) {
   app.get("/repos", async (c) => {
     const uid = uidOf(c);
     if (!uid) return c.json({ error: "unauthorized" }, 401);
-    const token = store.getUserToken(uid);
+    const token = await store.getUserToken(uid);
     if (!token) return c.json({ error: "no github token" }, 401);
     const res = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated", {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "User-Agent": "atelier" },
@@ -111,7 +112,7 @@ export function buildApp(store: Store, orch: Orchestrator) {
   app.get("/repos/:owner/:repo/branches", async (c) => {
     const uid = uidOf(c);
     if (!uid) return c.json({ error: "unauthorized" }, 401);
-    const token = store.getUserToken(uid);
+    const token = await store.getUserToken(uid);
     if (!token) return c.json({ error: "no github token" }, 401);
     const owner = decodeURIComponent(c.req.param("owner"));
     const repo = decodeURIComponent(c.req.param("repo"));
@@ -129,11 +130,11 @@ export function buildApp(store: Store, orch: Orchestrator) {
     const cfg = ProviderConfig.parse(body);
     const apiKey: string = body.api_key;
     if (!apiKey) return c.json({ error: "api_key required" }, 400);
-    const id = store.createProvider({ ...cfg, key_ciphertext: encryptKey(apiKey), user_id: uidOf(c) });
+    const id = await store.createProvider({ ...cfg, key_ciphertext: encryptKey(apiKey), user_id: uidOf(c) });
     return c.json({ id }, 201);
   });
 
-  app.get("/providers", (c) => c.json(store.listProviders(uidOf(c))));
+  app.get("/providers", async (c) => c.json(await store.listProviders(uidOf(c))));
 
   app.post("/providers/validate", async (c) => {
     const body = await c.req.json();
@@ -145,21 +146,21 @@ export function buildApp(store: Store, orch: Orchestrator) {
   // ---- Sessions (FR-3.x) ----
   app.post("/sessions", async (c) => {
     const req = CreateSession.parse(await c.req.json());
-    const provider = store.getProvider(req.provider_id);
+    const provider = await store.getProvider(req.provider_id);
     if (!provider) return c.json({ error: "unknown provider" }, 404);
     const uid = uidOf(c);
     if (uid !== undefined && provider.user_id && provider.user_id !== uid) {
       return c.json({ error: "unknown provider" }, 404); // don't leak cross-user existence
     }
-    const id = store.createSession({ ...req, session_token: randomBytes(24).toString("hex"), user_id: uid });
+    const id = await store.createSession({ ...req, session_token: randomBytes(24).toString("hex"), user_id: uid });
     orch.launch(id).catch(() => {}); // failure already recorded as events + failed state
     return c.json({ id, state: "created" }, 201);
   });
 
-  app.get("/sessions", (c) => c.json(store.listSessions(uidOf(c))));
+  app.get("/sessions", async (c) => c.json(await store.listSessions(uidOf(c))));
 
-  app.get("/sessions/:id", (c) => {
-    const s = store.getSession(c.req.param("id"));
+  app.get("/sessions/:id", async (c) => {
+    const s = await store.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
     const uid = uidOf(c);
     if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
@@ -168,7 +169,7 @@ export function buildApp(store: Store, orch: Orchestrator) {
   });
 
   app.post("/sessions/:id/cancel", async (c) => {
-    const s = store.getSession(c.req.param("id"));
+    const s = await store.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
     const uid = uidOf(c);
     if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
@@ -176,8 +177,8 @@ export function buildApp(store: Store, orch: Orchestrator) {
     return c.json({ ok: true });
   });
 
-  app.get("/sessions/:id/workspace", (c) => {
-    const s = store.getSession(c.req.param("id"));
+  app.get("/sessions/:id/workspace", async (c) => {
+    const s = await store.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
     const uid = uidOf(c);
     if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
@@ -189,7 +190,7 @@ export function buildApp(store: Store, orch: Orchestrator) {
   });
 
   app.post("/sessions/:id/finish", async (c) => {
-    const s = store.getSession(c.req.param("id"));
+    const s = await store.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
     const uid = uidOf(c);
     if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
@@ -201,28 +202,28 @@ export function buildApp(store: Store, orch: Orchestrator) {
   // (Supervisor-side delivery of the message to the harness is handoff T7.2.)
   app.post("/sessions/:id/reply", async (c) => {
     const id = c.req.param("id");
-    const s = store.getSession(id);
+    const s = await store.getSession(id);
     if (!s) return c.json({ error: "not found" }, 404);
     const uid = uidOf(c);
     if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
     const { text } = await c.req.json();
     if (!text) return c.json({ error: "text required" }, 400);
     if (["completed", "failed", "cancelled"].includes(s.state)) return c.json({ error: "session ended" }, 409); // audit M5
-    store.appendEvent(id, { ts: new Date().toISOString(), type: "user_message", payload: { text } });
+    await store.appendEvent(id, { ts: new Date().toISOString(), type: "user_message", payload: { text } });
     await orch.wake(id);
     return c.json({ ok: true });
   });
 
   // Event stream: replay after cursor, then live-tail. SSE (native EventSource).
-  app.get("/sessions/:id/stream", (c) => {
+  app.get("/sessions/:id/stream", async (c) => {
     const id = c.req.param("id");
-    const s = store.getSession(id);
+    const s = await store.getSession(id);
     if (!s) return c.json({ error: "not found" }, 404);
     const uid = uidOf(c);
     if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
     const cursor = Number(c.req.query("cursor") ?? 0);
     return streamSSE(c, async (stream) => {
-      for (const e of store.eventsAfter(id, cursor)) {
+      for (const e of await store.eventsAfter(id, cursor)) {
         await stream.writeSSE({ id: String(e.seq), data: JSON.stringify(e) });
       }
       let open = true;
@@ -240,8 +241,8 @@ export function buildApp(store: Store, orch: Orchestrator) {
   });
 
   // ---- Internal: supervisor endpoints (guide §2.5–2.6) ----
-  const sessionAuth = (c: any): any | null => {
-    const s = store.getSession(c.req.param("id"));
+  const sessionAuth = async (c: any): Promise<any | null> => {
+    const s = await store.getSession(c.req.param("id"));
     const auth = c.req.header("Authorization") ?? "";
     const expected = `Bearer ${s?.session_token ?? ""}`;
     if (!s || auth.length !== expected.length ||
@@ -251,36 +252,36 @@ export function buildApp(store: Store, orch: Orchestrator) {
 
   // Sealed-box config exchange: supervisor posts its X25519 pubkey, gets secrets back encrypted.
   app.post("/internal/sessions/:id/handshake", async (c) => {
-    if (!sessionAuth(c)) return c.json({ error: "unauthorized" }, 401);
+    if (!(await sessionAuth(c))) return c.json({ error: "unauthorized" }, 401);
     const { pubkey } = await c.req.json();
     const raw = Buffer.from(String(pubkey ?? ""), "base64");
     if (raw.length !== 32) return c.json({ error: "pubkey must be 32 bytes base64" }, 400);
-    return c.json(orch.handshake(c.req.param("id"), raw));
+    return c.json(await orch.handshake(c.req.param("id"), raw));
   });
 
   app.post("/internal/sessions/:id/events", async (c) => {
     const id = c.req.param("id");
-    if (!sessionAuth(c)) return c.json({ error: "unauthorized" }, 401);
+    if (!(await sessionAuth(c))) return c.json({ error: "unauthorized" }, 401);
     const batch = (await c.req.json()) as unknown[];
     for (const raw of batch) {
       const e = Event.parse(raw);
       const payload = JSON.parse(redact(JSON.stringify(e.payload)));
-      store.appendEvent(id, { ts: e.ts, type: e.type, payload });
+      await store.appendEvent(id, { ts: e.ts, type: e.type, payload });
       if (e.type === "state_change" && typeof payload.state === "string") {
-        orch.onSupervisorState(id, payload.state);
+        await orch.onSupervisorState(id, payload.state);
       }
     }
-    orch.activity(id);
+    await orch.activity(id);
     return c.json({ ok: true });
   });
 
   // Supervisor reads user replies (user_message events) to relay into the agent.
   // ponytail: simple long-poll (1 s) — fine for one user; switch to a notify
   // endpoint or websocket if latency matters at scale.
-  app.get("/internal/sessions/:id/replies", (c) => {
-    if (!sessionAuth(c)) return c.json({ error: "unauthorized" }, 401);
+  app.get("/internal/sessions/:id/replies", async (c) => {
+    if (!(await sessionAuth(c))) return c.json({ error: "unauthorized" }, 401);
     const after = Number(c.req.query("after") ?? 0);
-    const replies = store.eventsAfter(c.req.param("id"), after)
+    const replies = (await store.eventsAfter(c.req.param("id"), after))
       .filter((e) => e.type === "user_message")
       .map((e) => ({ seq: e.seq, text: (e.payload as Record<string, unknown>).text, ts: e.ts }));
     return c.json(replies);
@@ -291,9 +292,9 @@ export function buildApp(store: Store, orch: Orchestrator) {
     return Boolean(t && c.req.header("Authorization") === `Bearer ${t}`);
   };
 
-  app.get("/internal/workspace/:id", (c) => {
+  app.get("/internal/workspace/:id", async (c) => {
     if (!proxyAuth(c)) return c.json({ error: "unauthorized" }, 401);
-    const s = store.getSession(c.req.param("id"));
+    const s = await store.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
     return c.json({ machine_id: s.machine_id ?? null, state: s.state });
   });
@@ -304,9 +305,9 @@ export function buildApp(store: Store, orch: Orchestrator) {
     return c.json({ ok: true });
   });
 
-  app.post("/internal/workspace/:id/activity", (c) => {
+  app.post("/internal/workspace/:id/activity", async (c) => {
     if (!proxyAuth(c)) return c.json({ error: "unauthorized" }, 401);
-    orch.activity(c.req.param("id"));
+    await orch.activity(c.req.param("id"));
     return c.json({ ok: true });
   });
 
@@ -321,7 +322,10 @@ export function buildApp(store: Store, orch: Orchestrator) {
 }
 
 if (process.env.NODE_ENV !== "test" && process.argv[1]?.endsWith("index.ts")) {
-  const store = new Store();
+  // DATABASE_URL (Supabase or any Postgres) → PgStore; otherwise sqlite on disk.
+  const store = process.env.DATABASE_URL
+    ? await new PgStore(process.env.DATABASE_URL).init()
+    : new Store();
   const sandbox = process.env.SANDBOX === "local"
     ? new LocalSandboxProvider()
     : new FlyMachinesProvider(

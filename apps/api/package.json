@@ -5,12 +5,13 @@
   "scripts": {
     "dev": "node --experimental-strip-types --env-file-if-exists=../../.env --env-file-if-exists=../../.env.fly --watch src/index.ts",
     "start": "node --experimental-strip-types src/index.ts",
-    "test": "node --experimental-strip-types --test src/api.test.ts"
+    "test": "node --experimental-strip-types --test src/api.test.ts src/pg-store.test.ts"
   },
   "dependencies": {
     "@atelier/sandbox": "*",
     "@atelier/schema": "*",
     "@hono/node-server": "^1.13.0",
-    "hono": "^4.6.0"
+    "hono": "^4.6.0",
+    "postgres": "^3.4.9"
   }
 }

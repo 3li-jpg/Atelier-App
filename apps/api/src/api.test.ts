@@ -150,7 +150,7 @@ test("hibernation: awaiting_user suspends, reply wakes", async () => {
   store.setSessionState(id, "provisioning", "m-1");
   for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
 
-  orch.onSupervisorState(id, "awaiting_user");
+  await orch.onSupervisorState(id, "awaiting_user");
   await new Promise((r) => setTimeout(r, 50));  // > SUSPEND_AFTER_MS(30)
   assert.deepEqual(sandbox.calls, ["suspend"]);
   assert.equal(store.getSession(id).state, "hibernated");
@@ -350,27 +350,27 @@ test("redaction scrubs real provider/cloud key formats (T10 fuzz)", () => {
   assert.equal(redact("no secrets here, just a normal log line"), "no secrets here, just a normal log line");
 });
 
-test("billed_seconds accrues while billable, pauses while hibernated, resumes on wake", () => {
+test("billed_seconds accrues while billable, pauses while hibernated, resumes on wake", async () => {
   let t = 1_000_000;
   const { store, sandbox } = setup();
   const orch = new Orchestrator(store, sandbox, () => t);
   const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: {}, session_token: "tok" });
 
-  orch.transition(id, "provisioning");        // created -> billable: start clock
+  await orch.transition(id, "provisioning");        // created -> billable: start clock
   store.setSessionState(id, "provisioning", "m-1");
-  for (const s of ["cloning", "setup", "running", "awaiting_user"]) orch.transition(id, s as any); // billable -> billable
+  for (const s of ["cloning", "setup", "running", "awaiting_user"]) await orch.transition(id, s as any); // billable -> billable
   t += 4_000;                                 // 4s of billable time
-  orch.transition(id, "hibernated");          // billable -> paused: accrue 4s
+  await orch.transition(id, "hibernated");          // billable -> paused: accrue 4s
   assert.equal(store.getSession(id).billed_seconds, 4);
 
   t += 10_000;                                 // paused: no accrue
   assert.equal(store.getSession(id).billed_seconds, 4);
 
-  orch.transition(id, "awaiting_user");       // paused -> billable: restart clock
+  await orch.transition(id, "awaiting_user");       // paused -> billable: restart clock
   t += 2_000;
-  orch.transition(id, "running");
-  orch.transition(id, "finalizing");
-  orch.transition(id, "completed");           // billable -> terminal: accrue 2s
+  await orch.transition(id, "running");
+  await orch.transition(id, "finalizing");
+  await orch.transition(id, "completed");           // billable -> terminal: accrue 2s
   assert.equal(store.getSession(id).billed_seconds, 6);
 });
 
@@ -414,7 +414,7 @@ test("activity while awaiting_user defers suspend", async () => {
   const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 1800 }, session_token: "tok" });
   store.setSessionState(id, "provisioning", "m-1");
   for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
-  orch.onSupervisorState(id, "awaiting_user");
+  await orch.onSupervisorState(id, "awaiting_user");
 
   for (let i = 0; i < 5; i++) {
     await new Promise((r) => setTimeout(r, 20));
@@ -435,8 +435,8 @@ test("finish stops the machine gracefully and reaps on completed", async () => {
 
   await orch.finish(id);
   assert.ok(sandbox.calls.includes("stop"));
-  orch.onSupervisorState(id, "finalizing");
-  orch.onSupervisorState(id, "completed");
+  await orch.onSupervisorState(id, "finalizing");
+  await orch.onSupervisorState(id, "completed");
   assert.equal(store.getSession(id).state, "completed");
   assert.deepEqual(sandbox.destroyed, ["m-1"]);
 });
@@ -446,7 +446,7 @@ test("finish resumes a hibernated machine before stopping it", async () => {
   const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 1800 }, session_token: "tok" });
   store.setSessionState(id, "provisioning", "m-1");
   for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
-  orch.onSupervisorState(id, "awaiting_user");
+  await orch.onSupervisorState(id, "awaiting_user");
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(store.getSession(id).state, "hibernated");
 
@@ -459,7 +459,7 @@ test("reaper finishes idle sessions instead of killing", async () => {
   const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 0 }, session_token: "tok" });
   store.setSessionState(id, "provisioning", "m-1");
   for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
-  orch.onSupervisorState(id, "awaiting_user");
+  await orch.onSupervisorState(id, "awaiting_user");
 
   await orch.sweep();
   assert.ok(sandbox.calls.includes("stop"));
@@ -518,34 +518,34 @@ test("internal workspace endpoints gate on PROXY_TOKEN", async (t) => {
   assert.ok(store.getSession(id).last_activity !== null);
 });
 
-test("supervisor-driven completed accrues the final billable segment (audit H3)", () => {
+test("supervisor-driven completed accrues the final billable segment (audit H3)", async () => {
   let t = 1_000_000;
   const { store, sandbox } = setup();
   const orch = new Orchestrator(store, sandbox, () => t);
   const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: {}, session_token: "tok" });
-  orch.transition(id, "provisioning");
+  await orch.transition(id, "provisioning");
   store.setSessionState(id, "provisioning", "m-1");
-  for (const s of ["cloning", "setup", "running"]) orch.transition(id, s as any);
+  for (const s of ["cloning", "setup", "running"]) await orch.transition(id, s as any);
   t += 5_000;
-  orch.onSupervisorState(id, "finalizing");  // running→finalizing (billable→billable)
+  await orch.onSupervisorState(id, "finalizing");  // running→finalizing (billable→billable)
   t += 1_000;
-  orch.onSupervisorState(id, "completed");   // finalizing→completed → accrue (H3)
+  await orch.onSupervisorState(id, "completed");   // finalizing→completed → accrue (H3)
   assert.equal(store.getSession(id).state, "completed");
   assert.equal(store.getSession(id).billed_seconds, 6); // 5s + 1s; would be 0 before the fix
 });
 
-test("max_turns budget kills a runaway session (audit H5)", () => {
+test("max_turns budget kills a runaway session (audit H5)", async () => {
   const { store, sandbox, orch } = setup();
   const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 1800, max_turns: 2 }, session_token: "tok" });
   store.setSessionState(id, "provisioning", "m-1");
   for (const st of ["cloning", "setup"]) store.setSessionState(id, st as any);
-  orch.onSupervisorState(id, "running");       // setup→running, turn 1
+  await orch.onSupervisorState(id, "running");       // setup→running, turn 1
   assert.equal(store.getSession(id).state, "running");
-  orch.onSupervisorState(id, "awaiting_user");
-  orch.onSupervisorState(id, "running");       // turn 2
+  await orch.onSupervisorState(id, "awaiting_user");
+  await orch.onSupervisorState(id, "running");       // turn 2
   assert.equal(store.getSession(id).state, "running");
-  orch.onSupervisorState(id, "awaiting_user");
-  orch.onSupervisorState(id, "running");       // turn 3 > 2 → kill
+  await orch.onSupervisorState(id, "awaiting_user");
+  await orch.onSupervisorState(id, "running");       // turn 3 > 2 → kill
   assert.equal(store.getSession(id).state, "failed");
 });
 
