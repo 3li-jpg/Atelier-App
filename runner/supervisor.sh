@@ -55,8 +55,9 @@ git config user.name "Atelier Agent"
 emit state_change '{"state":"setup"}'
 # nftables is Linux-only (Fly VM); skip on macOS/local runs.
 if [[ -z "${SKIP_FIREWALL:-}" ]]; then
+  # models.dev: opencode fetches its model catalog at startup and stalls without it
   bash "${RUNNER_BIN}/firewall.sh" "$LLM_BASE_URL" github.com api.github.com \
-    codeload.github.com registry.npmjs.org "${EVENTS_URL:-github.com}"
+    codeload.github.com registry.npmjs.org models.dev "${EVENTS_URL:-github.com}"
 fi
 
 # Point OpenCode at the custom endpoint (OpenAI-compatible /chat/completions)

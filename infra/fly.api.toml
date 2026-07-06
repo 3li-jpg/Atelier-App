@@ -1,4 +1,4 @@
-app = "atelier-api"
+app = "atelier-control-plane"  # "atelier-api" is taken globally on Fly
 primary_region = "sjc"  # sea is deprecated on Fly as of mid-2026
 
 [build]
