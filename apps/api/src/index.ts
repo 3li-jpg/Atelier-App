@@ -14,6 +14,19 @@ export function buildApp(store: Store, orch: Orchestrator) {
 
   app.get("/health", (c) => c.json({ ok: true }));
 
+  // ponytail: single static bearer (owner-only alpha). Sign in with Apple/GitHub
+  // + per-user scoping before anyone else gets a build (handoff T3).
+  app.use("*", async (c, next) => {
+    const token = process.env.AUTH_TOKEN;
+    if (!token || c.req.path === "/health" || c.req.path.startsWith("/internal/")) return next();
+    const auth = c.req.header("Authorization") ?? "";
+    const expected = `Bearer ${token}`;
+    if (auth.length !== expected.length || !timingSafeEqual(Buffer.from(auth), Buffer.from(expected))) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+    return next();
+  });
+
   // ---- Providers (FR-1.x) ----
   app.post("/providers", async (c) => {
     const body = await c.req.json();
@@ -53,6 +66,18 @@ export function buildApp(store: Store, orch: Orchestrator) {
 
   app.post("/sessions/:id/cancel", async (c) => {
     await orch.cancel(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
+  // User answers a `question` event: record it and wake the machine if hibernated.
+  // (Supervisor-side delivery of the message to the harness is handoff T7.2.)
+  app.post("/sessions/:id/reply", async (c) => {
+    const id = c.req.param("id");
+    if (!store.getSession(id)) return c.json({ error: "not found" }, 404);
+    const { text } = await c.req.json();
+    if (!text) return c.json({ error: "text required" }, 400);
+    store.appendEvent(id, { ts: new Date().toISOString(), type: "user_message", payload: { text } });
+    await orch.wake(id);
     return c.json({ ok: true });
   });
 
@@ -116,7 +141,9 @@ if (process.env.NODE_ENV !== "test" && process.argv[1]?.endsWith("index.ts")) {
     process.env.FLY_SANDBOX_APP ?? "atelier-sandboxes",
     process.env.FLY_SANDBOX_TOKEN ?? "",
   );
-  const app = buildApp(store, new Orchestrator(store, sandbox));
+  const orch = new Orchestrator(store, sandbox);
+  orch.startReaper();
+  const app = buildApp(store, orch);
   const port = Number(process.env.PORT ?? 3000);
   serve({ fetch: app.fetch, port });
   console.log(`atelier-api listening on :${port}`);

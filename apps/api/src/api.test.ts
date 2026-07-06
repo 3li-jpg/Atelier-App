@@ -1,6 +1,8 @@
 process.env.NODE_ENV = "test";
 process.env.MASTER_KEY = "test-master-key";
 process.env.DB_PATH = ":memory:";
+process.env.SUSPEND_AFTER_MS = "30";  // fast hibernation timers for tests
+process.env.STOP_AFTER_MS = "60";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,8 +15,11 @@ import { encryptKey, decryptKey, redact } from "./secrets.ts";
 class FakeSandbox implements SandboxProvider {
   created: any[] = [];
   destroyed: string[] = [];
+  calls: string[] = [];
   async create(cfg: any): Promise<SandboxRef> { this.created.push(cfg); return { id: "m-1", provider: "fake" }; }
-  async suspend() {} async resume() {} async stop() {}
+  async suspend() { this.calls.push("suspend"); }
+  async resume() { this.calls.push("resume"); }
+  async stop() { this.calls.push("stop"); }
   async destroy(ref: SandboxRef) { this.destroyed.push(ref.id); }
   async status(): Promise<SandboxState> { return "started"; }
   async waitFor() {}
@@ -124,6 +129,40 @@ test("full session lifecycle over HTTP", async () => {
   // session detail hides the token; illegal transitions rejected by FSM
   const detail = await (await app.request(`/sessions/${sessionId}`)).json();
   assert.equal(detail.session_token, undefined);
+});
+
+test("AUTH_TOKEN gates public routes but not health or internal", async (t) => {
+  process.env.AUTH_TOKEN = "gate-123";
+  t.after(() => { delete process.env.AUTH_TOKEN; });
+  const { app } = setup();
+  assert.equal((await app.request("/providers")).status, 401);
+  assert.equal((await app.request("/providers", { headers: { Authorization: "Bearer gate-123" } })).status, 200);
+  assert.equal((await app.request("/health")).status, 200);
+});
+
+test("hibernation: awaiting_user suspends, stop follows, reply wakes; reaper kills TTL breaches", async () => {
+  const { store, sandbox, app } = setup();
+  const orch = new Orchestrator(store, sandbox);
+
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: { max_wall_clock_s: 1800 }, session_token: "tok" });
+  store.setSessionState(id, "provisioning", "m-1");
+  for (const st of ["cloning", "setup", "running"]) store.setSessionState(id, st as any);
+
+  orch.onSupervisorState(id, "awaiting_user");
+  await new Promise((r) => setTimeout(r, 50));  // > SUSPEND_AFTER_MS(30)
+  assert.deepEqual(sandbox.calls, ["suspend"]);
+  assert.equal(store.getSession(id).state, "hibernated");
+  await new Promise((r) => setTimeout(r, 80));  // > STOP_AFTER_MS(60)
+  assert.deepEqual(sandbox.calls, ["suspend", "stop"]);
+
+  await orch.wake(id);
+  assert.deepEqual(sandbox.calls, ["suspend", "stop", "resume"]);
+  assert.equal(store.getSession(id).state, "awaiting_user");
+
+  // reaper: session past wall-clock TTL gets killed and machine destroyed
+  await orch.sweep(Date.now() + 1801 * 1000);
+  assert.equal(store.getSession(id).state, "failed");
+  assert.ok(sandbox.destroyed.includes("m-1"));
 });
 
 test("event replay from cursor", async () => {

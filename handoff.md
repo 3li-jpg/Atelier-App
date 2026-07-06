@@ -2,6 +2,7 @@
 
 **For:** the next agent (GLM 5.2) continuing this build.
 **Read first:** `Atelier-PRD-v2.md` (product spec), `Atelier-Setup-Implementation-Guide.md` (how-to), `README.md` (what exists + deliberate shortcuts).
+**⚠️ Product pivot (2026-07-05, owner decision, supersedes the PRD where they conflict):** no iOS/App Store app. The client is an **installable PWA** (desktop + mobile browser, add-to-home-screen), the project is **open source** with a self-host path (BYO Fly account), and payments are Stripe-direct. PRD §6.5 (Live Activities/Siri), §6.6 (RevenueCat), NFR-5, and the App Review milestones/risks no longer apply. See T7 and T-OSS.
 **State:** Phase 0 code + control-plane core are done, tested (8/8). Fly account is live (`alirafi321@gmail.com`, personal org), `atelier-sandboxes` app exists, runner image is built and pushed. T1 is partially complete — see its checklist.
 
 **Keep this file current:** as you finish tasks, move them into §1's done table (or check them off) with a one-line note of what you actually did. This file is the source of truth for the next session.
@@ -52,14 +53,13 @@ Implemented with Node built-in X25519 ECDH + HKDF + AES-256-GCM (no new deps):
 - Image rebuilt as `registry.fly.io/atelier-sandboxes:runner-v1` (orchestrator `RUNNER_IMAGE` default still says v0 — set env or bump default when deploying).
 - Note: authenticity = session bearer + TLS; keys are ephemeral per handshake. Fine for single-user; revisit if threat model grows.
 
-### T3 — Auth on the public API — *before any deploy*
-- Sign in with Apple (JWT verify against Apple's JWKS) + GitHub OAuth. `users` table in the store; every `/providers` and `/sessions` row scoped by `user_id`; middleware rejects unauthenticated requests.
-- Ponytail floor: a single static bearer token from env is acceptable for the owner-only alpha deploy — but gate T10 (TestFlight to others) on real auth.
+### T3 — Auth on the public API — ✅ FLOOR DONE, full auth still open
+- **Done:** static bearer middleware in `index.ts` — set `AUTH_TOKEN` env and every public route requires it (`/health` and `/internal/*` exempt; timing-safe compare). Tested. Enough for the owner-only alpha deploy.
+- **Open:** real auth for other users — with the web pivot this is now GitHub OAuth (fits the GitHub App flow) rather than Sign in with Apple. `users` table + per-user row scoping. Gate public availability on it.
 
-### T4 — Hibernation + reaper (PRD D6, needs T1's latency data)
-- `apps/api/src/orchestrator.ts`: on `awaiting_user` state >30 s → `sandbox.suspend()`, state → `hibernated`; on user reply → `resume()`. Suspended >10 min → `stop()`.
-- Reaper: `setInterval` sweep (in-process is fine, single instance) — any session past wall-clock TTL, or machine orphaned (in Fly but session terminal) → destroy + `error` event. Chaos test: kill the API mid-session, restart, reaper cleans up.
-- Supervisor side: emit `question` events and an idle heartbeat so the orchestrator can detect model-wait >30 s.
+### T4 — Hibernation + reaper — ✅ MOSTLY DONE
+- **Done** in `orchestrator.ts`: `awaiting_user` >30 s → suspend → `hibernated`; suspended >2 min → stop (thresholds from spike data, env-overridable via `SUSPEND_AFTER_MS`/`STOP_AFTER_MS`, read lazily). `wake()` resumes on user reply. Reaper `sweep()` on 60 s interval kills wall-clock TTL breaches + destroys machines; started in `index.ts` main. `POST /sessions/:id/reply` records a `user_message` event (new schema type) and wakes. All timers per-session, unref'd, keyed `sessionId:kind`. Tested end-to-end with fast timers.
+- **Open:** (a) supervisor-side: emit `question` events + deliver `user_message` replies to the harness (needs an exec/poll channel — see T7.2); (b) supervisor idle heartbeat for model-wait >30 s detection; (c) reaper orphan scan (machines existing in Fly whose session is terminal — needs a Machines list call in `SandboxProvider`); (d) chaos test: kill API mid-session, restart, verify cleanup. Note the in-memory timers die with the process — the reaper covers TTLs after restart, but a suspended machine's stop-demotion timer is lost until its session is swept.
 
 ### T5 — GitHub App (guide §2.7) 🔑 registration, then code
 - Register app (permissions `contents:rw`, `pull_requests:rw`, `metadata:r`; webhook → `/webhooks/github`).
@@ -69,23 +69,30 @@ Implemented with Node built-in X25519 ECDH + HKDF + AES-256-GCM (no new deps):
 ### T6 — Deploy the control plane 🔑
 `fly deploy -c infra/fly.api.toml`; `fly secrets set` MASTER_KEY, FLY_SANDBOX_TOKEN, GIT/GitHub App creds. Point `PUBLIC_URL` at the deployed host. Re-run a full session end-to-end against it. **Note:** DB is `node:sqlite` on a Fly volume — attach a volume, or if you deploy >1 machine, this is the README's trigger to swap to Neon Postgres. Don't swap before then.
 
-### T7 — iOS app (guide §3) — the big one
-SwiftUI, iOS 17+, new Xcode project at `apps/ios`. Build in this order:
-1. **Core/APIClient** — hand-write a small client (the API surface is ~10 endpoints; skip OpenAPI codegen). **Core/EventStream** — actor wrapping `URLSession.bytes(for:)` SSE parsing, cursor persisted per session, merge with GRDB cache (or, ponytail floor: in-memory + refetch-from-cursor-0 on open; add GRDB when scrollback lag is felt).
-2. **Sessions list + Chat timeline** — typed event cells; `tool_call` collapsed w/ exit-code badge; `question` renders quick-reply chips → `POST /sessions/:id/reply` (add this endpoint to the API: appends a `user_message` event + delivers to supervisor via a poll or exec channel — supervisor side needed too).
-3. **NewTask sheet** — repo → branch → provider/model → prompt.
+### T7 — Web app (PWA) at `apps/web` — the big one — **PIVOTED 2026-07-05: was iOS/SwiftUI**
+Owner decision: no App Store. Installable PWA (add-to-home-screen prompt), works desktop + mobile browser. Kills App Review risk, Apple fees, RevenueCat; Stripe direct. Project goes **open source** (see T-OSS).
+Stack: Vite + React SPA (ponytail: no Next.js — there's no SSR need; the API is separate). Serve the built bundle from the Hono app so it's one deploy.
+1. **API client + event stream** — native `EventSource` against `/sessions/:id/stream?cursor=N`; persist cursor in localStorage. The API already speaks SSE — zero backend change.
+2. **Sessions list + Chat timeline** — typed event cells; `tool_call` collapsed w/ exit-code badge; `question` renders quick-reply chips → `POST /sessions/:id/reply` (add endpoint: appends `user_message` event, calls `orch.wake()`; supervisor-side delivery channel still needed).
+3. **NewTask form** — repo → branch → provider/model → prompt.
 4. **Providers screen** — add/validate (calls `/providers/validate`, shows latency + tool-call fidelity).
-5. **DiffView + Terminal tabs** — parse diffs **server-side** into hunk JSON (add `GET /sessions/:id/diff`); SwiftTerm fed by `tool_call` output events.
-6. **Push (APNs)** 🔑 needs Apple Developer account — notify worker in the API on `question`/`completed`/`failed` events; deep-link payload `{session_id, event_seq}`. Live Activities after basic push works.
-**Exit: a PR shipped entirely from the phone.**
+5. **Diff + Terminal tabs** — parse diffs **server-side** into hunk JSON (add `GET /sessions/:id/diff`); xterm.js fed by `tool_call` output events.
+6. **PWA layer** — manifest + service worker + add-to-home-screen prompt (iOS needs the manual Share→Add flow explained in-UI); **Web Push** (VAPID, `web-push` npm) on `question`/`completed`/`failed`, deep-link `{session_id, event_seq}`. iOS web push only works when installed — make the install prompt prominent, it gates the core notify loop.
+**Exit: a PR shipped entirely from a phone browser.**
+
+### T-OSS — Open-source readiness (new, owner decision)
+- LICENSE (suggest MIT or Apache-2.0 — owner picks), CONTRIBUTING.md, self-host quickstart in README (bring your own Fly account: `fly apps create`, push runner image, set secrets — the existing README Phase 0 section is 80% of it).
+- Audit git history for secrets before publishing (none committed so far; verify with a scan anyway).
+- `.env.example` with every env var the API reads (MASTER_KEY, AUTH_TOKEN, FLY_SANDBOX_TOKEN, FLY_SANDBOX_APP, GIT_TOKEN, PUBLIC_URL, RUNNER_IMAGE, DB_PATH, PORT, SUSPEND_AFTER_MS, STOP_AFTER_MS).
+- Consequence for T9: billing becomes optional/pluggable — hosted tier uses Stripe, self-hosters run without quotas. Drop RevenueCat entirely.
 
 ### T8 — Conformance suite (guide §4)
 `packages/conformance/`: script taking base URL + key, scoring tool-call fidelity (20 canned prompts), edit reliability (fixture repo patch), streaming stability, end-to-end spike task. Output: pass/fail + quirks JSON. Wire presets (Umans, OpenRouter, Together, …) into a remote-config JSON the app fetches. Nightly run = a GitHub Action once the repo is on GitHub.
 
-### T9 — Billing & quotas (PRD §6.6)
+### T9 — Billing & quotas (PRD §6.6) — **UPDATED for web pivot**
 - `billed_seconds` accounting already has a column — write deltas at every start/suspend/stop transition in the orchestrator.
-- RevenueCat webhooks → tier on `users`; middleware enforces concurrent-session cap + monthly hours; soft-cap → throttle to 1 concurrent.
-- Ponytail: skip Stripe external-link until US App Store submission forces the question.
+- Stripe Checkout + webhooks → tier on `users` (RevenueCat/StoreKit deleted with the iOS app); middleware enforces concurrent-session cap + monthly hours; soft-cap → throttle to 1 concurrent.
+- Must be optional for self-hosters: no Stripe keys configured → no quotas enforced.
 
 ### T10 — Launch checklist (guide §5)
 Work through it literally: chaos-test reaper, fuzz redaction with real key formats, verify `curl evil.example` fails inside a session, RevenueCat sandbox test, App Review notes, status page.
@@ -96,7 +103,7 @@ Work through it literally: chaos-test reaper, fuzz redaction with real key forma
 
 ```
 T1 (spike🔑) ──► T4 (hibernation)
-T2 (sealed box) ──► T6 (deploy🔑) ──► T7.6 (push🔑)
+T2 (sealed box) ──► T6 (deploy🔑) ──► T7.6 (web push — no Apple account needed)
 T3 (auth) ──────► T6
 T5 (GitHub App🔑) ──► T6, T7.2
 T7.1–7.5 (iOS core) — parallel with T2–T6, needs only the local API

@@ -3,8 +3,16 @@ import type { SandboxProvider } from "@atelier/sandbox";
 import type { Store } from "./store.ts";
 import { decryptKey, sealConfig, type SealedConfig } from "./secrets.ts";
 
-const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "registry.fly.io/atelier-sandboxes:runner-v0";
+const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "registry.fly.io/atelier-sandboxes:runner-v1";
 const PUBLIC_URL = process.env.PUBLIC_URL ?? "http://localhost:3000";
+
+// Hibernation thresholds from measured data (docs/spike-notes.md):
+// suspend→start ≈ 0.75 s, stop→start ≈ 1.6 s, so hold RAM only briefly.
+// Read lazily so tests (and ops) can override via env.
+const envMs = (name: string, dflt: number) => Number(process.env[name] ?? dflt);
+const SUSPEND_AFTER_MS = () => envMs("SUSPEND_AFTER_MS", 30_000);   // awaiting_user → suspend
+const STOP_AFTER_MS = () => envMs("STOP_AFTER_MS", 120_000);        // suspended → stop
+const REAPER_INTERVAL_MS = () => envMs("REAPER_INTERVAL_MS", 60_000);
 
 export class Orchestrator {
   private timers = new Map<string, NodeJS.Timeout>();
@@ -52,10 +60,8 @@ export class Orchestrator {
 
     this.store.setSessionState(sessionId, "provisioning", ref.id);
     const budgets = JSON.parse(s.budgets);
-    this.timers.set(sessionId, setTimeout(
-      () => this.kill(sessionId, "wall-clock budget exceeded"),
-      budgets.max_wall_clock_s * 1000,
-    ));
+    this.setTimer(sessionId, "budget", budgets.max_wall_clock_s * 1000,
+      () => this.kill(sessionId, "wall-clock budget exceeded"));
   }
 
   // Handshake: seal the full session config to the supervisor's pubkey.
@@ -79,6 +85,52 @@ export class Orchestrator {
     if (s && canTransition(s.state, state as SessionState)) {
       this.store.setSessionState(sessionId, state as SessionState);
       if (["completed", "failed"].includes(state)) this.reap(sessionId);
+      if (state === "awaiting_user") this.scheduleSuspend(sessionId);
+    }
+  }
+
+  // --- Hibernation (PRD D6, thresholds from spike data) ---
+  private scheduleSuspend(sessionId: string): void {
+    this.setTimer(sessionId, "suspend", SUSPEND_AFTER_MS(), async () => {
+      const s = this.store.getSession(sessionId);
+      if (s?.state !== "awaiting_user" || !s.machine_id) return;
+      await this.sandbox.suspend({ id: s.machine_id, provider: "fly" }).catch(() => {});
+      this.transition(sessionId, "hibernated");
+      this.setTimer(sessionId, "stop", STOP_AFTER_MS(), async () => {
+        const s2 = this.store.getSession(sessionId);
+        if (s2?.state === "hibernated" && s2.machine_id) {
+          await this.sandbox.stop({ id: s2.machine_id, provider: "fly" }).catch(() => {});
+        }
+      });
+    });
+  }
+
+  // User replied: wake the machine and hand the session back to the supervisor.
+  async wake(sessionId: string): Promise<void> {
+    this.clearTimer(sessionId, "suspend");
+    this.clearTimer(sessionId, "stop");
+    const s = this.store.getSession(sessionId);
+    if (s?.state === "hibernated" && s.machine_id) {
+      await this.sandbox.resume({ id: s.machine_id, provider: "fly" });
+      this.transition(sessionId, "awaiting_user");
+    }
+  }
+
+  // --- Reaper: TTL enforcement independent of the happy path ---
+  startReaper(): NodeJS.Timeout {
+    const t = setInterval(() => this.sweep().catch(() => {}), REAPER_INTERVAL_MS());
+    t.unref();
+    return t;
+  }
+
+  async sweep(now = Date.now()): Promise<void> {
+    for (const row of this.store.listSessions()) {
+      if (["completed", "failed", "cancelled"].includes(row.state)) continue;
+      const s = this.store.getSession(row.id);
+      const budgets = JSON.parse(s.budgets ?? "{}");
+      const maxMs = (budgets.max_wall_clock_s ?? 1800) * 1000;
+      const started = new Date(s.started_at + "Z").getTime();
+      if (now - started > maxMs) await this.kill(s.id, "reaper: wall-clock TTL exceeded");
     }
   }
 
@@ -102,8 +154,20 @@ export class Orchestrator {
     }
   }
 
+  // --- timer bookkeeping (budget, suspend, stop — all per-session, all unref'd) ---
+  private setTimer(sessionId: string, kind: string, ms: number, fn: () => void): void {
+    this.clearTimer(sessionId, kind);
+    const t = setTimeout(fn, ms);
+    t.unref();
+    this.timers.set(`${sessionId}:${kind}`, t);
+  }
+
+  private clearTimer(sessionId: string, kind: string): void {
+    const t = this.timers.get(`${sessionId}:${kind}`);
+    if (t) { clearTimeout(t); this.timers.delete(`${sessionId}:${kind}`); }
+  }
+
   private clearBudget(sessionId: string): void {
-    const t = this.timers.get(sessionId);
-    if (t) { clearTimeout(t); this.timers.delete(sessionId); }
+    for (const kind of ["budget", "suspend", "stop"]) this.clearTimer(sessionId, kind);
   }
 }
