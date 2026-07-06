@@ -281,3 +281,26 @@ test("per-user scoping: users only see their own providers and sessions", async 
   assert.equal((await (await app.request("/sessions", { headers: { Cookie: aliceCookie } })).json()).length, 1);
   assert.equal((await (await app.request("/providers", { headers: { Cookie: aliceCookie } })).json()).length, 1);
 });
+
+test("supervisor /replies endpoint returns user_message events after a cursor", async () => {
+  const { store, app } = setup();
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: {}, session_token: "tok" });
+  const token = store.getSession(id).session_token;
+
+  assert.equal((await (await app.request(`/internal/sessions/${id}/replies?after=0`, { headers: { Authorization: `Bearer ${token}` } })).json()).length, 0);
+
+  await app.request(`/sessions/${id}/reply`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "use the foo branch" }),
+  });
+
+  const replies = await (await app.request(`/internal/sessions/${id}/replies?after=0`, { headers: { Authorization: `Bearer ${token}` } })).json();
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].text, "use the foo branch");
+
+  // cursor skips already-seen replies
+  const next = await (await app.request(`/internal/sessions/${id}/replies?after=${replies[0].seq}`, { headers: { Authorization: `Bearer ${token}` } })).json();
+  assert.equal(next.length, 0);
+
+  assert.equal((await app.request(`/internal/sessions/${id}/replies`, { headers: { Authorization: "Bearer wrong" } })).status, 401);
+});

@@ -210,6 +210,18 @@ export function buildApp(store: Store, orch: Orchestrator) {
     return c.json({ ok: true });
   });
 
+  // Supervisor reads user replies (user_message events) to relay into the agent.
+  // ponytail: simple long-poll (1 s) — fine for one user; switch to a notify
+  // endpoint or websocket if latency matters at scale.
+  app.get("/internal/sessions/:id/replies", (c) => {
+    if (!sessionAuth(c)) return c.json({ error: "unauthorized" }, 401);
+    const after = Number(c.req.query("after") ?? 0);
+    const replies = store.eventsAfter(c.req.param("id"), after)
+      .filter((e) => e.type === "user_message")
+      .map((e) => ({ seq: e.seq, text: (e.payload as Record<string, unknown>).text, ts: e.ts }));
+    return c.json(replies);
+  });
+
   return app;
 }
 

@@ -55,15 +55,18 @@ jq -n --arg url "$LLM_BASE_URL" --arg key "$LLM_API_KEY" --arg model "$LLM_MODEL
 }' > ~/.config/opencode/opencode.json
 
 emit state_change '{"state":"running"}'
+OC_PASSWORD=$(openssl rand -hex 16)
+export OPENCODE_SERVER_PASSWORD="$OC_PASSWORD"
+REPLIES_URL="${EVENTS_URL%/events}/replies"
+opencode serve --hostname 127.0.0.1 --port 4096 >/workspace/opencode.log 2>&1 &
+OC_PID=$!
 set +e
-opencode run --format json "$TASK" | while IFS= read -r line; do
-  echo "$line" >> /workspace/events.jsonl
-  [[ -n "$EVENTS_URL" ]] && curl -fsS -m 10 -X POST "$EVENTS_URL" \
-    -H "Authorization: Bearer $SESSION_TOKEN" -H "Content-Type: application/json" \
-    -d "[{\"type\":\"harness\",\"payload\":$(jq -cs '.[0] // {raw:"parse-error"}' <<<"$line"),\"ts\":\"$(date -u +%FT%TZ)\"}]" >/dev/null || true
-done
-AGENT_EXIT=${PIPESTATUS[0]}
+OC_PASSWORD=$OC_PASSWORD OC_PORT=4096 REPLIES_URL="$REPLIES_URL" \
+  node /usr/local/bin/bridge.mjs
+AGENT_EXIT=$?
 set -e
+kill "$OC_PID" 2>/dev/null || true
+wait "$OC_PID" 2>/dev/null || true
 
 emit state_change '{"state":"finalizing"}'
 if [[ -n "$(git status --porcelain)" || -n "$(git log origin/$BRANCH..HEAD --oneline 2>/dev/null)" ]]; then
