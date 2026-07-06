@@ -381,3 +381,30 @@ test("billed_seconds accrues while billable, pauses while hibernated, resumes on
   orch.transition(id, "completed");           // billable -> terminal: accrue 2s
   assert.equal(store.getSession(id).billed_seconds, 6);
 });
+
+test("touchActivity stamps last_activity", async () => {
+  const { store, app } = setup();
+  let res = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Test", base_url: "https://api.test.com/v1", dialect: "openai-chat",
+      api_key: "sk-test-key-12345",
+      models: [{ id: "test-model", role: "coder", tool_calls: true }],
+    }),
+  });
+  const { id: providerId } = await res.json();
+  res = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      repo_url: "https://github.com/you/test-repo",
+      provider_id: providerId, model_id: "test-model", task: "test task",
+    }),
+  });
+  const { id } = await res.json();
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(store.getSession(id).last_activity, null);
+  store.touchActivity(id);
+  const t = new Date(store.getSession(id).last_activity + "Z").getTime();
+  assert.ok(Math.abs(Date.now() - t) < 5000);
+});

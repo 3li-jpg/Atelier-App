@@ -36,6 +36,7 @@ export class Store {
     safeAlter(this.db, "alter table providers add column user_id text");
     safeAlter(this.db, "alter table sessions add column user_id text");
     safeAlter(this.db, "alter table users add column github_token_ciphertext blob");
+    safeAlter(this.db, "alter table sessions add column last_activity text");
   }
 
   upsertUser(githubId: number, login: string, name: string | null, avatarUrl: string | null): string {
@@ -116,6 +117,10 @@ export class Store {
     if (["completed", "failed", "cancelled"].includes(state)) {
       this.db.prepare("update sessions set ended_at = datetime('now') where id = ?").run(id);
     }
+  }
+
+  touchActivity(id: string) {
+    this.db.prepare("update sessions set last_activity = datetime('now') where id = ?").run(id);
   }
 
   // billed_seconds is in whole seconds (Fly bills per second); sub-second deltas
