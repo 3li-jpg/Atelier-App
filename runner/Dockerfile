@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y \
     nodejs npm python3 python3-pip nftables openssh-client dnsutils \
  && rm -rf /var/lib/apt/lists/*
 # OpenCode — pin an exact version; treat as a vendored dependency
-ARG OPENCODE_VERSION=latest
+ARG OPENCODE_VERSION=1.17.13
 RUN curl -fsSL https://opencode.ai/install | VERSION=${OPENCODE_VERSION} bash \
  && ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode
 WORKDIR /workspace

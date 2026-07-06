@@ -1,5 +1,5 @@
 app = "atelier-api"
-primary_region = "sea"
+primary_region = "sjc"  # sea is deprecated on Fly as of mid-2026
 
 [build]
 

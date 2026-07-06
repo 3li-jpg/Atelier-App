@@ -2,7 +2,9 @@
 
 **For:** the next agent (GLM 5.2) continuing this build.
 **Read first:** `Atelier-PRD-v2.md` (product spec), `Atelier-Setup-Implementation-Guide.md` (how-to), `README.md` (what exists + deliberate shortcuts).
-**State:** Phase 0 code + control-plane core are done, tested (8/8), committed (`91f789e`). Nothing is deployed. No credentials have been used.
+**State:** Phase 0 code + control-plane core are done, tested (8/8). Fly account is live (`alirafi321@gmail.com`, personal org), `atelier-sandboxes` app exists, runner image is built and pushed. T1 is partially complete — see its checklist.
+
+**Keep this file current:** as you finish tasks, move them into §1's done table (or check them off) with a one-line note of what you actually did. This file is the source of truth for the next session.
 
 ---
 
@@ -16,6 +18,10 @@
 | Control plane: provider CRUD, validation probe, sessions, orchestrator w/ budgets, event ingest + redaction, SSE stream w/ cursor replay | `apps/api/src/` | Done, 3 tests |
 | Secrets: AES-256-GCM under `MASTER_KEY`, redaction filter | `apps/api/src/secrets.ts` | Done |
 | `infra/fly.api.toml` | `infra/` | Done |
+| flyctl installed + authed (`alirafi321@gmail.com`) | local machine | Done |
+| Fly app `atelier-sandboxes` created (personal org) | Fly | Done |
+| Runner image built & pushed | `registry.fly.io/atelier-sandboxes:runner-v0` | Done — OpenCode pinned to **1.17.13** (installer rejects `VERSION=latest`); needed `runner/fly.toml` (build config only) |
+| Machine create verified via Machines API | Fly | Done — machine `d893273f2445e8` booted in **sjc**; `sea` is deprecated, all defaults updated to sjc |
 
 Conventions in force (keep them):
 - npm workspaces (not pnpm). Node 24, `--experimental-strip-types` — **no constructor parameter properties, no enums, no decorators** (strip-only mode rejects them).
@@ -29,11 +35,12 @@ Conventions in force (keep them):
 
 Blocked-on-human tasks are marked 🔑 (need the owner's accounts/keys). Everything else is pure code you can do immediately.
 
-### T1 🔑 Run the Phase 0 spike (guide §1.2–1.3) — *gate for T4*
-1. `brew install flyctl && fly auth login` (card attached); `fly apps create atelier-sandboxes`.
-2. `cd runner && fly deploy --build-only --push -a atelier-sandboxes --image-label runner-v0`.
-3. Boot one machine via curl per guide §1.2 with the owner's Umans key + fine-grained GitHub PAT against a throwaway repo. **Exit: a real PR on GitHub.**
-4. Measure suspend→start resume latency 5+ times (guide §1.3). Record numbers in `docs/spike-notes.md` — they decide T4's thresholds.
+### T1 🔑 Run the Phase 0 spike (guide §1.2–1.3) — *gate for T4* — PARTIALLY DONE
+1. ~~Install flyctl, auth, create app~~ **done.**
+2. ~~Build & push runner image~~ **done** → `registry.fly.io/atelier-sandboxes:runner-v0`.
+3. 🔑 Boot one machine via curl per guide §1.2 with the owner's Umans key + fine-grained GitHub PAT against a throwaway repo. Use region **sjc** (not sea — deprecated). **Exit: a real PR on GitHub.**
+4. Measure suspend→start resume latency 5+ times (guide §1.3). Record numbers in `docs/spike-notes.md` — they decide T4's thresholds. *Attempted but not run — an idle probe machine `d893273f2445e8` (sjc, `sleep 3600`, restart policy `no`, auto_destroy false) may still exist; reuse it for the measurement or destroy it:*
+   `curl -X DELETE "https://api.machines.dev/v1/apps/atelier-sandboxes/machines/d893273f2445e8?force=true" -H "Authorization: Bearer $(fly tokens create deploy -a atelier-sandboxes)"`
 5. Run the task 5–10× across 2–3 models; note failure modes for T8's conformance suite.
 
 ### T2 — Sealed-box secrets handshake (guide §2.6) — *before any multi-user deploy*

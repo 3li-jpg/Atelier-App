@@ -30,7 +30,7 @@ export class FlyMachinesProvider implements SandboxProvider {
   async create(cfg: SandboxCreateConfig): Promise<SandboxRef> {
     const m = await this.req("POST", "", {
       name: cfg.name,
-      region: cfg.region ?? "sea",
+      region: cfg.region ?? "sjc", // sea is deprecated on Fly as of mid-2026
       config: {
         image: cfg.image,
         guest: { cpu_kind: "shared", cpus: cfg.cpus ?? 2, memory_mb: cfg.memory_mb ?? 4096 },

@@ -1,0 +1,4 @@
+# Build config only — machines are created via the Machines API, never `fly deploy`.
+app = "atelier-sandboxes"
+
+[build]
