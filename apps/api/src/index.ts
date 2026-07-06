@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { streamSSE } from "hono/streaming";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -23,10 +24,12 @@ export function buildApp(store: Store, orch: Orchestrator) {
 
   // --- Auth (handoff T3): session cookie (GitHub OAuth) OR static bearer
   // AUTH_TOKEN (owner/admin backdoor) OR open when nothing is configured.
-  // /health, /auth/*, and /internal/* (supervisor bearer) are exempt.
+  // Only API data paths are guarded — /auth/*, /internal/* (supervisor
+  // bearer), /health, and the static SPA bundle stay reachable so the
+  // login page can load at all.
+  const GUARDED = /^\/(sessions|providers|repos)(\/|$)/;
   app.use("*", async (c, next) => {
-    const p = c.req.path;
-    if (p === "/health" || p.startsWith("/auth/") || p.startsWith("/internal/")) return next();
+    if (!GUARDED.test(c.req.path)) return next();
 
     const uid = verifySession(getCookie(c, SESSION_COOKIE));
     if (uid) { c.set("userId", uid); return next(); }
@@ -253,6 +256,13 @@ export function buildApp(store: Store, orch: Orchestrator) {
       .map((e) => ({ seq: e.seq, text: (e.payload as Record<string, unknown>).text, ts: e.ts }));
     return c.json(replies);
   });
+
+  // ---- Static SPA (handoff T6: one deploy — Hono serves the web bundle) ----
+  const webDist = process.env.WEB_DIST;
+  if (webDist) {
+    app.use("*", serveStatic({ root: webDist }));
+    app.get("*", serveStatic({ root: webDist, path: "index.html" }));
+  }
 
   return app;
 }

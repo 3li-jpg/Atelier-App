@@ -2,6 +2,11 @@ app = "atelier-api"
 primary_region = "sjc"  # sea is deprecated on Fly as of mid-2026
 
 [build]
+  dockerfile = "../apps/api/Dockerfile"
+
+[mounts]
+  source = "atelier_data"
+  destination = "/data"
 
 [http_service]
   internal_port = 3000
