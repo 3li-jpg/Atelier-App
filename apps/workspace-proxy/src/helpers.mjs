@@ -42,8 +42,8 @@ export function parseCookies(header) {
 }
 
 export function pingDue(lastPing, sid, now = Date.now()) {
-  const prev = lastPing.get(sid) ?? 0;
-  if (now - prev < 60_000) return false;
+  const prev = lastPing.get(sid);
+  if (prev !== undefined && now - prev < 60_000) return false;
   lastPing.set(sid, now);
   return true;
 }
