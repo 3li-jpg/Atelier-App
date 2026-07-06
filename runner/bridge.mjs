@@ -23,6 +23,11 @@ const BASE = `http://127.0.0.1:${OC_PORT}`;
 const AUTH = "Basic " + Buffer.from(`opencode:${OC_PASSWORD}`).toString("base64");
 const OC_HEADERS = { Authorization: AUTH, "Content-Type": "application/json" };
 
+// Step trace to stderr -> machine logs; the only visibility inside the VM.
+const log = (...a) => console.error("bridge:", ...a);
+// Every non-SSE fetch gets a deadline; a hung fetch here strands the session.
+const T = (ms = 15_000) => ({ signal: AbortSignal.timeout(ms) });
+
 // ---- control-plane helpers ----
 
 function now() { return new Date().toISOString(); }
@@ -33,7 +38,11 @@ function postEvents(events) {
     method: "POST",
     headers: { Authorization: `Bearer ${SESSION_TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify(events),
-  }).then(() => {}, (e) => console.error(`bridge: event post failed: ${e.message}`));
+    ...T(),
+  }).then(
+    (r) => { if (!r.ok) log(`event post rejected: ${r.status}`); },
+    (e) => log(`event post failed: ${e.message}`),
+  );
 }
 
 function emit(type, payload) {
@@ -46,7 +55,7 @@ async function waitForHealth() {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${BASE}/global/health`, { headers: { Authorization: AUTH } });
+      const res = await fetch(`${BASE}/global/health`, { headers: { Authorization: AUTH }, ...T(5_000) });
       if (res.ok) {
         // ponytail: assuming /global/health returns {healthy:boolean, version:string}
         const body = await res.json();
@@ -63,6 +72,7 @@ async function createSession() {
     method: "POST",
     headers: OC_HEADERS,
     body: JSON.stringify({}),
+    ...T(30_000),
   });
   if (!res.ok) throw new Error(`POST /session failed: ${res.status} ${await res.text()}`);
   // ponytail: assuming POST /session returns {id:string}
@@ -76,6 +86,7 @@ async function sendPrompt(sid) {
     headers: OC_HEADERS,
     // ponytail: assuming prompt_async body shape is {parts:[{type:"text",text:TASK}]}
     body: JSON.stringify({ parts: [{ type: "text", text: TASK }] }),
+    ...T(30_000),
   });
   // ponytail: assuming prompt_async returns 204 on success
   if (!res.ok && res.status !== 204) {
@@ -89,6 +100,7 @@ async function replyQuestion(requestId, text) {
     headers: OC_HEADERS,
     // ponytail: assuming /question/{id}/reply body is {answers:[[text]]}
     body: JSON.stringify({ answers: [[text]] }),
+    ...T(),
   });
   if (!res.ok) console.error(`bridge: question reply ${requestId} failed: ${res.status}`);
 }
@@ -99,6 +111,7 @@ async function replyPermission(sid, permissionId, response) {
     headers: OC_HEADERS,
     // ponytail: assuming /session/{sid}/permissions/{id} body is {response:"once"|"always"|"reject"}
     body: JSON.stringify({ response }),
+    ...T(),
   });
   if (!res.ok) console.error(`bridge: permission reply ${permissionId} failed: ${res.status}`);
 }
@@ -242,6 +255,7 @@ async function pollReplies(sid, state) {
     try {
       const res = await fetch(`${REPLIES_URL}?after=${cursor}`, {
         headers: { Authorization: `Bearer ${SESSION_TOKEN}` },
+        ...T(),
       });
       if (res.ok) {
         const replies = await res.json();
@@ -275,9 +289,13 @@ async function pollReplies(sid, state) {
 // ---- main ----
 
 async function main() {
+  log("waiting for opencode health");
   await waitForHealth();
+  log("healthy; creating session");
   const sid = await createSession();
+  log(`opencode session ${sid}; sending prompt`);
   await sendPrompt(sid);
+  log("prompt accepted; streaming events");
   await emit("state_change", { state: "running" });
 
   const state = { stopped: false, pendingRequests: [] };
@@ -286,11 +304,13 @@ async function main() {
   try {
     await consumeSSE(sid, state);
   } catch (e) {
+    log(`sse error: ${e.message}`);
     await emit("error", { message: e.message });
     state.stopped = true;
     await pollPromise.catch(() => {});
     process.exit(1);
   }
+  log("session idle; done");
   state.stopped = true;
   await pollPromise.catch(() => {});
   process.exit(0);

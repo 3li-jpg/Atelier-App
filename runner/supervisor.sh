@@ -40,6 +40,8 @@ emit() { # emit <type> <json-payload> — stdout always, control plane if config
 # ponytail: surface any crash (clone failure, opencode error, etc.) as a failed
 # state so the session doesn't hang in a transient state.
 trap 'ec=$?; if [ $ec -ne 0 ]; then emit error "{\"message\":\"supervisor exited ($ec)\"}" 2>/dev/null || true; emit state_change "{\"state\":\"failed\"}" 2>/dev/null || true; fi' EXIT
+# External kills (Fly stop, trial-plan reaper) bypass EXIT unless trapped.
+trap 'emit error "{\"message\":\"supervisor killed (SIGTERM/SIGINT)\"}" 2>/dev/null || true; emit state_change "{\"state\":\"failed\"}" 2>/dev/null || true; exit 143' TERM INT
 
 emit state_change '{"state":"cloning"}'
 if [[ -n "$GIT_TOKEN" ]]; then
