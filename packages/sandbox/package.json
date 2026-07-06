@@ -1,0 +1,7 @@
+{
+  "name": "@atelier/sandbox",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "test": "node --experimental-strip-types --test src/fly.test.ts" }
+}

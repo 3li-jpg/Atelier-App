@@ -1,0 +1,9 @@
+{
+  "name": "atelier",
+  "private": true,
+  "workspaces": ["apps/api", "packages/*"],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "dev": "npm run dev -w apps/api"
+  }
+}

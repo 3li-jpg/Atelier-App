@@ -1,0 +1,16 @@
+{
+  "name": "@atelier/api",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types --watch src/index.ts",
+    "start": "node --experimental-strip-types src/index.ts",
+    "test": "node --experimental-strip-types --test src/api.test.ts"
+  },
+  "dependencies": {
+    "@atelier/sandbox": "*",
+    "@atelier/schema": "*",
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.6.0"
+  }
+}
