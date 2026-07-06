@@ -3,13 +3,45 @@
 import { useState } from "react";
 import { SessionsList } from "./views/SessionsList.tsx";
 import { SessionView } from "./views/SessionView.tsx";
+import { NewTask } from "./views/NewTask.tsx";
+import { Providers } from "./views/Providers.tsx";
 
-type View = { kind: "list" } | { kind: "session"; id: string };
+type View = { kind: "list" } | { kind: "new" } | { kind: "providers" } | { kind: "session"; id: string };
+
+const TABS: { id: "list" | "new" | "providers"; label: string }[] = [
+  { id: "list", label: "Sessions" },
+  { id: "new", label: "New" },
+  { id: "providers", label: "Providers" },
+];
 
 export function App() {
   const [view, setView] = useState<View>({ kind: "list" });
-  if (view.kind === "list") {
-    return <SessionsList onOpen={(id) => setView({ kind: "session", id })} />;
+
+  if (view.kind === "session") {
+    return <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />;
   }
-  return <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />;
+
+  return (
+    <div className="page">
+      <header className="topbar">
+        <h1>Atelier</h1>
+      </header>
+      <nav className="nav">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={view.kind === t.id ? "active" : "ghost"}
+            onClick={() => setView({ kind: t.id })}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+      <main className="content">
+        {view.kind === "list" && <SessionsList onOpen={(id) => setView({ kind: "session", id })} />}
+        {view.kind === "new" && <NewTask onCreated={(id) => setView({ kind: "session", id })} />}
+        {view.kind === "providers" && <Providers />}
+      </main>
+    </div>
+  );
 }

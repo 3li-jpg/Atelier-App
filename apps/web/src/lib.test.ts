@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifyEvent, cursorKey, formatRelTime, stateTone, TERMINAL_STATES } from "./lib.ts";
+import {
+  classifyEvent, cursorKey, formatRelTime, stateTone, TERMINAL_STATES,
+  isValidUrl, validateProviderForm, validateNewTask,
+} from "./lib.ts";
 
 test("classifyEvent maps known event types and falls back to verbose", () => {
   assert.equal(classifyEvent("assistant_text"), "assistant");
@@ -43,4 +46,42 @@ test("stateTone flags terminal and waiting states", () => {
 test("TERMINAL_STATES contains the three terminal FSM states", () => {
   for (const s of ["completed", "failed", "cancelled"]) assert.ok(TERMINAL_STATES.has(s));
   assert.ok(!TERMINAL_STATES.has("running"));
+});
+
+test("isValidUrl accepts http(s) only", () => {
+  assert.ok(isValidUrl("https://example.com"));
+  assert.ok(isValidUrl("http://localhost:3000"));
+  assert.ok(!isValidUrl("ftp://x"));
+  assert.ok(!isValidUrl("not a url"));
+  assert.ok(!isValidUrl(""));
+});
+
+test("validateProviderForm flags missing fields and bad URLs", () => {
+  assert.deepEqual(
+    validateProviderForm({ name: "", base_url: "", dialect: "", model_id: "", api_key: "" }),
+    { name: "required", base_url: "required", dialect: "required", model_id: "required", api_key: "required" },
+  );
+  assert.deepEqual(
+    validateProviderForm({ name: "p", base_url: "nope", dialect: "openai-chat", model_id: "m", api_key: "k" }),
+    { base_url: "invalid URL" },
+  );
+  assert.deepEqual(
+    validateProviderForm({ name: "p", base_url: "https://x.io", dialect: "openai-chat", model_id: "m", api_key: "k" }),
+    {},
+  );
+});
+
+test("validateNewTask requires valid repo URL, selections, and task", () => {
+  assert.deepEqual(
+    validateNewTask({ repo_url: "", branch: "", provider_id: "", model_id: "", task: "" }),
+    { repo_url: "required", branch: "required", provider_id: "select a provider", model_id: "select a model", task: "required" },
+  );
+  assert.deepEqual(
+    validateNewTask({ repo_url: "ftp://x", branch: "main", provider_id: "p", model_id: "m", task: "do it" }),
+    { repo_url: "invalid URL" },
+  );
+  assert.deepEqual(
+    validateNewTask({ repo_url: "https://github.com/a/b", branch: "main", provider_id: "p", model_id: "m", task: "do it" }),
+    {},
+  );
 });

@@ -45,3 +45,43 @@ export function stateTone(state: string): "ok" | "warn" | "bad" | "idle" {
   if (state === "awaiting_user" || state === "hibernated") return "warn";
   return "idle";
 }
+
+export const DIALECTS = ["openai-chat", "openai-responses", "anthropic-messages"] as const;
+export type Dialect = (typeof DIALECTS)[number];
+
+export type FieldErrors = Record<string, string>;
+
+export function isValidUrl(s: string): boolean {
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function validateProviderForm(input: {
+  name: string; base_url: string; dialect: string; model_id: string; api_key: string;
+}): FieldErrors {
+  const e: FieldErrors = {};
+  if (!input.name.trim()) e.name = "required";
+  if (!input.base_url.trim()) e.base_url = "required";
+  else if (!isValidUrl(input.base_url)) e.base_url = "invalid URL";
+  if (!input.dialect) e.dialect = "required";
+  if (!input.model_id.trim()) e.model_id = "required";
+  if (!input.api_key.trim()) e.api_key = "required";
+  return e;
+}
+
+export function validateNewTask(input: {
+  repo_url: string; branch: string; provider_id: string; model_id: string; task: string;
+}): FieldErrors {
+  const e: FieldErrors = {};
+  if (!input.repo_url.trim()) e.repo_url = "required";
+  else if (!isValidUrl(input.repo_url)) e.repo_url = "invalid URL";
+  if (!input.branch.trim()) e.branch = "required";
+  if (!input.provider_id) e.provider_id = "select a provider";
+  if (!input.model_id) e.model_id = "select a model";
+  if (!input.task.trim()) e.task = "required";
+  return e;
+}

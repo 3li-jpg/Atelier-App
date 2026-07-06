@@ -42,10 +42,40 @@ export type ProviderSummary = {
   models: { id: string; role: string }[]; created_at: string;
 };
 
+export type ProviderCreate = {
+  name: string;
+  base_url: string;
+  dialect: "openai-chat" | "openai-responses" | "anthropic-messages";
+  models: { id: string; role: "coder" | "utility"; context?: number; tool_calls?: boolean }[];
+  api_key: string;
+  headers?: Record<string, string>;
+  quirks?: Record<string, unknown>;
+};
+
+export type ValidationResult = {
+  ok: boolean;
+  latency_ms: number;
+  completion: boolean;
+  tool_calls: boolean;
+  error?: string;
+};
+
+export type CreateSessionReq = {
+  repo_url: string;
+  branch?: string;
+  provider_id: string;
+  model_id: string;
+  task: string;
+  permission_mode?: "auto" | "review" | "plan";
+  budgets?: { max_wall_clock_s?: number; max_turns?: number };
+};
+
 export type { Event };
 
 export const api = {
   listSessions: () => req<SessionSummary[]>("/sessions"),
+  createSession: (input: CreateSessionReq) =>
+    req<{ id: string; state: string }>("/sessions", { method: "POST", body: JSON.stringify(input) }),
   getSession: (id: string) => req<SessionDetail>(`/sessions/${encodeURIComponent(id)}`),
   cancelSession: (id: string) =>
     req<{ ok: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
@@ -55,4 +85,8 @@ export const api = {
       body: JSON.stringify({ text }),
     }),
   listProviders: () => req<ProviderSummary[]>("/providers"),
+  createProvider: (cfg: ProviderCreate) =>
+    req<{ id: string }>("/providers", { method: "POST", body: JSON.stringify(cfg) }),
+  validateProvider: (cfg: ProviderCreate) =>
+    req<ValidationResult>("/providers/validate", { method: "POST", body: JSON.stringify(cfg) }),
 };

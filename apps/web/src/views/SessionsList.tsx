@@ -13,16 +13,12 @@ export function SessionsList({ onOpen }: { onOpen: (id: string) => void }) {
   useEffect(load, []);
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <h1>Atelier</h1>
-        <button className="ghost" onClick={load}>refresh</button>
-      </header>
-      {err && <div className="error">{err}</div>}
+    <>
+      {err && <div className="error padded">{err}</div>}
       {sessions === null ? (
-        <p className="muted" style={{ padding: "1rem" }}>loading…</p>
+        <p className="muted padded">loading…</p>
       ) : sessions.length === 0 ? (
-        <p className="muted" style={{ padding: "1rem" }}>no sessions yet</p>
+        <p className="muted padded">no sessions yet — create one from the New tab</p>
       ) : (
         <ul className="session-list">
           {sessions.map((s) => (
@@ -41,6 +37,6 @@ export function SessionsList({ onOpen }: { onOpen: (id: string) => void }) {
           ))}
         </ul>
       )}
-    </div>
+    </>
   );
 }
