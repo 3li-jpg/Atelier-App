@@ -5,6 +5,7 @@ import { SessionsList } from "./views/SessionsList.tsx";
 import { SessionView } from "./views/SessionView.tsx";
 import { NewTask } from "./views/NewTask.tsx";
 import { Providers } from "./views/Providers.tsx";
+import { InstallPrompt } from "./InstallPrompt.tsx";
 
 type View = { kind: "list" } | { kind: "new" } | { kind: "providers" } | { kind: "session"; id: string };
 
@@ -25,6 +26,7 @@ export function App() {
     <div className="page">
       <header className="topbar">
         <h1>Atelier</h1>
+        <InstallPrompt />
       </header>
       <nav className="nav">
         {TABS.map((t) => (
