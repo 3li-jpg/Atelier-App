@@ -66,8 +66,8 @@ Implemented with Node built-in X25519 ECDH + HKDF + AES-256-GCM (no new deps):
 - Code: Octokit installation-token minting per session (1 h expiry), repo/branch listing endpoints (`GET /repos`, `GET /repos/:id/branches`), webhook handler → PR-check push notifications. Replace the global `GIT_TOKEN` env with per-session installation tokens.
 - Supervisor gains a `create_pr` step: after push, POST the PR via the API (utility model drafts title/body later — plain `task` text is fine for now).
 
-### T6 — Deploy the control plane 🔑
-`fly deploy -c infra/fly.api.toml`; `fly secrets set` MASTER_KEY, FLY_SANDBOX_TOKEN, GIT/GitHub App creds. Point `PUBLIC_URL` at the deployed host. Re-run a full session end-to-end against it. **Note:** DB is `node:sqlite` on a Fly volume — attach a volume, or if you deploy >1 machine, this is the README's trigger to swap to Neon Postgres. Don't swap before then.
+### T6 — Deploy the control plane — ✅ DEPLOYED 2026-07-06
+Live at **https://atelier-control-plane.fly.dev** ("atelier-api" was taken on Fly). One deploy: Hono serves the built web bundle (`WEB_DIST`) + the API; `apps/api/Dockerfile`, sqlite on the `atelier_data` volume at `/data`. Deploy with `flyctl deploy -c infra/fly.api.toml --ha=false` from the repo root. Secrets set: MASTER_KEY, AUTH_TOKEN, SESSION_SECRET, FLY_SANDBOX_TOKEN (deploy token scoped to atelier-sandboxes), FLY_SANDBOX_APP, PUBLIC_URL, RUNNER_IMAGE=registry.fly.io/atelier-sandboxes:runner-v3 — local copies in gitignored `.env.fly`. Runner image v3 adds models.dev to the egress allowlist (opencode's catalog fetch stalls the agent without it). **Open:** GITHUB_OAUTH_CLIENT_ID/SECRET (owner must register the OAuth app, callback `https://atelier-control-plane.fly.dev/auth/github/callback`). >1 machine = swap sqlite → Postgres (don't before then).
 
 ### T7 — Web app (PWA) at `apps/web` — the big one — **PIVOTED 2026-07-05: was iOS/SwiftUI**
 Owner decision: no App Store. Installable PWA (add-to-home-screen prompt), works desktop + mobile browser. Kills App Review risk, Apple fees, RevenueCat; Stripe direct. Project goes **open source** (see T-OSS).
