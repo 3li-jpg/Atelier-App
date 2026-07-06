@@ -14,7 +14,7 @@ export function buildApp(store: Store, orch: Orchestrator) {
 
   app.get("/health", (c) => c.json({ ok: true }));
 
-  // ponytail: single static bearer (owner-only alpha). Sign in with Apple/GitHub
+  // ponytail: single static bearer (owner-only alpha). GitHub OAuth
   // + per-user scoping before anyone else gets a build (handoff T3).
   app.use("*", async (c, next) => {
     const token = process.env.AUTH_TOKEN;
@@ -81,7 +81,7 @@ export function buildApp(store: Store, orch: Orchestrator) {
     return c.json({ ok: true });
   });
 
-  // Event stream: replay after cursor, then live-tail. SSE (native to URLSession).
+  // Event stream: replay after cursor, then live-tail. SSE (native EventSource).
   app.get("/sessions/:id/stream", (c) => {
     const id = c.req.param("id");
     if (!store.getSession(id)) return c.json({ error: "not found" }, 404);

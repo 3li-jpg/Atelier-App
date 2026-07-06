@@ -1,6 +1,6 @@
 # Atelier
 
-Mobile agentic coding against your own model endpoints. See `Atelier-PRD-v2.md` (what) and `Atelier-Setup-Implementation-Guide.md` (how).
+Agentic coding from any browser (installable PWA, desktop + mobile) against **your own** model endpoints — agents run in Firecracker microVMs on your Fly.io account. Open source; self-hosting is a first-class path. See `Atelier-PRD-v2.md` (spec — note the PWA pivot in `handoff.md` supersedes its iOS sections), `Atelier-Setup-Implementation-Guide.md` (how), and `handoff.md` (current state + remaining plan).
 
 ## Layout
 
@@ -45,13 +45,16 @@ Local API without Fly credentials will fail sessions at `provisioning` (by desig
 | Shortcut | Upgrade when |
 |---|---|
 | node:sqlite + in-process EventEmitter | >1 API instance → Postgres (Neon) + Redis Streams |
-| SSE instead of WebSocket | never, probably — URLSession speaks SSE fine |
-| Env-var secret injection to machines | before multi-user → sealed-box handshake (guide §2.6) |
+| SSE instead of WebSocket | never, probably — native EventSource is all the PWA needs |
+| Static bearer auth (AUTH_TOKEN) | before other users → GitHub OAuth + per-user row scoping (handoff T3) |
 | Single MASTER_KEY AES-GCM | before storing others' keys → KMS envelope encryption |
 | Firewall resolves IPs once at boot | long sessions hit CDN rotation → dynamic sets |
-| No auth on public API | before any deployment → Sign in with Apple/GitHub JWTs |
 | openai-chat dialect only | first anthropic-messages provider |
+
+## License
+
+MIT — see [LICENSE](LICENSE). Self-hosting is encouraged.
 
 ## Not built yet
 
-iOS app (guide §3), GitHub App integration (§2.7), hibernation policy + reaper job (needs spike latency data), conformance suite (§4), billing.
+Web app / PWA (`apps/web` — replaces the guide's iOS §3), GitHub App integration (§2.7), supervisor↔harness reply channel, conformance suite (§4), Stripe billing. Full list: `handoff.md`.

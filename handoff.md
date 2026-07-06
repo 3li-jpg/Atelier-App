@@ -80,11 +80,11 @@ Stack: Vite + React SPA (ponytail: no Next.js — there's no SSR need; the API i
 6. **PWA layer** — manifest + service worker + add-to-home-screen prompt (iOS needs the manual Share→Add flow explained in-UI); **Web Push** (VAPID, `web-push` npm) on `question`/`completed`/`failed`, deep-link `{session_id, event_seq}`. iOS web push only works when installed — make the install prompt prominent, it gates the core notify loop.
 **Exit: a PR shipped entirely from a phone browser.**
 
-### T-OSS — Open-source readiness (new, owner decision)
-- LICENSE (suggest MIT or Apache-2.0 — owner picks), CONTRIBUTING.md, self-host quickstart in README (bring your own Fly account: `fly apps create`, push runner image, set secrets — the existing README Phase 0 section is 80% of it).
-- Audit git history for secrets before publishing (none committed so far; verify with a scan anyway).
-- `.env.example` with every env var the API reads (MASTER_KEY, AUTH_TOKEN, FLY_SANDBOX_TOKEN, FLY_SANDBOX_APP, GIT_TOKEN, PUBLIC_URL, RUNNER_IMAGE, DB_PATH, PORT, SUSPEND_AFTER_MS, STOP_AFTER_MS).
-- Consequence for T9: billing becomes optional/pluggable — hosted tier uses Stripe, self-hosters run without quotas. Drop RevenueCat entirely.
+### T-OSS — Open-source readiness (new, owner decision) — ✅ FLOOR DONE
+- LICENSE (MIT — owner picked), CONTRIBUTING.md, self-host quickstart in README. ✅ Done: `LICENSE` (MIT), `CONTRIBUTING.md`; README Phase 0 spike section doubles as the self-host quickstart (bring your own Fly account: `fly apps create`, push runner image, set secrets — 80% there). README header + simplifications table synced to the PWA pivot (sealed-box row removed — T2 done; auth row = static bearer; `URLSession`→`EventSource`); stale iOS/Apple refs removed from `index.ts` comments.
+- Audit git history for secrets before publishing. ✅ Done: scanned `git log -p --all` for ghp_/github_pat_/sk-/fly_/AKIA/xox/private-key patterns — zero hits (placeholders only in `.env.example`).
+- `.env.example` with every env var the API reads. ✅ Done: covers MASTER_KEY, AUTH_TOKEN, FLY_SANDBOX_TOKEN, FLY_SANDBOX_APP, GIT_TOKEN, PUBLIC_URL, RUNNER_IMAGE, DB_PATH, PORT, SUSPEND_AFTER_MS, STOP_AFTER_MS, REAPER_INTERVAL_MS (all read by `apps/api/src/{index,orchestrator,secrets,store}.ts`).
+- Consequence for T9: billing becomes optional/pluggable — hosted tier uses Stripe, self-hosters run without quotas. (Picked up with T9; RevenueCat already dropped with the iOS app.)
 
 ### T8 — Conformance suite (guide §4)
 `packages/conformance/`: script taking base URL + key, scoring tool-call fidelity (20 canned prompts), edit reliability (fixture repo patch), streaming stability, end-to-end spike task. Output: pass/fail + quirks JSON. Wire presets (Umans, OpenRouter, Together, …) into a remote-config JSON the app fetches. Nightly run = a GitHub Action once the repo is on GitHub.
