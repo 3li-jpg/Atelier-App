@@ -2,6 +2,13 @@ export type SandboxState = "created" | "starting" | "started" | "suspended" | "s
 
 export interface SandboxRef { id: string; provider: string }
 
+export interface MachineInfo {
+  id: string;
+  provider: string;
+  state: SandboxState;
+  metadata: Record<string, string>;
+}
+
 export interface SandboxCreateConfig {
   name: string;
   region?: string;
@@ -20,6 +27,7 @@ export interface SandboxProvider {
   destroy(ref: SandboxRef): Promise<void>;
   status(ref: SandboxRef): Promise<SandboxState>;
   waitFor(ref: SandboxRef, state: SandboxState, timeoutS?: number): Promise<void>;
+  listMachines(): Promise<MachineInfo[]>;
 }
 
 export { FlyMachinesProvider } from "./fly.ts";

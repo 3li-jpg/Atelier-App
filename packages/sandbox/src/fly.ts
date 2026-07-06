@@ -1,4 +1,4 @@
-import type { SandboxProvider, SandboxRef, SandboxCreateConfig, SandboxState } from "./index.ts";
+import type { SandboxProvider, SandboxRef, SandboxCreateConfig, SandboxState, MachineInfo } from "./index.ts";
 
 const FLY_STATES: Record<string, SandboxState> = {
   created: "created", starting: "starting", started: "started",
@@ -47,6 +47,17 @@ export class FlyMachinesProvider implements SandboxProvider {
   resume(ref: SandboxRef) { return this.req("POST", `/${ref.id}/start`); }
   stop(ref: SandboxRef) { return this.req("POST", `/${ref.id}/stop`); }
   destroy(ref: SandboxRef) { return this.req("DELETE", `/${ref.id}?force=true`); }
+
+  async listMachines(): Promise<MachineInfo[]> {
+    const list = await this.req("GET", "");
+    const machines = Array.isArray(list) ? list : [];
+    return machines.map((m: any) => ({
+      id: String(m.id),
+      provider: "fly",
+      state: FLY_STATES[m.state] ?? "created",
+      metadata: (m.config?.metadata ?? {}) as Record<string, string>,
+    }));
+  }
 
   async status(ref: SandboxRef): Promise<SandboxState> {
     const m = await this.req("GET", `/${ref.id}`);

@@ -6,7 +6,7 @@ process.env.STOP_AFTER_MS = "60";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { SandboxProvider, SandboxRef, SandboxState } from "@atelier/sandbox";
+import type { SandboxProvider, SandboxRef, SandboxState, MachineInfo } from "@atelier/sandbox";
 import { Store } from "./store.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import { buildApp } from "./index.ts";
@@ -16,6 +16,7 @@ class FakeSandbox implements SandboxProvider {
   created: any[] = [];
   destroyed: string[] = [];
   calls: string[] = [];
+  machines: MachineInfo[] = []; // tests populate this to simulate Fly-side state
   async create(cfg: any): Promise<SandboxRef> { this.created.push(cfg); return { id: "m-1", provider: "fake" }; }
   async suspend() { this.calls.push("suspend"); }
   async resume() { this.calls.push("resume"); }
@@ -23,6 +24,7 @@ class FakeSandbox implements SandboxProvider {
   async destroy(ref: SandboxRef) { this.destroyed.push(ref.id); }
   async status(): Promise<SandboxState> { return "started"; }
   async waitFor() {}
+  async listMachines(): Promise<MachineInfo[]> { return this.machines; }
 }
 
 function setup() {
@@ -172,4 +174,32 @@ test("event replay from cursor", async () => {
   assert.equal(store.eventsAfter(id, 0).length, 5);
   assert.equal(store.eventsAfter(id, 3).length, 2);
   assert.deepEqual(store.eventsAfter(id, 3).map((e) => e.seq), [4, 5]);
+});
+
+test("reaper orphan scan destroys machines whose session is terminal or missing", async () => {
+  const { store, sandbox } = setup();
+  const orch = new Orchestrator(store, sandbox);
+
+  // terminal session whose machine is still alive on the substrate
+  const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: {}, session_token: "tok" });
+  store.setSessionState(id, "completed", "m-live");
+  sandbox.machines = [
+    { id: "m-live", provider: "fake", state: "started", metadata: { atelier_session: id } },
+    // tagged with a session that no longer exists in the DB
+    { id: "m-ghost", provider: "fake", state: "started", metadata: { atelier_session: "no-such-session" } },
+    // foreign machine (no atelier_session metadata) — must be left alone
+    { id: "m-foreign", provider: "fake", state: "started", metadata: {} },
+    // already destroyed — skip
+    { id: "m-dead", provider: "fake", state: "destroyed", metadata: { atelier_session: id } },
+  ];
+
+  await orch.sweep();
+  assert.ok(sandbox.destroyed.includes("m-live"));
+  assert.ok(sandbox.destroyed.includes("m-ghost"));
+  assert.ok(!sandbox.destroyed.includes("m-foreign"));
+  assert.ok(!sandbox.destroyed.includes("m-dead"));
+
+  // the terminal session recorded an error event for the cleanup
+  const evs = store.eventsAfter(id, 0);
+  assert.ok(evs.some((e) => e.type === "error" && String((e.payload as any).message).includes("orphan machine m-live")));
 });

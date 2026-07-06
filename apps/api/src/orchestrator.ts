@@ -132,6 +132,27 @@ export class Orchestrator {
       const started = new Date(s.started_at + "Z").getTime();
       if (now - started > maxMs) await this.kill(s.id, "reaper: wall-clock TTL exceeded");
     }
+    await this.reapOrphans();
+  }
+
+  // Orphan scan: destroy machines still alive on the substrate whose session is
+  // terminal or gone from the DB. Guards against leaked spend when the happy-path
+  // reap missed a machine (process crash mid-session, etc.). Only touches machines
+  // tagged with our atelier_session metadata — never foreign machines in the app.
+  private async reapOrphans(): Promise<void> {
+    const machines = await this.sandbox.listMachines().catch(() => []);
+    for (const m of machines) {
+      const sid = m.metadata?.atelier_session;
+      if (!sid || m.state === "destroyed") continue;
+      const s = this.store.getSession(sid);
+      if (!s || ["completed", "failed", "cancelled"].includes(s.state)) {
+        await this.sandbox.destroy({ id: m.id, provider: m.provider }).catch(() => {});
+        if (s) this.store.appendEvent(sid, {
+          ts: new Date().toISOString(), type: "error",
+          payload: { message: `reaper: destroyed orphan machine ${m.id} (session ${s.state})` },
+        });
+      }
+    }
   }
 
   async kill(sessionId: string, reason: string): Promise<void> {
