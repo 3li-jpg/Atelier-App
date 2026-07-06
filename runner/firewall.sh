@@ -10,6 +10,7 @@ for arg in "$@"; do
 done
 
 resolve() { dig +short "$1" A | grep -E '^[0-9.]+$' || true; }
+resolve6() { dig +short "$1" AAAA | grep -E '^[0-9a-fA-F:]+$' || true; }
 
 {
   echo "flush ruleset"
@@ -18,11 +19,16 @@ resolve() { dig +short "$1" A | grep -E '^[0-9.]+$' || true; }
   echo "    type filter hook output priority 0; policy drop;"
   echo "    ct state established,related accept"
   echo "    oif lo accept"
+  # ICMPv6 neighbor discovery — without it IPv6 is dead, incl. Fly's fdaa::3 DNS
+  echo "    meta l4proto ipv6-icmp accept"
   echo "    udp dport 53 accept"
   echo "    tcp dport 53 accept"
   for h in "${hosts[@]}"; do
     for ip in $(resolve "$h"); do
       echo "    ip daddr $ip tcp dport 443 accept"
+    done
+    for ip in $(resolve6 "$h"); do
+      echo "    ip6 daddr $ip tcp dport 443 accept"
     done
   done
   echo "  }"
