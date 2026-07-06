@@ -42,12 +42,15 @@ Blocked-on-human tasks are marked 🔑 (need the owner's accounts/keys). Everyth
 4. ~~Measure resume latency~~ **done** → `docs/spike-notes.md`: suspend→start ≈ 0.75 s, stop→start ≈ 1.6 s. T4 policy: suspend on `awaiting_user`, demote to stop after **2 min** (not 10). Probe machine destroyed.
 5. Run the task 5–10× across 2–3 models; note failure modes for T8's conformance suite.
 
-### T2 — Sealed-box secrets handshake (guide §2.6) — *before any multi-user deploy*
-Replace env-var key injection (`orchestrator.ts` `launch()`, marked `ponytail:`):
-1. Orchestrator: per-session X25519 keypair (`crypto.generateKeyPair('x25519')`); pass only the **public** key + `HANDSHAKE_URL` in machine env.
-2. New route `POST /internal/sessions/:id/handshake`: supervisor posts its own pubkey + the session bearer token; orchestrator replies with `{llm_key, git_token, task}` sealed to the supervisor's key. Use libsodium sealed boxes (`sodium-native`) or, ponytail option, Node's built-in `crypto.diffieHellman` X25519 ECDH + AES-GCM — no new dep.
-3. Supervisor (`runner/supervisor.sh`): generate keypair at boot, fetch config, decrypt in memory, `unset` the raw envs. This is the point to promote supervisor.sh to a small TS binary if bash gets painful — but only if it actually does.
-4. Test: handshake round-trip with a fake supervisor in `api.test.ts`; assert the LLM key never appears in machine `env` config.
+### T2 — Sealed-box secrets handshake (guide §2.6) — ✅ DONE
+Implemented with Node built-in X25519 ECDH + HKDF + AES-256-GCM (no new deps):
+- `apps/api/src/secrets.ts`: `sealConfig()` / `openSealed()` (test helper).
+- `apps/api/src/orchestrator.ts`: machine env now carries only `SESSION_ID`, `HANDSHAKE_URL`, `EVENTS_URL`, `SESSION_TOKEN` — zero secrets; `handshake()` seals `{repo_url, branch, task, llm_*, git_token}` to the supervisor's pubkey.
+- `POST /internal/sessions/:id/handshake` route (session-bearer-authed, 32-byte pubkey enforced); internal auth factored into `sessionAuth()`.
+- `runner/handshake.mjs` = supervisor half; `supervisor.sh` uses it when `HANDSHAKE_URL` is set, falls back to env vars for manual spike runs. Handshake runs **before** the firewall (firewall needs the endpoint host from the config).
+- Tested in `api.test.ts`: env asserted secret-free, full seal→open round-trip over HTTP, wrong-token 401.
+- Image rebuilt as `registry.fly.io/atelier-sandboxes:runner-v1` (orchestrator `RUNNER_IMAGE` default still says v0 — set env or bump default when deploying).
+- Note: authenticity = session bearer + TLS; keys are ephemeral per handshake. Fine for single-user; revisit if threat model grows.
 
 ### T3 — Auth on the public API — *before any deploy*
 - Sign in with Apple (JWT verify against Apple's JWKS) + GitHub OAuth. `users` table in the store; every `/providers` and `/sessions` row scoped by `user_id`; middleware rejects unauthenticated requests.

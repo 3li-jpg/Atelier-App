@@ -10,6 +10,7 @@ RUN curl -fsSL https://opencode.ai/install | VERSION=${OPENCODE_VERSION} bash \
  && ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode
 WORKDIR /workspace
 COPY firewall.sh /usr/local/bin/firewall.sh
+COPY handshake.mjs /usr/local/bin/handshake.mjs
 COPY supervisor.sh /usr/local/bin/supervisor
 RUN chmod +x /usr/local/bin/supervisor /usr/local/bin/firewall.sh
 ENTRYPOINT ["/usr/local/bin/supervisor"]

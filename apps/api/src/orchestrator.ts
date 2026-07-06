@@ -1,7 +1,7 @@
 import { canTransition, type SessionState } from "@atelier/schema";
 import type { SandboxProvider } from "@atelier/sandbox";
 import type { Store } from "./store.ts";
-import { decryptKey } from "./secrets.ts";
+import { decryptKey, sealConfig, type SealedConfig } from "./secrets.ts";
 
 const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "registry.fly.io/atelier-sandboxes:runner-v0";
 const PUBLIC_URL = process.env.PUBLIC_URL ?? "http://localhost:3000";
@@ -30,22 +30,16 @@ export class Orchestrator {
 
   async launch(sessionId: string): Promise<void> {
     const s = this.store.getSession(sessionId);
-    const provider = this.store.getProvider(s.provider_id);
     this.transition(sessionId, "provisioning");
 
-    // ponytail: spike-style env injection (guide §1.1); replace with the
-    // sealed-box handshake (§2.6) before any multi-user deployment.
+    // Secrets never enter machine env — the supervisor fetches them via the
+    // sealed-box handshake (guide §2.6, POST /internal/sessions/:id/handshake).
     const ref = await this.sandbox.create({
       name: `ses-${sessionId.slice(0, 8)}`,
       image: RUNNER_IMAGE,
       env: {
-        REPO_URL: s.repo_url,
-        BRANCH: s.branch,
-        TASK: s.task,
-        LLM_BASE_URL: provider.base_url,
-        LLM_API_KEY: decryptKey(provider.key_ciphertext),
-        LLM_MODEL: s.model_id,
-        GIT_TOKEN: process.env.GIT_TOKEN ?? "",
+        SESSION_ID: sessionId,
+        HANDSHAKE_URL: `${PUBLIC_URL}/internal/sessions/${sessionId}/handshake`,
         EVENTS_URL: `${PUBLIC_URL}/internal/sessions/${sessionId}/events`,
         SESSION_TOKEN: s.session_token,
       },
@@ -62,6 +56,21 @@ export class Orchestrator {
       () => this.kill(sessionId, "wall-clock budget exceeded"),
       budgets.max_wall_clock_s * 1000,
     ));
+  }
+
+  // Handshake: seal the full session config to the supervisor's pubkey.
+  handshake(sessionId: string, supervisorPubRaw: Buffer): SealedConfig {
+    const s = this.store.getSession(sessionId);
+    const provider = this.store.getProvider(s.provider_id);
+    return sealConfig(supervisorPubRaw, {
+      repo_url: s.repo_url,
+      branch: s.branch,
+      task: s.task,
+      llm_base_url: provider.base_url,
+      llm_api_key: decryptKey(provider.key_ciphertext),
+      llm_model: s.model_id,
+      git_token: process.env.GIT_TOKEN ?? "", // per-session installation tokens land with T5
+    });
   }
 
   // Supervisor state reports arrive as state_change events; mirror them into the FSM.

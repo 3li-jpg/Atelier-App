@@ -73,16 +73,28 @@ export function buildApp(store: Store, orch: Orchestrator) {
     });
   });
 
-  // ---- Internal: supervisor event ingest (guide §2.5) ----
-  app.post("/internal/sessions/:id/events", async (c) => {
-    const id = c.req.param("id");
-    const s = store.getSession(id);
+  // ---- Internal: supervisor endpoints (guide §2.5–2.6) ----
+  const sessionAuth = (c: any): any | null => {
+    const s = store.getSession(c.req.param("id"));
     const auth = c.req.header("Authorization") ?? "";
     const expected = `Bearer ${s?.session_token ?? ""}`;
     if (!s || auth.length !== expected.length ||
-        !timingSafeEqual(Buffer.from(auth), Buffer.from(expected))) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
+        !timingSafeEqual(Buffer.from(auth), Buffer.from(expected))) return null;
+    return s;
+  };
+
+  // Sealed-box config exchange: supervisor posts its X25519 pubkey, gets secrets back encrypted.
+  app.post("/internal/sessions/:id/handshake", async (c) => {
+    if (!sessionAuth(c)) return c.json({ error: "unauthorized" }, 401);
+    const { pubkey } = await c.req.json();
+    const raw = Buffer.from(String(pubkey ?? ""), "base64");
+    if (raw.length !== 32) return c.json({ error: "pubkey must be 32 bytes base64" }, 400);
+    return c.json(orch.handshake(c.req.param("id"), raw));
+  });
+
+  app.post("/internal/sessions/:id/events", async (c) => {
+    const id = c.req.param("id");
+    if (!sessionAuth(c)) return c.json({ error: "unauthorized" }, 401);
     const batch = (await c.req.json()) as unknown[];
     for (const raw of batch) {
       const e = Event.parse(raw);

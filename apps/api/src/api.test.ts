@@ -61,8 +61,32 @@ test("full session lifecycle over HTTP", async () => {
   await new Promise((r) => setTimeout(r, 20)); // let async launch settle
 
   assert.equal(sandbox.created.length, 1);
-  assert.equal(sandbox.created[0].env.LLM_API_KEY, "sk-secret-key-12345");
+  // no secrets in machine env — supervisor gets them via the sealed handshake
+  const env = sandbox.created[0].env;
+  assert.equal(env.LLM_API_KEY, undefined);
+  assert.equal(env.GIT_TOKEN, undefined);
+  assert.ok(env.HANDSHAKE_URL.includes(sessionId));
   assert.equal(store.getSession(sessionId).state, "provisioning");
+
+  // sealed-box handshake round-trip, playing the supervisor (mirrors runner/handshake.mjs)
+  const { generateKeyPairSync } = await import("node:crypto");
+  const { openSealed } = await import("./secrets.ts");
+  const kp = generateKeyPairSync("x25519");
+  const pubRaw = (kp.publicKey.export({ format: "der", type: "spki" }) as Buffer).subarray(-32);
+  const supToken = store.getSession(sessionId).session_token;
+  const hs = await app.request(`/internal/sessions/${sessionId}/handshake`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${supToken}` },
+    body: JSON.stringify({ pubkey: pubRaw.toString("base64") }),
+  });
+  assert.equal(hs.status, 200);
+  const config: any = openSealed(kp.privateKey.export({ format: "pem", type: "pkcs8" }) as string, await hs.json());
+  assert.equal(config.llm_api_key, "sk-secret-key-12345");
+  assert.equal(config.repo_url, "https://github.com/you/test-repo");
+  // wrong token and bad pubkey rejected
+  assert.equal((await app.request(`/internal/sessions/${sessionId}/handshake`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer wrong" },
+    body: JSON.stringify({ pubkey: pubRaw.toString("base64") }),
+  })).status, 401);
 
   // supervisor reports progress via internal ingest (with its bearer token)
   const token = store.getSession(sessionId).session_token;

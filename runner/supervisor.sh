@@ -1,12 +1,25 @@
 #!/usr/bin/env bash
-# Spike supervisor (PID 1). Production version becomes a binary with the
-# sealed-box handshake; this one takes config from env at machine-create time.
+# Supervisor (PID 1). Two config modes:
+#  - sealed-box handshake (production): HANDSHAKE_URL set → fetch secrets encrypted
+#  - env vars (spike / manual curl runs, guide §1.2): REPO_URL etc. set directly
 set -euo pipefail
+EVENTS_URL="${EVENTS_URL:-}"          # optional: control-plane event ingest
+SESSION_TOKEN="${SESSION_TOKEN:-}"    # bearer for EVENTS_URL + handshake
+
+if [[ -n "${HANDSHAKE_URL:-}" ]]; then
+  CONFIG_JSON=$(node /usr/local/bin/handshake.mjs)
+  REPO_URL=$(jq -r .repo_url <<<"$CONFIG_JSON")
+  BRANCH=$(jq -r '.branch // "main"' <<<"$CONFIG_JSON")
+  TASK=$(jq -r .task <<<"$CONFIG_JSON")
+  LLM_BASE_URL=$(jq -r .llm_base_url <<<"$CONFIG_JSON")
+  LLM_API_KEY=$(jq -r .llm_api_key <<<"$CONFIG_JSON")
+  LLM_MODEL=$(jq -r .llm_model <<<"$CONFIG_JSON")
+  GIT_TOKEN=$(jq -r .git_token <<<"$CONFIG_JSON")
+  unset CONFIG_JSON
+fi
 : "${REPO_URL:?}" "${TASK:?}"
 : "${LLM_BASE_URL:?}" "${LLM_API_KEY:?}" "${LLM_MODEL:?}" "${GIT_TOKEN:?}"
 BRANCH="${BRANCH:-main}"
-EVENTS_URL="${EVENTS_URL:-}"          # optional: control-plane event ingest
-SESSION_TOKEN="${SESSION_TOKEN:-}"    # bearer for EVENTS_URL
 
 emit() { # emit <type> <json-payload> — stdout always, control plane if configured
   local line
