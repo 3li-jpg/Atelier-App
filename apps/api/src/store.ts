@@ -8,31 +8,56 @@ import type { Event, SessionState } from "@atelier/schema";
 export const bus = new EventEmitter(); // in-process fan-out; Redis Streams when >1 instance
 bus.setMaxListeners(0);
 
+// add column if missing (alpha DBs predate user_id scoping); ignore duplicate-column
+const safeAlter = (db: DatabaseSync, sql: string) => { try { db.exec(sql); } catch { /* duplicate column */ } };
+
 export class Store {
   private db: DatabaseSync;
 
   constructor(path = process.env.DB_PATH ?? "atelier.db") {
     this.db = new DatabaseSync(path);
     this.db.exec(`
+      create table if not exists users (
+        id text primary key, github_id integer unique, login text, name text,
+        avatar_url text, created_at text);
       create table if not exists providers (
         id text primary key, name text, base_url text, dialect text,
-        key_ciphertext blob, models text, quirks text, created_at text);
+        key_ciphertext blob, models text, quirks text, created_at text, user_id text);
       create table if not exists sessions (
         id text primary key, repo_url text, branch text, provider_id text,
         model_id text, task text, state text, machine_id text,
         permission_mode text, budgets text, session_token text,
-        started_at text, ended_at text, billed_seconds integer default 0);
+        started_at text, ended_at text, billed_seconds integer default 0, user_id text);
       create table if not exists events (
         session_id text, seq integer, type text, payload text, ts text,
         primary key (session_id, seq));
     `);
+    safeAlter(this.db, "alter table providers add column user_id text");
+    safeAlter(this.db, "alter table sessions add column user_id text");
   }
 
-  createProvider(p: { name: string; base_url: string; dialect: string; key_ciphertext: Buffer; models: unknown; quirks?: unknown }) {
+  upsertUser(githubId: number, login: string, name: string | null, avatarUrl: string | null): string {
+    const existing: any = this.db.prepare("select id from users where github_id = ?").get(githubId);
+    if (existing) {
+      this.db.prepare("update users set login = ?, name = ?, avatar_url = ? where id = ?")
+        .run(login, name, avatarUrl, existing.id);
+      return existing.id;
+    }
     const id = randomUUID();
-    this.db.prepare(`insert into providers (id,name,base_url,dialect,key_ciphertext,models,quirks,created_at)
-      values (?,?,?,?,?,?,?,datetime('now'))`)
-      .run(id, p.name, p.base_url, p.dialect, p.key_ciphertext, JSON.stringify(p.models), JSON.stringify(p.quirks ?? {}));
+    this.db.prepare("insert into users (id,github_id,login,name,avatar_url,created_at) values (?,?,?,?,?,datetime('now'))")
+      .run(id, githubId, login, name, avatarUrl);
+    return id;
+  }
+
+  getUser(id: string): any {
+    return this.db.prepare("select id,github_id,login,name,avatar_url from users where id = ?").get(id) ?? null;
+  }
+
+  createProvider(p: { name: string; base_url: string; dialect: string; key_ciphertext: Buffer; models: unknown; quirks?: unknown; user_id?: string }) {
+    const id = randomUUID();
+    this.db.prepare(`insert into providers (id,name,base_url,dialect,key_ciphertext,models,quirks,created_at,user_id)
+      values (?,?,?,?,?,?,?,datetime('now'),?)`)
+      .run(id, p.name, p.base_url, p.dialect, p.key_ciphertext, JSON.stringify(p.models), JSON.stringify(p.quirks ?? {}), p.user_id ?? null);
     return id;
   }
 
@@ -42,17 +67,19 @@ export class Store {
     return { ...row, models: JSON.parse(row.models), quirks: JSON.parse(row.quirks) };
   }
 
-  listProviders(): any[] {
+  listProviders(userId?: string): any[] {
     // key_ciphertext never leaves the store's read path for listings
-    return this.db.prepare("select id,name,base_url,dialect,models,created_at from providers").all()
-      .map((r: any) => ({ ...r, models: JSON.parse(r.models) }));
+    const rows = userId
+      ? this.db.prepare("select id,name,base_url,dialect,models,created_at from providers where user_id = ? order by created_at desc").all(userId)
+      : this.db.prepare("select id,name,base_url,dialect,models,created_at from providers order by created_at desc").all();
+    return rows.map((r: any) => ({ ...r, models: JSON.parse(r.models) }));
   }
 
-  createSession(s: { repo_url: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string }) {
+  createSession(s: { repo_url: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string }) {
     const id = randomUUID();
-    this.db.prepare(`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,started_at)
-      values (?,?,?,?,?,?,'created',?,?,?,datetime('now'))`)
-      .run(id, s.repo_url, s.branch, s.provider_id, s.model_id, s.task, s.permission_mode, JSON.stringify(s.budgets), s.session_token);
+    this.db.prepare(`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,started_at,user_id)
+      values (?,?,?,?,?,?,'created',?,?,?,datetime('now'),?)`)
+      .run(id, s.repo_url, s.branch, s.provider_id, s.model_id, s.task, s.permission_mode, JSON.stringify(s.budgets), s.session_token, s.user_id ?? null);
     return id;
   }
 
@@ -60,8 +87,11 @@ export class Store {
     return this.db.prepare("select * from sessions where id = ?").get(id) ?? null;
   }
 
-  listSessions(): any[] {
-    return this.db.prepare("select id,repo_url,branch,model_id,task,state,started_at,ended_at from sessions order by started_at desc").all();
+  listSessions(userId?: string): any[] {
+    const rows = userId
+      ? this.db.prepare("select id,repo_url,branch,model_id,task,state,started_at,ended_at from sessions where user_id = ? order by started_at desc").all(userId)
+      : this.db.prepare("select id,repo_url,branch,model_id,task,state,started_at,ended_at from sessions order by started_at desc").all();
+    return rows;
   }
 
   setSessionState(id: string, state: SessionState, machineId?: string) {

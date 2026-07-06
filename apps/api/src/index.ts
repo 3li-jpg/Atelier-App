@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { streamSSE } from "hono/streaming";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { Event, ProviderConfig, CreateSession } from "@atelier/schema";
 import { FlyMachinesProvider } from "@atelier/sandbox";
@@ -8,23 +9,83 @@ import { Store, bus } from "./store.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import { encryptKey, redact } from "./secrets.ts";
 import { validateProvider } from "./validate.ts";
+import {
+  signSession, verifySession, exchangeGithubCode, loginUrl, newState, isSecure,
+  authConfigured, oauthEnabled, OWNER_ID, SESSION_COOKIE,
+} from "./auth.ts";
+
+const uidOf = (c: any): string | undefined => c.get("userId") as string | undefined;
 
 export function buildApp(store: Store, orch: Orchestrator) {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
 
-  // ponytail: single static bearer (owner-only alpha). GitHub OAuth
-  // + per-user scoping before anyone else gets a build (handoff T3).
+  // --- Auth (handoff T3): session cookie (GitHub OAuth) OR static bearer
+  // AUTH_TOKEN (owner/admin backdoor) OR open when nothing is configured.
+  // /health, /auth/*, and /internal/* (supervisor bearer) are exempt.
   app.use("*", async (c, next) => {
-    const token = process.env.AUTH_TOKEN;
-    if (!token || c.req.path === "/health" || c.req.path.startsWith("/internal/")) return next();
-    const auth = c.req.header("Authorization") ?? "";
-    const expected = `Bearer ${token}`;
-    if (auth.length !== expected.length || !timingSafeEqual(Buffer.from(auth), Buffer.from(expected))) {
-      return c.json({ error: "unauthorized" }, 401);
+    const p = c.req.path;
+    if (p === "/health" || p.startsWith("/auth/") || p.startsWith("/internal/")) return next();
+
+    const uid = verifySession(getCookie(c, SESSION_COOKIE));
+    if (uid) { c.set("userId", uid); return next(); }
+
+    const tok = process.env.AUTH_TOKEN;
+    if (tok) {
+      const auth = c.req.header("Authorization") ?? "";
+      const expected = `Bearer ${tok}`;
+      if (auth.length === expected.length && timingSafeEqual(Buffer.from(auth), Buffer.from(expected))) {
+        c.set("userId", OWNER_ID);
+        return next();
+      }
     }
-    return next();
+
+    if (authConfigured()) return c.json({ error: "unauthorized" }, 401);
+    return next(); // open: dev / owner-alpha with no auth configured
+  });
+
+  // ---- Auth routes ----
+  app.get("/auth/status", (c) => {
+    const uid = verifySession(getCookie(c, SESSION_COOKIE));
+    const owner = uid === OWNER_ID;
+    const user = uid ? (owner ? { login: "owner" } : store.getUser(uid)) : null;
+    return c.json({ oauth: oauthEnabled(), authed: Boolean(uid), owner, user });
+  });
+
+  app.get("/auth/github/login", (c) => {
+    if (!oauthEnabled()) return c.json({ error: "oauth not configured" }, 503);
+    const state = newState();
+    setCookie(c, "atelier_oauth_state", state, { httpOnly: true, sameSite: "Lax", maxAge: 600, path: "/" });
+    return c.redirect(loginUrl(state), 302);
+  });
+
+  app.get("/auth/github/callback", async (c) => {
+    if (!oauthEnabled()) return c.json({ error: "oauth not configured" }, 503);
+    const code = c.req.query("code");
+    const state = c.req.query("state");
+    const cookieState = getCookie(c, "atelier_oauth_state");
+    if (!code || !state || !cookieState || state !== cookieState) {
+      return c.json({ error: "invalid state" }, 400);
+    }
+    deleteCookie(c, "atelier_oauth_state", { path: "/" });
+    try {
+      const { user } = await exchangeGithubCode(code);
+      const uid = store.upsertUser(user.id, user.login, user.name, user.avatar_url);
+      setCookie(c, SESSION_COOKIE, signSession(uid), {
+        httpOnly: true, sameSite: "Lax", secure: isSecure(), maxAge: 60 * 60 * 24 * 7, path: "/",
+      });
+    } catch (e) {
+      const base = (process.env.PUBLIC_WEB_URL ?? "/").replace(/\/$/, "");
+      return c.redirect(`${base}/?auth_error=${encodeURIComponent(String(e))}`, 302);
+    }
+    const base = (process.env.PUBLIC_WEB_URL ?? "/").replace(/\/$/, "");
+    return c.redirect(base + "/", 302);
+  });
+
+  app.post("/auth/logout", (c) => {
+    deleteCookie(c, SESSION_COOKIE, { path: "/" });
+    return c.json({ ok: true });
   });
 
   // ---- Providers (FR-1.x) ----
@@ -33,11 +94,11 @@ export function buildApp(store: Store, orch: Orchestrator) {
     const cfg = ProviderConfig.parse(body);
     const apiKey: string = body.api_key;
     if (!apiKey) return c.json({ error: "api_key required" }, 400);
-    const id = store.createProvider({ ...cfg, key_ciphertext: encryptKey(apiKey) });
+    const id = store.createProvider({ ...cfg, key_ciphertext: encryptKey(apiKey), user_id: uidOf(c) });
     return c.json({ id }, 201);
   });
 
-  app.get("/providers", (c) => c.json(store.listProviders()));
+  app.get("/providers", (c) => c.json(store.listProviders(uidOf(c))));
 
   app.post("/providers/validate", async (c) => {
     const body = await c.req.json();
@@ -49,22 +110,33 @@ export function buildApp(store: Store, orch: Orchestrator) {
   // ---- Sessions (FR-3.x) ----
   app.post("/sessions", async (c) => {
     const req = CreateSession.parse(await c.req.json());
-    if (!store.getProvider(req.provider_id)) return c.json({ error: "unknown provider" }, 404);
-    const id = store.createSession({ ...req, session_token: randomBytes(24).toString("hex") });
+    const provider = store.getProvider(req.provider_id);
+    if (!provider) return c.json({ error: "unknown provider" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && provider.user_id && provider.user_id !== uid) {
+      return c.json({ error: "unknown provider" }, 404); // don't leak cross-user existence
+    }
+    const id = store.createSession({ ...req, session_token: randomBytes(24).toString("hex"), user_id: uid });
     orch.launch(id).catch(() => {}); // failure already recorded as events + failed state
     return c.json({ id, state: "created" }, 201);
   });
 
-  app.get("/sessions", (c) => c.json(store.listSessions()));
+  app.get("/sessions", (c) => c.json(store.listSessions(uidOf(c))));
 
   app.get("/sessions/:id", (c) => {
     const s = store.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
     const { session_token, ...safe } = s;
     return c.json(safe);
   });
 
   app.post("/sessions/:id/cancel", async (c) => {
+    const s = store.getSession(c.req.param("id"));
+    if (!s) return c.json({ error: "not found" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
     await orch.cancel(c.req.param("id"));
     return c.json({ ok: true });
   });
@@ -73,7 +145,10 @@ export function buildApp(store: Store, orch: Orchestrator) {
   // (Supervisor-side delivery of the message to the harness is handoff T7.2.)
   app.post("/sessions/:id/reply", async (c) => {
     const id = c.req.param("id");
-    if (!store.getSession(id)) return c.json({ error: "not found" }, 404);
+    const s = store.getSession(id);
+    if (!s) return c.json({ error: "not found" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
     const { text } = await c.req.json();
     if (!text) return c.json({ error: "text required" }, 400);
     store.appendEvent(id, { ts: new Date().toISOString(), type: "user_message", payload: { text } });
@@ -84,7 +159,10 @@ export function buildApp(store: Store, orch: Orchestrator) {
   // Event stream: replay after cursor, then live-tail. SSE (native EventSource).
   app.get("/sessions/:id/stream", (c) => {
     const id = c.req.param("id");
-    if (!store.getSession(id)) return c.json({ error: "not found" }, 404);
+    const s = store.getSession(id);
+    if (!s) return c.json({ error: "not found" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
     const cursor = Number(c.req.query("cursor") ?? 0);
     return streamSSE(c, async (stream) => {
       for (const e of store.eventsAfter(id, cursor)) {

@@ -6,6 +6,7 @@ import { SessionView } from "./views/SessionView.tsx";
 import { NewTask } from "./views/NewTask.tsx";
 import { Providers } from "./views/Providers.tsx";
 import { InstallPrompt } from "./InstallPrompt.tsx";
+import { AuthBar } from "./AuthBar.tsx";
 
 type View = { kind: "list" } | { kind: "new" } | { kind: "providers" } | { kind: "session"; id: string };
 
@@ -26,7 +27,10 @@ export function App() {
     <div className="page">
       <header className="topbar">
         <h1>Atelier</h1>
-        <InstallPrompt />
+        <div className="topbar-right">
+          <InstallPrompt />
+          <AuthBar />
+        </div>
       </header>
       <nav className="nav">
         {TABS.map((t) => (

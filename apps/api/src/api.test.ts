@@ -11,6 +11,7 @@ import { Store } from "./store.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import { buildApp } from "./index.ts";
 import { encryptKey, decryptKey, redact } from "./secrets.ts";
+import { signSession } from "./auth.ts";
 
 class FakeSandbox implements SandboxProvider {
   created: any[] = [];
@@ -202,4 +203,81 @@ test("reaper orphan scan destroys machines whose session is terminal or missing"
   // the terminal session recorded an error event for the cleanup
   const evs = store.eventsAfter(id, 0);
   assert.ok(evs.some((e) => e.type === "error" && String((e.payload as any).message).includes("orphan machine m-live")));
+});
+
+test("GitHub OAuth: callback upserts the user and sets a verifiable session cookie", async (t) => {
+  process.env.GITHUB_OAUTH_CLIENT_ID = "cid";
+  process.env.GITHUB_OAUTH_CLIENT_SECRET = "csec";
+  process.env.SESSION_SECRET = "test-session-secret";
+  process.env.PUBLIC_WEB_URL = "http://localhost:5173";
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: any) => {
+    const s = String(url);
+    if (s.includes("login/oauth/access_token")) {
+      return new Response(JSON.stringify({ access_token: "gho_t" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (s.includes("api.github.com/user")) {
+      return new Response(JSON.stringify({ id: 42, login: "alice", name: "Alice", avatar_url: null }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("nope", { status: 404 });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = realFetch;
+    for (const k of ["GITHUB_OAUTH_CLIENT_ID", "GITHUB_OAUTH_CLIENT_SECRET", "SESSION_SECRET", "PUBLIC_WEB_URL"]) delete process.env[k];
+  });
+
+  const { app } = setup();
+  const loginRes = await app.request("/auth/github/login");
+  assert.equal(loginRes.status, 302);
+  const sc = loginRes.headers.get("set-cookie") ?? "";
+  const state = sc.match(/atelier_oauth_state=([^;]+)/)?.[1];
+  assert.ok(state, "state cookie set on login");
+
+  const cbRes = await app.request(`/auth/github/callback?code=abc&state=${state}`, {
+    headers: { Cookie: `atelier_oauth_state=${state}` },
+  });
+  assert.equal(cbRes.status, 302);
+  const sess = cbRes.headers.get("set-cookie")?.match(/atelier_session=([^;]+)/)?.[1];
+  assert.ok(sess, "session cookie set on callback");
+
+  // the cookie authenticates a request and carries the GitHub identity
+  const st = await (await app.request("/auth/status", { headers: { Cookie: `atelier_session=${sess}` } })).json();
+  assert.equal(st.authed, true);
+  assert.equal(st.owner, false);
+  assert.equal(st.user.login, "alice");
+});
+
+test("per-user scoping: users only see their own providers and sessions", async (t) => {
+  process.env.SESSION_SECRET = "test-session-secret";
+  t.after(() => { delete process.env.SESSION_SECRET; });
+  const { store, app } = setup();
+  const alice = store.upsertUser(1, "alice", null, null);
+  const bob = store.upsertUser(2, "bob", null, null);
+  const aliceCookie = `atelier_session=${signSession(alice)}`;
+  const bobCookie = `atelier_session=${signSession(bob)}`;
+
+  const ap = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: aliceCookie },
+    body: JSON.stringify({ name: "A", base_url: "https://a.io/v1", dialect: "openai-chat", api_key: "sk-a", models: [{ id: "m", role: "coder" }] }),
+  });
+  assert.equal(ap.status, 201);
+  const { id: providerId } = await ap.json();
+
+  const as = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: aliceCookie },
+    body: JSON.stringify({ repo_url: "https://github.com/a/b", provider_id: providerId, model_id: "m", task: "do it" }),
+  });
+  const { id: aliceSession } = await as.json();
+
+  // bob's session list is empty; he can't fetch alice's session or reuse her provider
+  assert.equal((await (await app.request("/sessions", { headers: { Cookie: bobCookie } })).json()).length, 0);
+  assert.equal((await app.request(`/sessions/${aliceSession}`, { headers: { Cookie: bobCookie } })).status, 404);
+  assert.equal((await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: bobCookie },
+    body: JSON.stringify({ repo_url: "https://github.com/a/b", provider_id: providerId, model_id: "m", task: "x" }),
+  })).status, 404);
+
+  // alice sees exactly her one session and one provider
+  assert.equal((await (await app.request("/sessions", { headers: { Cookie: aliceCookie } })).json()).length, 1);
+  assert.equal((await (await app.request("/providers", { headers: { Cookie: aliceCookie } })).json()).length, 1);
 });

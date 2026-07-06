@@ -21,6 +21,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
   const res = await fetch(path, {
     ...init,
+    credentials: "include",
     headers: { ...headers, ...((init?.headers as Record<string, string>) ?? {}) },
   });
   if (!res.ok) throw new Error(`${res.status} ${await res.text().catch(() => "")}`);
@@ -89,4 +90,7 @@ export const api = {
     req<{ id: string }>("/providers", { method: "POST", body: JSON.stringify(cfg) }),
   validateProvider: (cfg: ProviderCreate) =>
     req<ValidationResult>("/providers/validate", { method: "POST", body: JSON.stringify(cfg) }),
+  getAuthStatus: () =>
+    req<{ oauth: boolean; authed: boolean; owner: boolean; user: { login: string } | null }>("/auth/status"),
+  logout: () => req<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 };

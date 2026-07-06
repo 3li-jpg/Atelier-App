@@ -238,6 +238,19 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
 .live-dot.off { background: var(--muted); }
 
+.topbar-right { display: flex; align-items: center; gap: 0.4rem; }
+.authbar { display: flex; align-items: center; gap: 0.35rem; }
+.authbar input {
+  width: 8rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.3rem 0.5rem;
+  font: inherit;
+}
+.authbar input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
 @media (prefers-color-scheme: light) {
   :root {
     --bg: #ffffff; --panel: #f6f8fa; --panel-2: #eef1f4; --border: #d0d7de;
