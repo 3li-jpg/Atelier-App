@@ -7,7 +7,8 @@ Agentic coding from any browser (installable PWA, desktop + mobile) against **yo
 ```
 runner/              atelier-runner image: Dockerfile, supervisor.sh (opencode-serve bridge), firewall.sh, bridge.mjs
 apps/api/            control plane: Hono + node:sqlite, FSM orchestrator, SSE stream, GitHub OAuth + per-user scoping
-apps/web/            installable PWA: Vite + React (sessions, chat timeline, NewTask, providers, cancel)
+apps/web/            installable PWA: Vite + React (sessions, chat timeline, NewTask, providers, cancel, workspace, finish)
+apps/workspace-proxy/  cookie-routing reverse proxy (HTTP+WS) to per-session sandbox machines over Fly 6PN
 packages/schema/     zod schemas: events, session FSM, provider config
 packages/sandbox/    SandboxProvider interface + FlyMachinesProvider (+ orphan scan)
 packages/conformance/  provider scoring: tool-call fidelity, edit reliability, streaming stability
@@ -18,7 +19,7 @@ infra/               fly.toml files
 
 ```bash
 npm install
-npm test                       # 30 tests across api/web/sandbox/schema/conformance
+npm test                       # 45 tests across api/web/workspace-proxy/sandbox/schema/conformance
 MASTER_KEY=dev npm run dev    # API on :3000
 npm run dev:web                # PWA on :5173 (proxies API calls to :3000)
 ```
@@ -56,6 +57,7 @@ Local API without Fly credentials will fail sessions at `provisioning` (by desig
 | Prefix-only secret redaction | if a leak slips past → add a high-entropy heuristic |
 | openai-chat dialect only | first anthropic-messages provider |
 | `opencode serve` bridge event shapes assumed | verify against a real run (T1), then harden |
+| Cookie-routing proxy (one workspace per browser) | per-session subdomains on a custom domain |
 
 ## License
 
