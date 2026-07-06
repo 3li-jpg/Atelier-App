@@ -39,8 +39,7 @@ Blocked-on-human tasks are marked 🔑 (need the owner's accounts/keys). Everyth
 1. ~~Install flyctl, auth, create app~~ **done.**
 2. ~~Build & push runner image~~ **done** → `registry.fly.io/atelier-sandboxes:runner-v0`.
 3. 🔑 Boot one machine via curl per guide §1.2 with the owner's Umans key + fine-grained GitHub PAT against a throwaway repo. Use region **sjc** (not sea — deprecated). **Exit: a real PR on GitHub.**
-4. Measure suspend→start resume latency 5+ times (guide §1.3). Record numbers in `docs/spike-notes.md` — they decide T4's thresholds. *Attempted but not run — an idle probe machine `d893273f2445e8` (sjc, `sleep 3600`, restart policy `no`, auto_destroy false) may still exist; reuse it for the measurement or destroy it:*
-   `curl -X DELETE "https://api.machines.dev/v1/apps/atelier-sandboxes/machines/d893273f2445e8?force=true" -H "Authorization: Bearer $(fly tokens create deploy -a atelier-sandboxes)"`
+4. ~~Measure resume latency~~ **done** → `docs/spike-notes.md`: suspend→start ≈ 0.75 s, stop→start ≈ 1.6 s. T4 policy: suspend on `awaiting_user`, demote to stop after **2 min** (not 10). Probe machine destroyed.
 5. Run the task 5–10× across 2–3 models; note failure modes for T8's conformance suite.
 
 ### T2 — Sealed-box secrets handshake (guide §2.6) — *before any multi-user deploy*
