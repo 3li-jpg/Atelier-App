@@ -31,3 +31,4 @@ export interface SandboxProvider {
 }
 
 export { FlyMachinesProvider } from "./fly.ts";
+export { LocalSandboxProvider } from "./local.ts";

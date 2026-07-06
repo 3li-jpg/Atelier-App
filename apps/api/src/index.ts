@@ -4,7 +4,7 @@ import { streamSSE } from "hono/streaming";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { Event, ProviderConfig, CreateSession } from "@atelier/schema";
-import { FlyMachinesProvider } from "@atelier/sandbox";
+import { FlyMachinesProvider, LocalSandboxProvider } from "@atelier/sandbox";
 import { Store, bus } from "./store.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import { encryptKey, redact } from "./secrets.ts";
@@ -227,10 +227,12 @@ export function buildApp(store: Store, orch: Orchestrator) {
 
 if (process.env.NODE_ENV !== "test" && process.argv[1]?.endsWith("index.ts")) {
   const store = new Store();
-  const sandbox = new FlyMachinesProvider(
-    process.env.FLY_SANDBOX_APP ?? "atelier-sandboxes",
-    process.env.FLY_SANDBOX_TOKEN ?? "",
-  );
+  const sandbox = process.env.SANDBOX === "local"
+    ? new LocalSandboxProvider()
+    : new FlyMachinesProvider(
+        process.env.FLY_SANDBOX_APP ?? "atelier-sandboxes",
+        process.env.FLY_SANDBOX_TOKEN ?? "",
+      );
   const orch = new Orchestrator(store, sandbox);
   orch.startReaper();
   const app = buildApp(store, orch);
