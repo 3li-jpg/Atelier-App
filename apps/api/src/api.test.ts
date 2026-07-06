@@ -11,7 +11,7 @@ import { Store } from "./store.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import { buildApp } from "./index.ts";
 import { encryptKey, decryptKey, redact } from "./secrets.ts";
-import { signSession } from "./auth.ts";
+import { signSession, signWorkspaceToken, verifyWorkspaceToken } from "./auth.ts";
 
 class FakeSandbox implements SandboxProvider {
   created: any[] = [];
@@ -380,6 +380,14 @@ test("billed_seconds accrues while billable, pauses while hibernated, resumes on
   orch.transition(id, "finalizing");
   orch.transition(id, "completed");           // billable -> terminal: accrue 2s
   assert.equal(store.getSession(id).billed_seconds, 6);
+});
+
+test("workspace token round-trips and rejects tampering", () => {
+  const tok = signWorkspaceToken("ses-1", "user-1", "s3cret");
+  assert.deepEqual(verifyWorkspaceToken(tok, "s3cret"), { sid: "ses-1", uid: "user-1" });
+  assert.equal(verifyWorkspaceToken(tok, "wrong"), null);
+  assert.equal(verifyWorkspaceToken(tok + "x", "s3cret"), null);
+  assert.equal(verifyWorkspaceToken(null, "s3cret"), null);
 });
 
 test("touchActivity stamps last_activity", async () => {

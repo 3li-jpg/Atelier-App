@@ -105,3 +105,23 @@ export async function exchangeGithubCode(
   if (!userRes.ok) throw new Error(`github user fetch: ${userRes.status}`);
   return { token: tok.access_token, user: (await userRes.json()) as GithubUser };
 }
+
+export function signWorkspaceToken(sessionId: string, userId: string, secret = sessionSecret()): string {
+  const payload = b64u(JSON.stringify({ sid: sessionId, uid: userId, exp: Date.now() + 5 * 60_000 }));
+  return `${payload}.${sign(payload, secret)}`;
+}
+
+export function verifyWorkspaceToken(token: string | undefined | null, secret = sessionSecret()): { sid: string; uid: string } | null {
+  if (!token || !secret) return null;
+  const dot = token.indexOf(".");
+  if (dot < 0) return null;
+  const payload = token.slice(0, dot);
+  const a = Buffer.from(token.slice(dot + 1));
+  const b = Buffer.from(sign(payload, secret));
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const { sid, uid, exp } = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (typeof exp !== "number" || exp < Date.now()) return null;
+    return { sid: String(sid), uid: String(uid) };
+  } catch { return null; }
+}
