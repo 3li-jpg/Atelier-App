@@ -1,9 +1,10 @@
 {
   "name": "atelier",
   "private": true,
-  "workspaces": ["apps/api", "packages/*"],
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "test": "npm test --workspaces --if-present",
-    "dev": "npm run dev -w apps/api"
+    "dev": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w @atelier/web"
   }
 }
