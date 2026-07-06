@@ -70,8 +70,9 @@ export function buildApp(store: Store, orch: Orchestrator) {
     }
     deleteCookie(c, "atelier_oauth_state", { path: "/" });
     try {
-      const { user } = await exchangeGithubCode(code);
+      const { user, token } = await exchangeGithubCode(code);
       const uid = store.upsertUser(user.id, user.login, user.name, user.avatar_url);
+      store.storeUserToken(uid, token);
       setCookie(c, SESSION_COOKIE, signSession(uid), {
         httpOnly: true, sameSite: "Lax", secure: isSecure(), maxAge: 60 * 60 * 24 * 7, path: "/",
       });
@@ -86,6 +87,37 @@ export function buildApp(store: Store, orch: Orchestrator) {
   app.post("/auth/logout", (c) => {
     deleteCookie(c, SESSION_COOKIE, { path: "/" });
     return c.json({ ok: true });
+  });
+
+  // ---- Repos (FR: browse the user's own GitHub repos via their stored token) ----
+  app.get("/repos", async (c) => {
+    const uid = uidOf(c);
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    const token = store.getUserToken(uid);
+    if (!token) return c.json({ error: "no github token" }, 401);
+    const res = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated", {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "User-Agent": "atelier" },
+    });
+    if (!res.ok) return c.json({ error: `github: ${res.status}` }, res.status);
+    const repos = (await res.json()) as any[];
+    return c.json(repos.map((r) => ({
+      id: r.id, full_name: r.full_name, default_branch: r.default_branch, private: r.private,
+    })));
+  });
+
+  app.get("/repos/:owner/:repo/branches", async (c) => {
+    const uid = uidOf(c);
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    const token = store.getUserToken(uid);
+    if (!token) return c.json({ error: "no github token" }, 401);
+    const owner = decodeURIComponent(c.req.param("owner"));
+    const repo = decodeURIComponent(c.req.param("repo"));
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "User-Agent": "atelier" },
+    });
+    if (!res.ok) return c.json({ error: `github: ${res.status}` }, res.status);
+    const branches = (await res.json()) as any[];
+    return c.json(branches.map((b) => ({ name: b.name })));
   });
 
   // ---- Providers (FR-1.x) ----

@@ -97,7 +97,7 @@ export class Orchestrator {
       llm_base_url: provider.base_url,
       llm_api_key: decryptKey(provider.key_ciphertext),
       llm_model: s.model_id,
-      git_token: process.env.GIT_TOKEN ?? "", // per-session installation tokens land with T5
+      git_token: this.store.getUserToken(s.user_id) ?? process.env.GIT_TOKEN ?? "",
     });
   }
 

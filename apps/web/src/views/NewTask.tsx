@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { api, type ProviderSummary, type CreateSessionReq } from "../api.ts";
+import { api, type ProviderSummary, type CreateSessionReq, type RepoSummary, type BranchSummary } from "../api.ts";
 import { validateNewTask, type FieldErrors } from "../lib.ts";
 
-// T7.3: NewTask form. ponytail: repo/branch typed manually — repo + branch
-// listing lands with the GitHub App (handoff T5, GET /repos[/:id/branches]).
+// T7.3: NewTask form. OAuth users browse their own repos via GET /repos;
+// AUTH_TOKEN/dev mode falls back to manual repo_url + branch entry.
 export function NewTask({ onCreated }: { onCreated: (id: string) => void }) {
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [form, setForm] = useState({
@@ -12,8 +12,35 @@ export function NewTask({ onCreated }: { onCreated: (id: string) => void }) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [repos, setRepos] = useState<RepoSummary[]>([]);
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [useRepoPicker, setUseRepoPicker] = useState(false);
 
-  useEffect(() => { api.listProviders().then(setProviders).catch(() => {}); }, []);
+  useEffect(() => {
+    api.listProviders().then(setProviders).catch(() => {});
+    api.getAuthStatus().then((st) => {
+      if (st.oauth && st.authed) {
+        setUseRepoPicker(true);
+        api.listRepos().then(setRepos).catch(() => {});
+      }
+    }).catch(() => {});
+  }, []);
+
+  const selectedFullName = form.repo_url.startsWith("https://github.com/")
+    ? form.repo_url.slice("https://github.com/".length)
+    : "";
+
+  const onRepoChange = (fullName: string) => {
+    setBranches([]);
+    if (!fullName) {
+      setForm((f) => ({ ...f, repo_url: "", branch: "main" }));
+      return;
+    }
+    const r = repos.find((x) => x.full_name === fullName);
+    setForm((f) => ({ ...f, repo_url: `https://github.com/${fullName}`, branch: r?.default_branch || "main" }));
+    const [owner, repo] = fullName.split("/");
+    api.listBranches(owner, repo).then(setBranches).catch(() => {});
+  };
 
   const selected = providers.find((p) => p.id === form.provider_id) ?? null;
 
@@ -46,22 +73,50 @@ export function NewTask({ onCreated }: { onCreated: (id: string) => void }) {
 
   return (
     <div className="form padded">
-      <label>Repo URL
-        <input
-          value={form.repo_url}
-          onChange={(e) => setForm({ ...form, repo_url: e.target.value })}
-          placeholder="https://github.com/owner/repo"
-        />
-        {errors.repo_url && <span className="field-err">{errors.repo_url}</span>}
-      </label>
-      <label>Branch
-        <input
-          value={form.branch}
-          onChange={(e) => setForm({ ...form, branch: e.target.value })}
-          placeholder="main"
-        />
-        {errors.branch && <span className="field-err">{errors.branch}</span>}
-      </label>
+      {useRepoPicker ? (
+        <>
+          <label>Repo
+            <select
+              value={selectedFullName}
+              onChange={(e) => onRepoChange(e.target.value)}
+            >
+              <option value="">select…</option>
+              {repos.map((r) => <option key={r.id} value={r.full_name}>{r.full_name}</option>)}
+            </select>
+            {errors.repo_url && <span className="field-err">{errors.repo_url}</span>}
+          </label>
+          <label>Branch
+            <select
+              value={form.branch}
+              onChange={(e) => setForm({ ...form, branch: e.target.value })}
+            >
+              {(branches.length ? branches : [{ name: form.branch }]).map((b) => (
+                <option key={b.name} value={b.name}>{b.name}</option>
+              ))}
+            </select>
+            {errors.branch && <span className="field-err">{errors.branch}</span>}
+          </label>
+        </>
+      ) : (
+        <>
+          <label>Repo URL
+            <input
+              value={form.repo_url}
+              onChange={(e) => setForm({ ...form, repo_url: e.target.value })}
+              placeholder="https://github.com/owner/repo"
+            />
+            {errors.repo_url && <span className="field-err">{errors.repo_url}</span>}
+          </label>
+          <label>Branch
+            <input
+              value={form.branch}
+              onChange={(e) => setForm({ ...form, branch: e.target.value })}
+              placeholder="main"
+            />
+            {errors.branch && <span className="field-err">{errors.branch}</span>}
+          </label>
+        </>
+      )}
       <label>Provider
         <select
           value={form.provider_id}
@@ -94,7 +149,9 @@ export function NewTask({ onCreated }: { onCreated: (id: string) => void }) {
       <button className="primary" disabled={submitting} onClick={submit}>
         {submitting ? "starting…" : "Start session"}
       </button>
-      <p className="muted small">repo/branch are typed manually for now — listing arrives with the GitHub App (T5).</p>
+      {useRepoPicker
+        ? <p className="muted small">repos listed from your GitHub account; the agent clones+pushes as you.</p>
+        : <p className="muted small">repo/branch are typed manually for now — listing arrives with the GitHub App (T5).</p>}
     </div>
   );
 }

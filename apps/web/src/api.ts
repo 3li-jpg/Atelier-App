@@ -71,6 +71,12 @@ export type CreateSessionReq = {
   budgets?: { max_wall_clock_s?: number; max_turns?: number };
 };
 
+export type RepoSummary = {
+  id: number; full_name: string; default_branch: string; private: boolean;
+};
+
+export type BranchSummary = { name: string };
+
 export type { Event };
 
 export const api = {
@@ -93,4 +99,7 @@ export const api = {
   getAuthStatus: () =>
     req<{ oauth: boolean; authed: boolean; owner: boolean; user: { login: string } | null }>("/auth/status"),
   logout: () => req<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  listRepos: () => req<RepoSummary[]>("/repos"),
+  listBranches: (owner: string, repo: string) =>
+    req<BranchSummary[]>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`),
 };

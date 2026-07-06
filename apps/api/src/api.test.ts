@@ -282,6 +282,39 @@ test("per-user scoping: users only see their own providers and sessions", async 
   assert.equal((await (await app.request("/providers", { headers: { Cookie: aliceCookie } })).json()).length, 1);
 });
 
+test("GET /repos lists the authed user's GitHub repos via their stored token", async (t) => {
+  process.env.SESSION_SECRET = "test-session-secret";
+  t.after(() => { delete process.env.SESSION_SECRET; });
+  const { store, app } = setup();
+  const uid = store.upsertUser(7, "carol", null, null);
+  store.storeUserToken(uid, "gho_fake-token");
+  const cookie = `atelier_session=${signSession(uid)}`;
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: any) => {
+    const s = String(url);
+    if (s.includes("api.github.com/user/repos")) {
+      return new Response(JSON.stringify([
+        { id: 1, full_name: "carol/app", default_branch: "main", private: false },
+        { id: 2, full_name: "carol/secret", default_branch: "trunk", private: true },
+      ]), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("nope", { status: 404 });
+  }) as typeof fetch;
+  t.after(() => { globalThis.fetch = realFetch; });
+
+  const res = await app.request("/repos", { headers: { Cookie: cookie } });
+  assert.equal(res.status, 200);
+  const repos = await res.json();
+  assert.deepEqual(repos, [
+    { id: 1, full_name: "carol/app", default_branch: "main", private: false },
+    { id: 2, full_name: "carol/secret", default_branch: "trunk", private: true },
+  ]);
+
+  // no cookie -> 401
+  assert.equal((await app.request("/repos")).status, 401);
+});
+
 test("supervisor /replies endpoint returns user_message events after a cursor", async () => {
   const { store, app } = setup();
   const id = store.createSession({ repo_url: "https://x.com/r", branch: "main", provider_id: "p", model_id: "m", task: "t", permission_mode: "auto", budgets: {}, session_token: "tok" });

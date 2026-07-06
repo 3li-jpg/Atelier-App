@@ -104,75 +104,77 @@ async function replyPermission(sid, permissionId, response) {
 }
 
 // ---- event mapping ----
+// opencode SSE events are {id, type, properties: {...}}. The interesting content
+// lives in `properties`. Mapped to Atelier event types (packages/schema).
+// ponytail: shapes confirmed against a real `opencode serve` run (umans-glm-5.2);
+// tighten further if other models emit different event names.
 
-function extractText(payload) {
-  // ponytail: message.updated/message.part.updated shape is ASSUMED.
-  // Guessed from AI SDK conventions: {parts:[{type:"text",text}]}, {content:[...]}, or {text}.
-  if (typeof payload.text === "string") return payload.text;
-  const parts = payload.parts ?? payload.content ?? [];
-  if (Array.isArray(parts)) {
-    const texts = parts
-      .filter((p) => p && (p.type === "text" || typeof p.text === "string"))
-      .map((p) => p.text ?? "")
-      .filter(Boolean);
-    if (texts.length) return texts.join("");
-  }
-  return JSON.stringify(payload);
-}
+// pure metadata/noise — drop entirely (was flooding the timeline as `harness`)
+const NOISE = new Set([
+  "plugin.added", "server.connected", "server.heartbeat", "catalog.updated",
+  "reference.updated", "integration.updated", "file.watcher.updated",
+  "session.updated", "message.updated", "message.part.updated", "message",
+]);
 
 function mapEvent(eventName, data, sid, state) {
   const type = data.type ?? eventName ?? "";
+  const p = data.properties ?? data;
 
-  // permission request -> question (kind: permission)
-  if (type === "permission.updated" || type === "permission") {
-    // ponytail: assuming permission.updated payload is
-    //   {id, type, sessionID, messageID, title, metadata, time}
-    const id = data.id ?? data.permissionID ?? data.permissionId ?? "";
-    const prompt = data.title ?? data.metadata?.title ?? "Approve tool?";
-    const options = ["approve", "reject"];
-    if (id) state.pendingRequests.push({ id, kind: "permission" });
-    return { atelier: { type: "question", payload: { prompt, options, request_id: id, kind: "permission" } } };
+  // session.diff with real hunks -> file_diff; empty -> drop
+  if (type === "session.diff") {
+    const diff = Array.isArray(p.diff) ? p.diff : [];
+    if (!diff.length) return {};
+    return { atelier: { type: "file_diff", payload: { paths: diff.map((d) => d.path ?? d.file ?? "?") } } };
   }
 
-  // question tool -> question (kind: question)
+  if (NOISE.has(type)) return {};
+
+  // streaming assistant text — the actual agent output
+  if (type === "message.part.delta") {
+    const text = p.delta ?? p.text ?? "";
+    return text ? { atelier: { type: "assistant_text", payload: { text } } } : {};
+  }
+
+  // tool call
+  if (type.startsWith("tool.")) {
+    return { atelier: { type: "tool_call", payload: { tool: p.name ?? p.tool ?? type } } };
+  }
+
+  // permission request -> approval question
+  if (type === "permission.updated" || type === "permission") {
+    const id = p.id ?? p.permissionID ?? "";
+    const prompt = p.title ?? p.metadata?.title ?? "Approve tool?";
+    if (id) state.pendingRequests.push({ id, kind: "permission" });
+    return { atelier: { type: "question", payload: { prompt, options: ["approve", "reject"], request_id: id, kind: "permission" } } };
+  }
+
+  // question tool -> question
   if (type === "question" || type === "question.updated") {
-    // ponytail: assuming question event payload is
-    //   {id/requestID, question, options:[...], sessionID, messageID}
-    const id = data.id ?? data.requestID ?? data.requestId ?? "";
-    const prompt = data.question ?? data.title ?? data.prompt ?? "";
-    const options = Array.isArray(data.options) ? data.options : [];
+    const id = p.id ?? p.requestID ?? "";
+    const prompt = p.question ?? p.title ?? p.prompt ?? "";
+    const options = Array.isArray(p.options) ? p.options : [];
     if (id) state.pendingRequests.push({ id, kind: "question" });
     return { atelier: { type: "question", payload: { prompt, options, request_id: id, kind: "question" } } };
   }
 
-  // assistant text
-  if (type === "message.updated" || type === "message.part.updated" || type === "message") {
-    const text = extractText(data);
-    return { atelier: { type: "assistant_text", payload: { text } } };
-  }
-
   // file edited
   if (type === "file.edited" || type === "file") {
-    // ponytail: assuming file.edited payload has a `path` field
-    const path = data.path ?? data.metadata?.path ?? data.file ?? "";
-    return { atelier: { type: "file_diff", payload: { path } } };
+    return { atelier: { type: "file_diff", payload: { path: p.path ?? p.file ?? "" } } };
   }
 
   // session idle -> completed
-  if (type === "session.idle" ||
-      (type === "session.status" && (data.status === "idle" || data.state === "idle"))) {
+  if (type === "session.idle" || (type === "session.status" && (p.status?.type === "idle" || p.status === "idle"))) {
     return { atelier: { type: "state_change", payload: { state: "completed" } }, stop: true };
   }
+  if (type === "session.status") return {}; // busy -> drop
 
   // session error
   if (type === "session.error") {
-    // ponytail: assuming session.error payload has `message` or `error`
-    const message = data.message ?? data.error ?? JSON.stringify(data);
-    return { atelier: { type: "error", payload: { message } } };
+    return { atelier: { type: "error", payload: { message: p.message ?? p.error ?? JSON.stringify(p) } } };
   }
 
-  // other -> harness
-  return { atelier: { type: "harness", payload: { event: type, data } } };
+  // unknown, non-noise -> harness (rare; keeps a breadcrumb without the full blob)
+  return { atelier: { type: "harness", payload: { event: type } } };
 }
 
 // ---- SSE consumer (manual parse, no EventSource dependency) ----

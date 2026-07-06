@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import type { Event, SessionState } from "@atelier/schema";
+import { encryptKey, decryptKey } from "./secrets.ts";
 
 export const bus = new EventEmitter(); // in-process fan-out; Redis Streams when >1 instance
 bus.setMaxListeners(0);
@@ -19,7 +20,7 @@ export class Store {
     this.db.exec(`
       create table if not exists users (
         id text primary key, github_id integer unique, login text, name text,
-        avatar_url text, created_at text);
+        avatar_url text, github_token_ciphertext blob, created_at text);
       create table if not exists providers (
         id text primary key, name text, base_url text, dialect text,
         key_ciphertext blob, models text, quirks text, created_at text, user_id text);
@@ -34,6 +35,7 @@ export class Store {
     `);
     safeAlter(this.db, "alter table providers add column user_id text");
     safeAlter(this.db, "alter table sessions add column user_id text");
+    safeAlter(this.db, "alter table users add column github_token_ciphertext blob");
   }
 
   upsertUser(githubId: number, login: string, name: string | null, avatarUrl: string | null): string {
@@ -51,6 +53,17 @@ export class Store {
 
   getUser(id: string): any {
     return this.db.prepare("select id,github_id,login,name,avatar_url from users where id = ?").get(id) ?? null;
+  }
+
+  storeUserToken(userId: string, plaintext: string): void {
+    this.db.prepare("update users set github_token_ciphertext = ? where id = ?")
+      .run(encryptKey(plaintext), userId);
+  }
+
+  getUserToken(userId: string): string | null {
+    const row: any = this.db.prepare("select github_token_ciphertext from users where id = ?").get(userId);
+    if (!row || !row.github_token_ciphertext) return null;
+    return decryptKey(row.github_token_ciphertext);
   }
 
   createProvider(p: { name: string; base_url: string; dialect: string; key_ciphertext: Buffer; models: unknown; quirks?: unknown; user_id?: string }) {

@@ -68,7 +68,7 @@ export function loginUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_OAUTH_CLIENT_ID ?? "",
     redirect_uri: oauthRedirectUri(),
-    scope: "read:user",
+    scope: "repo read:user",
     state,
   });
   return `https://github.com/login/oauth/authorize?${params}`;
