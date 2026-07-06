@@ -3,6 +3,6 @@
   "version": "0.0.1",
   "type": "module",
   "main": "src/index.ts",
-  "scripts": { "test": "node --experimental-strip-types --test src/index.test.ts" },
+  "scripts": { "test": "node --experimental-strip-types --test src/index.test.ts src/schema.test.ts" },
   "dependencies": { "zod": "^3.23.0" }
 }

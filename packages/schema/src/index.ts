@@ -29,8 +29,8 @@ export const TRANSITIONS: Record<SessionState, SessionState[]> = {
   cloning: ["setup", "failed", "cancelled"],
   setup: ["running", "failed", "cancelled"],
   running: ["awaiting_user", "finalizing", "failed", "cancelled"],
-  awaiting_user: ["running", "hibernated", "failed", "cancelled"],
-  hibernated: ["awaiting_user", "running", "failed", "cancelled"],
+  awaiting_user: ["running", "hibernated", "finalizing", "failed", "cancelled"],
+  hibernated: ["awaiting_user", "running", "finalizing", "failed", "cancelled"],
   finalizing: ["completed", "failed"],
   completed: [], failed: [], cancelled: [],
 };
