@@ -9,6 +9,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
   const { events, live } = useEventStream(id);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,14 +40,33 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
 
   const terminal = TERMINAL_STATES.has(state);
 
+  const cancel = async () => {
+    if (cancelling || terminal) return;
+    setCancelling(true);
+    try { await api.cancelSession(id); }
+    finally { setCancelling(false); }
+  };
+
   return (
     <div className="page">
       <header className="topbar">
         <button className="ghost" onClick={onBack}>← back</button>
         <h1 className="ellipsis">{session?.task ?? id.slice(0, 8)}</h1>
         {!terminal && <span className={`live-dot ${live ? "" : "off"}`} title={live ? "live" : "reconnecting"} />}
+        {!terminal && (
+          <button className="ghost" onClick={cancel} disabled={cancelling} title="cancel session">
+            {cancelling ? "…" : "✕"}
+          </button>
+        )}
       </header>
-      <div className={`state-banner tone-${stateTone(state)}`}>{state}</div>
+      <div className={`state-banner tone-${stateTone(state)}`}>
+        <span>{state}</span>
+        {session && (
+          <span className="muted small meta">
+            {session.repo_url.replace(/\.git$/, "").replace(/^https:\/\/github\.com\//, "")} · {session.branch} · {session.model_id}
+          </span>
+        )}
+      </div>
       <div className="timeline">
         {events.length === 0 && <p className="muted">waiting for events…</p>}
         {events.map((e) => (

@@ -139,11 +139,16 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .tone-idle { color: var(--muted); }
 
 .state-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.4rem 1rem;
   font-size: 0.8rem;
   border-bottom: 1px solid var(--border);
   text-transform: capitalize;
 }
+.state-banner .meta { text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .timeline { flex: 1; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
 
