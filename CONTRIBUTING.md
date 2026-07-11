@@ -21,8 +21,7 @@ Requires Node 24 (the API runs with `--experimental-strip-types`).
 - `packages/sandbox/` — `SandboxProvider` interface + Fly Machines client.
 - `infra/` — fly.toml files.
 
-See `README.md` for the deliberate-shortcut table and `handoff.md` for the current
-state and remaining plan — **the handoff is the source of truth and is kept current**.
+See `README.md` for the deliberate-shortcut table and current status.
 
 ## Conventions
 

@@ -1,6 +1,6 @@
 # Atelier
 
-Agentic coding from any browser (installable PWA, desktop + mobile) against **your own** model endpoints — agents run in Firecracker microVMs on your Fly.io account. Open source; self-hosting is a first-class path. See `Atelier-PRD-v2.md` (spec — note the PWA pivot in `handoff.md` supersedes its iOS sections), `Atelier-Setup-Implementation-Guide.md` (how), and `handoff.md` (current state + remaining plan).
+Agentic coding from any browser (installable PWA, desktop + mobile) against **your own** model endpoints — agents run in Firecracker microVMs on your Fly.io account. Open source; self-hosting is a first-class path.
 
 ## Layout
 
@@ -65,4 +65,4 @@ MIT — see [LICENSE](LICENSE). Self-hosting is encouraged.
 
 ## Status
 
-Most of the plan is implemented (see `handoff.md` for per-task status). Still open: Fly deploy (🔑), GitHub App repo/branch listing + webhooks (🔑 registration), Web Push notifications (VAPID 🔑), Stripe billing, and verifying the supervisor bridge against a real `opencode serve` run (T1 spike 🔑).
+Most of the plan is implemented. Still open: Fly deploy (🔑), GitHub App repo/branch listing + webhooks (🔑 registration), Web Push notifications (VAPID 🔑), Stripe billing, and verifying the supervisor bridge against a real `opencode serve` run (T1 spike 🔑).
