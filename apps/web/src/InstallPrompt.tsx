@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button } from "@atelier/ui";
 
 // T7.6 install affordance. Chrome/Android fire `beforeinstallprompt` (we capture
 // + show an Install button). iOS Safari never fires it, so we detect iOS and
@@ -44,8 +45,9 @@ export function InstallPrompt() {
 
   if (deferred) {
     return (
-      <button
-        className="ghost"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={async () => {
           await deferred.prompt();
           const choice = await deferred.userChoice;
@@ -54,7 +56,7 @@ export function InstallPrompt() {
         }}
       >
         Install
-      </button>
+      </Button>
     );
   }
 
@@ -62,7 +64,7 @@ export function InstallPrompt() {
     return showIOSHint ? (
       <span className="muted small">Share → Add to Home Screen</span>
     ) : (
-      <button className="ghost" onClick={() => setShowIOSHint(true)}>Install</button>
+      <Button variant="ghost" size="sm" onClick={() => setShowIOSHint(true)}>Install</Button>
     );
   }
 

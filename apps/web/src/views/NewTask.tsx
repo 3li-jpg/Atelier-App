@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ProviderSummary, type CreateSessionReq, type RepoSummary, type BranchSummary } from "../api.ts";
 import { validateNewTask, type FieldErrors } from "../lib.ts";
+import { Input, Select, Textarea, Button, Card } from "@atelier/ui";
 
 // T7.3: NewTask form. OAuth users browse their own repos via GET /repos;
 // AUTH_TOKEN/dev mode falls back to manual repo_url + branch entry.
@@ -72,86 +73,82 @@ export function NewTask({ onCreated }: { onCreated: (id: string) => void }) {
   }
 
   return (
-    <div className="form padded">
+    <Card className="padded" style={{ border: "none", background: "transparent", padding: "1rem", display: "flex", flexDirection: "column", gap: "0.7rem" }}>
       {useRepoPicker ? (
         <>
-          <label>Repo
-            <select
-              value={selectedFullName}
-              onChange={(e) => onRepoChange(e.target.value)}
-            >
-              <option value="">select…</option>
-              {repos.map((r) => <option key={r.id} value={r.full_name}>{r.full_name}</option>)}
-            </select>
-            {errors.repo_url && <span className="field-err">{errors.repo_url}</span>}
-          </label>
-          <label>Branch
-            <select
-              value={form.branch}
-              onChange={(e) => setForm({ ...form, branch: e.target.value })}
-            >
-              {(branches.length ? branches : [{ name: form.branch }]).map((b) => (
-                <option key={b.name} value={b.name}>{b.name}</option>
-              ))}
-            </select>
-            {errors.branch && <span className="field-err">{errors.branch}</span>}
-          </label>
+          <Select
+            label="Repo"
+            value={selectedFullName}
+            onChange={(e) => onRepoChange(e.target.value)}
+            error={errors.repo_url}
+          >
+            <option value="">select…</option>
+            {repos.map((r) => <option key={r.id} value={r.full_name}>{r.full_name}</option>)}
+          </Select>
+          <Select
+            label="Branch"
+            value={form.branch}
+            onChange={(e) => setForm({ ...form, branch: e.target.value })}
+            error={errors.branch}
+          >
+            {(branches.length ? branches : [{ name: form.branch }]).map((b) => (
+              <option key={b.name} value={b.name}>{b.name}</option>
+            ))}
+          </Select>
         </>
       ) : (
         <>
-          <label>Repo URL
-            <input
-              value={form.repo_url}
-              onChange={(e) => setForm({ ...form, repo_url: e.target.value })}
-              placeholder="https://github.com/owner/repo"
-            />
-            {errors.repo_url && <span className="field-err">{errors.repo_url}</span>}
-          </label>
-          <label>Branch
-            <input
-              value={form.branch}
-              onChange={(e) => setForm({ ...form, branch: e.target.value })}
-              placeholder="main"
-            />
-            {errors.branch && <span className="field-err">{errors.branch}</span>}
-          </label>
+          <Input
+            label="Repo URL"
+            value={form.repo_url}
+            onChange={(e) => setForm({ ...form, repo_url: e.target.value })}
+            placeholder="https://github.com/owner/repo"
+            error={errors.repo_url}
+          />
+          <Input
+            label="Branch"
+            value={form.branch}
+            onChange={(e) => setForm({ ...form, branch: e.target.value })}
+            placeholder="main"
+            error={errors.branch}
+          />
         </>
       )}
-      <label>Provider
-        <select
-          value={form.provider_id}
-          onChange={(e) => setForm({ ...form, provider_id: e.target.value, model_id: "" })}
+      <Select
+        label="Provider"
+        value={form.provider_id}
+        onChange={(e) => setForm({ ...form, provider_id: e.target.value, model_id: "" })}
+        error={errors.provider_id}
+      >
+        <option value="">select…</option>
+        {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </Select>
+      {selected && (
+        <Select
+          label="Model"
+          value={form.model_id}
+          onChange={(e) => setForm({ ...form, model_id: e.target.value })}
+          error={errors.model_id}
         >
           <option value="">select…</option>
-          {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        {errors.provider_id && <span className="field-err">{errors.provider_id}</span>}
-      </label>
-      {selected && (
-        <label>Model
-          <select value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })}>
-            <option value="">select…</option>
-            {selected.models.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
-          </select>
-          {errors.model_id && <span className="field-err">{errors.model_id}</span>}
-        </label>
+          {selected.models.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
+        </Select>
       )}
-      <label>Task
-        <textarea
-          rows={4}
-          value={form.task}
-          onChange={(e) => setForm({ ...form, task: e.target.value })}
-          placeholder="Describe what the agent should do…"
-        />
-        {errors.task && <span className="field-err">{errors.task}</span>}
-      </label>
+      <Textarea
+        label="Task"
+        rows={4}
+        value={form.task}
+        onChange={(e) => setForm({ ...form, task: e.target.value })}
+        placeholder="Describe what the agent should do…"
+        error={errors.task}
+      />
       {err && <div className="error">{err}</div>}
-      <button className="primary" disabled={submitting} onClick={submit}>
+      <Button variant="primary" disabled={submitting} onClick={submit} loading={submitting}>
         {submitting ? "starting…" : "Start session"}
-      </button>
+      </Button>
       {useRepoPicker
         ? <p className="muted small">repos listed from your GitHub account; the agent clones+pushes as you.</p>
         : <p className="muted small">repo/branch are typed manually for now — listing arrives with the GitHub App (T5).</p>}
-    </div>
+    </Card>
   );
 }

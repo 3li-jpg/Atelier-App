@@ -1,6 +1,7 @@
 // ponytail: view-state navigation (no router yet). Add history routing + deep
 // links when PWA web-push lands (handoff T7.6) — that's what needs real URLs.
 import { useState } from "react";
+import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { SessionsList } from "./views/SessionsList.tsx";
 import { SessionView } from "./views/SessionView.tsx";
 import { NewTask } from "./views/NewTask.tsx";
@@ -8,6 +9,7 @@ import { Providers } from "./views/Providers.tsx";
 import { InstallPrompt } from "./InstallPrompt.tsx";
 import { AuthBar } from "./AuthBar.tsx";
 import { Onboarding } from "./onboarding/Onboarding.tsx";
+import { pageTransition, tapScale } from "./motion.ts";
 
 type View =
   | { kind: "list" }
@@ -35,50 +37,94 @@ export function App() {
   const authError = new URLSearchParams(window.location.search).get("auth_error");
 
   if (view.kind === "session") {
-    return <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />;
+    return (
+      <MotionConfig reducedMotion="user">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="session"
+            variants={pageTransition}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            style={{ height: "100%" }}
+          >
+            <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />
+          </motion.div>
+        </AnimatePresence>
+      </MotionConfig>
+    );
   }
 
   if (view.kind === "onboarding") {
     return (
-      <Onboarding
-        onComplete={(sessionId) => {
-          try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
-          setView({ kind: "session", id: sessionId });
-        }}
-        onSkip={() => {
-          try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
-          setView({ kind: "list" });
-        }}
-      />
+      <MotionConfig reducedMotion="user">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="onboarding"
+            variants={pageTransition}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            style={{ height: "100%" }}
+          >
+            <Onboarding
+              onComplete={(sessionId) => {
+                try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
+                setView({ kind: "session", id: sessionId });
+              }}
+              onSkip={() => {
+                try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
+                setView({ kind: "list" });
+              }}
+            />
+          </motion.div>
+        </AnimatePresence>
+      </MotionConfig>
     );
   }
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <h1>Atelier</h1>
-        <div className="topbar-right">
-          <InstallPrompt />
-          <AuthBar />
-        </div>
-      </header>
-      {authError && <div className="state-banner tone-bad">login failed: {authError}</div>}
-      <nav className="nav">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className={view.kind === t.id ? "active" : "ghost"}
-            onClick={() => setView({ kind: t.id })}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
-      <main className="content">
-        {view.kind === "list" && <SessionsList onOpen={(id) => setView({ kind: "session", id })} />}
-        {view.kind === "new" && <NewTask onCreated={(id) => setView({ kind: "session", id })} />}
-        {view.kind === "providers" && <Providers />}
-      </main>
-    </div>
+    <MotionConfig reducedMotion="user">
+      <div className="page">
+        <header className="topbar">
+          <h1>Atelier</h1>
+          <div className="topbar-right">
+            <InstallPrompt />
+            <AuthBar />
+          </div>
+        </header>
+        {authError && <div className="state-banner tone-bad">login failed: {authError}</div>}
+        <nav className="nav">
+          {TABS.map((t) => (
+            <motion.button
+              key={t.id}
+              className={view.kind === t.id ? "active" : "ghost"}
+              onClick={() => setView({ kind: t.id })}
+              variants={tapScale}
+              initial="rest"
+              whileHover="hover"
+              whileTap="pressed"
+            >
+              {t.label}
+            </motion.button>
+          ))}
+        </nav>
+        <main className="content">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={view.kind}
+              variants={pageTransition}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+            >
+              {view.kind === "list" && <SessionsList onOpen={(id) => setView({ kind: "session", id })} />}
+              {view.kind === "new" && <NewTask onCreated={(id) => setView({ kind: "session", id })} />}
+              {view.kind === "providers" && <Providers />}
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
+    </MotionConfig>
   );
 }

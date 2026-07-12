@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ProviderSummary, type ProviderCreate, type ValidationResult } from "../api.ts";
 import { DIALECTS, validateProviderForm, type FieldErrors } from "../lib.ts";
+import { Input, Select, Button, Card, Badge, Skeleton } from "@atelier/ui";
 
 // T7.4: Providers screen — list, add, and validate (FR-1.3: cheap completion +
 // tool-call round-trip; shows latency + tool-call fidelity).
@@ -19,19 +20,24 @@ export function Providers() {
       <AddProvider onSaved={load} />
       {err && <div className="error padded">{err}</div>}
       {providers === null ? (
-        <p className="muted padded">loading…</p>
+        <div className="padded" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <Skeleton height="4rem" radius="var(--radius)" />
+          <Skeleton height="4rem" radius="var(--radius)" />
+        </div>
       ) : providers.length === 0 ? (
         <p className="muted padded">no providers yet</p>
       ) : (
         <ul className="session-list padded">
           {providers.map((p) => (
-            <li key={p.id} className="provider-card">
-              <div className="row-top">
-                <strong>{p.name}</strong>
-                <span className="muted small">{p.dialect}</span>
-              </div>
-              <div className="muted small">{p.base_url}</div>
-              <div className="muted small">models: {p.models.map((m) => m.id).join(", ")}</div>
+            <li key={p.id}>
+              <Card className="provider-card">
+                <div className="row-top">
+                  <strong>{p.name}</strong>
+                  <Badge tone="accent">{p.dialect}</Badge>
+                </div>
+                <div className="muted small">{p.base_url}</div>
+                <div className="muted small">models: {p.models.map((m) => m.id).join(", ")}</div>
+              </Card>
             </li>
           ))}
         </ul>
@@ -75,28 +81,43 @@ function AddProvider({ onSaved }: { onSaved: () => void }) {
   });
 
   return (
-    <div className="form padded">
-      <label>Name
-        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="My OpenRouter" />
-        {errors.name && <span className="field-err">{errors.name}</span>}
-      </label>
-      <label>Base URL
-        <input value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://openrouter.ai/api/v1" />
-        {errors.base_url && <span className="field-err">{errors.base_url}</span>}
-      </label>
-      <label>Dialect
-        <select value={form.dialect} onChange={(e) => setForm({ ...form, dialect: e.target.value })}>
-          {DIALECTS.map((d) => <option key={d} value={d}>{d}</option>)}
-        </select>
-      </label>
-      <label>Model ID
-        <input value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })} placeholder="anthropic/claude-3.5-sonnet" />
-        {errors.model_id && <span className="field-err">{errors.model_id}</span>}
-      </label>
-      <label>API key
-        <input type="password" value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} placeholder="sk-…" />
-        {errors.api_key && <span className="field-err">{errors.api_key}</span>}
-      </label>
+    <Card className="padded" style={{ border: "none", background: "transparent", padding: "1rem", display: "flex", flexDirection: "column", gap: "0.7rem" }}>
+      <Input
+        label="Name"
+        value={form.name}
+        onChange={(e) => setForm({ ...form, name: e.target.value })}
+        placeholder="My OpenRouter"
+        error={errors.name}
+      />
+      <Input
+        label="Base URL"
+        value={form.base_url}
+        onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+        placeholder="https://openrouter.ai/api/v1"
+        error={errors.base_url}
+      />
+      <Select
+        label="Dialect"
+        value={form.dialect}
+        onChange={(e) => setForm({ ...form, dialect: e.target.value })}
+      >
+        {DIALECTS.map((d) => <option key={d} value={d}>{d}</option>)}
+      </Select>
+      <Input
+        label="Model ID"
+        value={form.model_id}
+        onChange={(e) => setForm({ ...form, model_id: e.target.value })}
+        placeholder="anthropic/claude-3.5-sonnet"
+        error={errors.model_id}
+      />
+      <Input
+        label="API key"
+        type="password"
+        value={form.api_key}
+        onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+        placeholder="sk-…"
+        error={errors.api_key}
+      />
       {err && <div className="error">{err}</div>}
       {result && (
         <div className={`validate-result ${result.ok ? "ok" : "bad"}`}>
@@ -108,9 +129,9 @@ function AddProvider({ onSaved }: { onSaved: () => void }) {
         </div>
       )}
       <div className="form-actions">
-        <button onClick={validate} disabled={busy}>Validate</button>
-        <button className="primary" onClick={save} disabled={busy}>{busy ? "…" : "Save"}</button>
+        <Button onClick={validate} disabled={busy} loading={busy && !result}>Validate</Button>
+        <Button variant="primary" onClick={save} disabled={busy} loading={busy}>{busy ? "…" : "Save"}</Button>
       </div>
-    </div>
+    </Card>
   );
 }

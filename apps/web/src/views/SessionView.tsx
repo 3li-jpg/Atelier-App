@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { api, type SessionDetail } from "../api.ts";
 import { useEventStream } from "../useEventStream.ts";
 import { EventCell } from "../components/EventCell.tsx";
 import { FileTree, type FileEntry } from "../components/FileTree.tsx";
 import { DiffPanel } from "../components/DiffPanel.tsx";
 import { stateTone, TERMINAL_STATES } from "../lib.ts";
+import { fadeIn, hoverLift, tapScale } from "../motion.ts";
 import "./session-view.css";
 
 type MobileTab = "files" | "diff" | "chat";
@@ -180,18 +182,42 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
     <div className="ide-shell">
       {/* ── Topbar ── */}
       <header className="ide-topbar">
-        <button className="ghost" onClick={onBack}>← back</button>
+        <motion.button
+          className="ghost"
+          onClick={onBack}
+          variants={tapScale}
+          initial="rest"
+          whileHover="hover"
+          whileTap="pressed"
+        >← back</motion.button>
         <h1 className="ellipsis">{session?.task ?? id.slice(0, 8)}</h1>
         {!terminal && <span className={`live-dot ${live ? "" : "off"}`} title={live ? "live" : "reconnecting"} />}
         {!terminal && (
-          <button className="ghost" title="finish: commit, push & shut down" onClick={() => api.finishSession(id).catch(() => {})}>
+          <motion.button
+            className="ghost"
+            title="finish: commit, push & shut down"
+            onClick={() => api.finishSession(id).catch(() => {})}
+            variants={tapScale}
+            initial="rest"
+            whileHover="hover"
+            whileTap="pressed"
+          >
             finish
-          </button>
+          </motion.button>
         )}
         {!terminal && (
-          <button className="ghost" onClick={cancel} disabled={cancelling} title="cancel session">
+          <motion.button
+            className="ghost"
+            onClick={cancel}
+            disabled={cancelling}
+            title="cancel session"
+            variants={tapScale}
+            initial="rest"
+            whileHover="hover"
+            whileTap="pressed"
+          >
             {cancelling ? "…" : "✕"}
-          </button>
+          </motion.button>
         )}
       </header>
 
@@ -203,18 +229,30 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
 
       {/* ── Mobile tabs ── */}
       <div className="ide-mobile-tabs">
-        <button
+        <motion.button
           className={`ide-mobile-tab ${mobileTab === "files" ? "active" : ""}`}
           onClick={() => setMobileTab("files")}
-        >Files</button>
-        <button
+          variants={tapScale}
+          initial="rest"
+          whileHover="hover"
+          whileTap="pressed"
+        >Files</motion.button>
+        <motion.button
           className={`ide-mobile-tab ${mobileTab === "diff" ? "active" : ""}`}
           onClick={() => setMobileTab("diff")}
-        >Diff</button>
-        <button
+          variants={tapScale}
+          initial="rest"
+          whileHover="hover"
+          whileTap="pressed"
+        >Diff</motion.button>
+        <motion.button
           className={`ide-mobile-tab ${mobileTab === "chat" ? "active" : ""}`}
           onClick={() => setMobileTab("chat")}
-        >Chat</button>
+          variants={tapScale}
+          initial="rest"
+          whileHover="hover"
+          whileTap="pressed"
+        >Chat</motion.button>
       </div>
 
       {/* ── Three-panel layout ── */}
@@ -247,14 +285,23 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
                   <p className="muted" style={{ padding: "0.5rem" }}>waiting for events…</p>
                 )}
                 {timelineItems.map(({ e, idx, label, dotClass, clickable, filePath }) => (
-                  <div key={idx} className="ide-timeline-item ide-fade-in">
+                  <motion.div
+                    key={idx}
+                    className="ide-timeline-item"
+                    variants={fadeIn}
+                    initial="hidden"
+                    animate="visible"
+                  >
                     <div className="ide-timeline-marker">
                       <span className={`ide-timeline-dot ${dotClass}`} />
                       <span className="ide-timeline-line" />
                     </div>
                     <div className="ide-timeline-content">
-                      <span
+                      <motion.span
                         className={`ide-timeline-text ${clickable ? "clickable" : ""}`}
+                        variants={clickable ? hoverLift : undefined}
+                        initial={clickable ? "rest" : false}
+                        whileHover={clickable ? "hover" : undefined}
                         onClick={() => {
                           if (filePath) {
                             setSelectedFile(filePath);
@@ -263,12 +310,12 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
                         }}
                       >
                         {label}
-                      </span>
+                      </motion.span>
                       <span className="muted small">
                         {new Date(e.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </>
@@ -343,7 +390,14 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
               placeholder={terminal ? "session ended" : awaitingUser ? "reply or steer…" : "reply…"}
               disabled={terminal}
             />
-            <button type="submit" disabled={terminal || sending || !reply.trim()}>send</button>
+            <motion.button
+              type="submit"
+              disabled={terminal || sending || !reply.trim()}
+              variants={tapScale}
+              initial="rest"
+              whileHover="hover"
+              whileTap="pressed"
+            >send</motion.button>
           </form>
         </div>
       </div>

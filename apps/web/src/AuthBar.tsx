@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, setAuthToken } from "./api.ts";
+import { Button, Input } from "@atelier/ui";
 
 type AuthStatus = {
   oauth: boolean;
@@ -25,13 +26,13 @@ export function AuthBar() {
     return (
       <div className="authbar">
         <span className="muted small">{status.user?.login ?? "owner"}</span>
-        <button className="ghost" onClick={async () => { await api.logout(); load(); }}>logout</button>
+        <Button variant="ghost" size="sm" onClick={async () => { await api.logout(); load(); }}>logout</Button>
       </div>
     );
   }
 
   if (status.oauth) {
-    return <button className="ghost" onClick={() => { window.location.href = "/auth/github/login"; }}>Login</button>;
+    return <Button variant="ghost" size="sm" onClick={() => { window.location.href = "/auth/github/login"; }}>Login</Button>;
   }
 
   return (
@@ -45,13 +46,14 @@ export function AuthBar() {
         window.location.reload();
       }}
     >
-      <input
+      <Input
         value={tok}
         onChange={(e) => setTok(e.target.value)}
         placeholder="AUTH_TOKEN"
         type="password"
+        className="authbar-input"
       />
-      <button type="submit" className="ghost">set</button>
+      <Button type="submit" variant="ghost" size="sm">set</Button>
     </form>
   );
 }

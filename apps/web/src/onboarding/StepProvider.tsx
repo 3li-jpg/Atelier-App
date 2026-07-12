@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { api, type ProviderCreate, type ValidationResult } from "../api.ts";
 import { DIALECTS, validateProviderForm, type FieldErrors } from "../lib.ts";
 import { PROVIDER_PRESETS, type ProviderPreset } from "./presets.ts";
+import { hoverLift, tapScale } from "../motion.ts";
 
 // Step 2: BYOK. User picks a preset (or custom), fills in API key, and can
 // test the key before saving. Mirrors the AddProvider form in Providers.tsx
@@ -73,14 +75,18 @@ export function StepProvider({ onDone, onBack }: {
       {/* Preset cards */}
       <div className="onb-preset-grid">
         {PROVIDER_PRESETS.map((p) => (
-          <button
+          <motion.button
             key={p.id}
             className={`onb-preset-card ${presetId === p.id ? "selected" : ""}`}
             onClick={() => selectPreset(p)}
+            variants={hoverLift}
+            initial="rest"
+            whileHover="hover"
+            whileTap="hover"
           >
             <span className="preset-label">{p.label}</span>
             <span className="preset-desc">{p.description}</span>
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -148,11 +154,17 @@ export function StepProvider({ onDone, onBack }: {
       )}
 
       <div className="onb-nav">
-        <button className="ghost" onClick={onBack}>← Back</button>
-        <button onClick={testKey} disabled={busy}>Test key</button>
-        <button className="primary" onClick={save} disabled={busy}>
+        <motion.button className="ghost" onClick={onBack}
+          variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+        >← Back</motion.button>
+        <motion.button onClick={testKey} disabled={busy}
+          variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+        >Test key</motion.button>
+        <motion.button className="primary" onClick={save} disabled={busy}
+          variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+        >
           {busy ? "…" : "Save & continue"}
-        </button>
+        </motion.button>
       </div>
     </div>
   );
