@@ -1,5 +1,5 @@
 // LocalSandboxProvider — runs the supervisor as a local subprocess (the agent
-// runs on the host via the installed `opencode`, no Fly microVM). Selected when
+// runs on the host via the installed `hermes`, no Fly microVM). Selected when
 // SANDBOX=local. ponytail: no process isolation (it's your own machine), no
 // suspend/resume (no-op), and the process group is killed on destroy.
 import { spawn } from "node:child_process";
@@ -24,7 +24,7 @@ export class LocalSandboxProvider implements SandboxProvider {
       SKIP_FIREWALL: "1",
       RUNNER_BIN: RUNNER_DIR,
       WORKSPACE: workspace,
-      PATH: `${process.env.HOME ?? ""}/.opencode/bin:${process.env.PATH ?? ""}`,
+      PATH: `${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
     };
     const child = spawn("bash", [`${RUNNER_DIR}/supervisor.sh`], {
       env, detached: true, stdio: ["ignore", "pipe", "pipe"],
