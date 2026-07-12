@@ -1,0 +1,250 @@
+/* Onboarding flow styles — midnight terminal violet.
+   Imported as a separate stylesheet so styles.css is untouched.
+   Uses the same CSS custom properties from styles.css (:root tokens). */
+
+.onboarding {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Progress indicator ---- */
+.onb-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.2rem 1rem 0.8rem;
+}
+.onb-step-dot {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: color 0.2s var(--ease-out, ease);
+}
+.onb-step-dot.active { color: var(--accent); font-weight: 600; }
+.onb-step-dot.done { color: var(--ok); }
+.onb-step-dot .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  border: 1.5px solid currentColor;
+  transition: background 0.2s ease;
+}
+.onb-step-dot.active .dot { background: var(--accent); }
+.onb-step-dot.done .dot { background: var(--ok); }
+.onb-step-bar {
+  width: 24px; height: 1px; background: var(--border);
+}
+
+/* ---- Step container ---- */
+.onb-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 1rem 1rem;
+  animation: onb-fade-in 0.3s var(--ease-out, ease);
+}
+@keyframes onb-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .onb-step { animation: none; }
+}
+
+.onb-step-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0 0 0.3rem;
+}
+.onb-step-sub {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 0 1.2rem;
+}
+
+/* ---- Auth step ---- */
+.onb-auth-mode-toggle {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.onb-auth-mode-toggle button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.onb-auth-mode-toggle button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.onb-oauth-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+/* ---- Provider presets ---- */
+.onb-preset-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.onb-preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+.onb-preset-card:hover { border-color: var(--accent); }
+.onb-preset-card.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+}
+.onb-preset-card .preset-label { font-weight: 550; font-size: 0.9rem; }
+.onb-preset-card .preset-desc { font-size: 0.78rem; color: var(--muted); }
+
+/* ---- Validate result (reused pattern from Providers.tsx) ---- */
+.onb-validate-result {
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.5rem;
+}
+.onb-validate-result.ok { border-color: var(--ok); color: var(--ok); }
+.onb-validate-result.bad { border-color: var(--bad); color: var(--bad); }
+
+/* ---- Repo step ---- */
+.onb-repo-search {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  margin-bottom: 0.5rem;
+  width: 100%;
+}
+.onb-repo-search:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+.onb-repo-list {
+  list-style: none;
+  margin: 0; padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.onb-repo-item {
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.onb-repo-item:hover { border-color: var(--accent); }
+.onb-repo-item.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+}
+.onb-repo-item .repo-name { font-weight: 500; font-size: 0.88rem; }
+.onb-repo-item .repo-branch { font-size: 0.75rem; color: var(--muted); }
+
+.onb-repo-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.8rem;
+}
+.onb-repo-toggle button {
+  flex: 1;
+  font-size: 0.8rem;
+  padding: 0.35rem;
+}
+
+/* ---- Task step ---- */
+.onb-task-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+.onb-task-example {
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--muted);
+  transition: border-color 0.15s, color 0.15s;
+}
+.onb-task-example:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ---- Nav buttons ---- */
+.onb-nav {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 1rem;
+}
+.onb-nav button { flex: 1; }
+.onb-nav .onb-skip {
+  flex: 0 0 auto;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+/* ---- Summary card (final review before launch) ---- */
+.onb-summary {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.8rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.onb-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.onb-summary-row .label { color: var(--muted); }
+.onb-summary-row .value { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

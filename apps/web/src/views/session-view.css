@@ -1,0 +1,506 @@
+/* IDE-lite workspace layout — scoped to .ide-* to avoid colliding with
+   styles.css. Uses the same CSS variables defined in styles.css :root. */
+
+.ide-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* ── Topbar ── */
+.ide-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: color-mix(in oklab, var(--bg) 90%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ide-topbar h1 {
+  font-size: 0.95rem;
+  margin: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── State banner ── */
+.ide-statebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+.ide-statebar .meta {
+  text-transform: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Mobile tabs ── */
+.ide-mobile-tabs {
+  display: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+.ide-mobile-tab {
+  flex: 1;
+  padding: 0.5rem;
+  text-align: center;
+  font-size: 0.82rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.ide-mobile-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Panels ── */
+.ide-panels {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+.ide-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.ide-files {
+  width: 220px;
+  min-width: 160px;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+.ide-middle {
+  flex: 1;
+  min-width: 0;
+}
+.ide-chat {
+  width: 420px;
+  min-width: 300px;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+/* ── Panel headers ── */
+.ide-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-shrink: 0;
+}
+.ide-panel-count {
+  margin-left: auto;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── File tree ── */
+.ide-file-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.3rem 0;
+  min-height: 0;
+}
+.ide-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--text);
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-mono);
+}
+.ide-tree-item:hover {
+  background: var(--panel-2);
+}
+.ide-tree-item.selected {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  color: var(--accent);
+}
+.ide-tree-item.dir {
+  font-weight: 500;
+}
+.ide-tree-icon {
+  width: 1rem;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+.ide-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ide-file-status {
+  margin-left: auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0 0.3rem;
+  border-radius: 3px;
+}
+.ide-file-status.added { color: var(--ok); }
+.ide-file-status.modified { color: var(--warn); }
+.ide-file-status.deleted { color: var(--bad); }
+.ide-tree-empty {
+  padding: 1rem 0.6rem;
+  text-align: center;
+  font-size: 0.82rem;
+}
+
+/* ── Diff panel ── */
+.ide-diff-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+.ide-diff-path {
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ide-diff-stats {
+  margin-left: auto;
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+.ide-diff-stats .add { color: var(--ok); }
+.ide-diff-stats .del { color: var(--bad); }
+.ide-diff-body {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+.ide-diff-line {
+  display: flex;
+  padding: 0 0.5rem;
+  white-space: pre;
+  line-height: 1.5;
+}
+.ide-diff-line.add {
+  background: color-mix(in srgb, var(--ok) 8%, transparent);
+}
+.ide-diff-line.del {
+  background: color-mix(in srgb, var(--bad) 8%, transparent);
+}
+.ide-diff-line.hunk {
+  color: var(--accent);
+  padding: 0.3rem 0.5rem;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+.ide-diff-line.header {
+  color: var(--muted);
+  padding: 0.2rem 0.5rem;
+}
+.ide-diff-lineno {
+  width: 3rem;
+  text-align: right;
+  padding-right: 0.6rem;
+  color: var(--muted);
+  user-select: none;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.ide-diff-sign {
+  width: 1rem;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.ide-diff-content {
+  flex: 1;
+}
+.ide-diff-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* ── Timeline ── */
+.ide-timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0.75rem;
+  min-height: 0;
+}
+.ide-timeline-item {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  font-size: 0.82rem;
+}
+.ide-timeline-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  padding-top: 0.15rem;
+}
+.ide-timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.ide-timeline-dot.ok { background: var(--ok); }
+.ide-timeline-dot.bad { background: var(--bad); }
+.ide-timeline-dot.warn { background: var(--warn); }
+.ide-timeline-dot.accent { background: var(--accent); }
+.ide-timeline-line {
+  width: 1px;
+  flex: 1;
+  background: var(--border);
+  margin-top: 2px;
+  min-height: 0.5rem;
+}
+.ide-timeline-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.ide-timeline-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ide-timeline-text.clickable {
+  cursor: pointer;
+  color: var(--accent);
+}
+.ide-timeline-text.clickable:hover {
+  text-decoration: underline;
+}
+
+/* ── PR status ── */
+.ide-pr-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.ide-pr-status a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.ide-pr-status a:hover {
+  text-decoration: underline;
+}
+
+/* ── Chat panel ── */
+.ide-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+/* ── Progress bar ── */
+.ide-progress {
+  height: 2px;
+  background: var(--border);
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+.ide-progress-bar {
+  position: absolute;
+  height: 100%;
+  background: var(--accent);
+  animation: ide-progress-slide 1.5s infinite ease-in-out;
+}
+@keyframes ide-progress-slide {
+  0% { left: -30%; width: 30%; }
+  50% { left: 50%; width: 40%; }
+  100% { left: 100%; width: 30%; }
+}
+
+/* ── Streaming indicators ── */
+.ide-typing {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.6rem;
+}
+.ide-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: ide-bounce 1.4s infinite ease-in-out;
+}
+.ide-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.ide-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes ide-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+.ide-fade-in {
+  animation: ide-fade-in 0.3s ease-out;
+}
+@keyframes ide-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Inline approval / steering ── */
+.ide-approval {
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  animation: ide-pulse-border 2s infinite;
+}
+@keyframes ide-pulse-border {
+  0%, 100% { border-color: var(--warn); }
+  50% { border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); }
+}
+.ide-steer-input {
+  display: flex;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+.ide-steer-input input {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.3rem 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+}
+.ide-steer-input input:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+.ide-steer-input button {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+}
+.ide-steer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: color-mix(in srgb, var(--warn) 8%, var(--bg));
+  border-top: 1px solid var(--warn);
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+.ide-steer-bar .ide-steer-actions {
+  display: flex;
+  gap: 0.3rem;
+}
+
+/* ── Composer ── */
+.ide-composer {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  background: color-mix(in oklab, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ide-composer.awaiting {
+  border-top-color: var(--warn);
+}
+.ide-composer input {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+}
+.ide-composer input:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Mobile responsive ── */
+@media (max-width: 1023px) {
+  .ide-mobile-tabs {
+    display: flex;
+  }
+  .ide-files,
+  .ide-middle,
+  .ide-chat {
+    width: 100%;
+    min-width: 0;
+    border: none;
+  }
+  .ide-panels {
+    position: relative;
+  }
+  .ide-panel {
+    position: absolute;
+    inset: 0;
+  }
+  .ide-panel:not(.active) {
+    display: none;
+  }
+}

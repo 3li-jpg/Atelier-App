@@ -101,6 +101,16 @@ export const api = {
   getAuthStatus: () =>
     req<{ oauth: boolean; authed: boolean; owner: boolean; user: { login: string } | null }>("/auth/status"),
   logout: () => req<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  signup: (email: string, password: string) =>
+    req<{ ok: boolean; user: { login: string }; session_token: string }>("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  login: (email: string, password: string) =>
+    req<{ ok: boolean; user: { login: string }; session_token: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
   listRepos: () => req<RepoSummary[]>("/repos"),
   listBranches: (owner: string, repo: string) =>
     req<BranchSummary[]>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`),

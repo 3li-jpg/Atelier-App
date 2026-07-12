@@ -7,8 +7,14 @@ import { NewTask } from "./views/NewTask.tsx";
 import { Providers } from "./views/Providers.tsx";
 import { InstallPrompt } from "./InstallPrompt.tsx";
 import { AuthBar } from "./AuthBar.tsx";
+import { Onboarding } from "./onboarding/Onboarding.tsx";
 
-type View = { kind: "list" } | { kind: "new" } | { kind: "providers" } | { kind: "session"; id: string };
+type View =
+  | { kind: "list" }
+  | { kind: "new" }
+  | { kind: "providers" }
+  | { kind: "session"; id: string }
+  | { kind: "onboarding" };
 
 const TABS: { id: "list" | "new" | "providers"; label: string }[] = [
   { id: "list", label: "Sessions" },
@@ -16,12 +22,35 @@ const TABS: { id: "list" | "new" | "providers"; label: string }[] = [
   { id: "providers", label: "Providers" },
 ];
 
+const ONBOARDED_KEY = "atelier:onboarded";
+
 export function App() {
-  const [view, setView] = useState<View>({ kind: "list" });
+  const [view, setView] = useState<View>(() => {
+    // Show onboarding for first-time users who haven't completed it.
+    try {
+      if (!localStorage.getItem(ONBOARDED_KEY)) return { kind: "onboarding" };
+    } catch { /* private mode */ }
+    return { kind: "list" };
+  });
   const authError = new URLSearchParams(window.location.search).get("auth_error");
 
   if (view.kind === "session") {
     return <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />;
+  }
+
+  if (view.kind === "onboarding") {
+    return (
+      <Onboarding
+        onComplete={(sessionId) => {
+          try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
+          setView({ kind: "session", id: sessionId });
+        }}
+        onSkip={() => {
+          try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
+          setView({ kind: "list" });
+        }}
+      />
+    );
   }
 
   return (

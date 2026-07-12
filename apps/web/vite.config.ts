@@ -14,6 +14,7 @@ export default defineConfig({
       "/health": "http://localhost:3000",
       "/sessions": "http://localhost:3000",
       "/providers": "http://localhost:3000",
+      "/repos": "http://localhost:3000",
       "/internal": "http://localhost:3000",
       "/webhooks": "http://localhost:3000",
     },

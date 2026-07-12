@@ -73,6 +73,17 @@ export function validateProviderForm(input: {
   return e;
 }
 
+export function validateAuthForm(input: {
+  email: string; password: string;
+}): FieldErrors {
+  const e: FieldErrors = {};
+  if (!input.email.trim()) e.email = "required";
+  else if (!/^.+@.+\..+$/.test(input.email.trim())) e.email = "invalid email";
+  if (!input.password) e.password = "required";
+  else if (input.password.length < 8) e.password = "min 8 characters";
+  return e;
+}
+
 export function validateNewTask(input: {
   repo_url: string; branch: string; provider_id: string; model_id: string; task: string;
 }): FieldErrors {
