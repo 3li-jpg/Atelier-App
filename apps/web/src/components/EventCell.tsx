@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { Event } from "@atelier/schema";
 import { classifyEvent, stateTone } from "../lib.ts";
+import { DiffViewer } from "./DiffViewer.tsx";
+import { ToolFeed } from "./ToolFeed.tsx";
 
 // T7.2: typed event cells. tool_call collapsed w/ exit-code badge; question
 // renders quick-reply chips that POST /sessions/:id/reply. Payload shapes come
@@ -41,11 +43,12 @@ export function EventCell({ event, onReply }: { event: Event; onReply: (text: st
 
   if (variant === "tool_call") {
     return (
-      <ToolCallCell
+      <ToolFeed
         tool={String(p.tool ?? p.name ?? "tool")}
-        exitCode={p.exit_code ?? p.exitcode}
+        status={typeof p.status === "string" ? p.status : "done"}
+        exitCode={typeof (p.exit_code ?? p.exitcode) === "number" ? Number(p.exit_code ?? p.exitcode) : undefined}
+        duration={typeof p.duration === "number" ? p.duration : undefined}
         summary={p.summary ?? p.args ?? p.output}
-        ts={ts}
       />
     );
   }
@@ -78,28 +81,18 @@ export function EventCell({ event, onReply }: { event: Event; onReply: (text: st
 
   if (variant === "diff") {
     // Render path(s) always; if the bridge forwarded per-file content (hunks/
-    // patch), show it in an expandable <details> (audit M2). Full syntax-
-    // highlighted diff viewer still pending T1 + a server-side parser.
+    // patch), show it in an expandable <details> via DiffViewer.
     const files = (Array.isArray(p.files) ? p.files : []) as { path?: string; content?: unknown }[];
     const label = String(p.path ?? p.file ?? (files[0]?.path ?? "diff"));
     const inline = p.content ?? null;
     const contentFiles = files.filter((f) => f && f.content != null);
     if (contentFiles.length === 0 && inline == null) {
-      return <div className="cell diff">📝 {label}</div>;
+      return <DiffViewer path={label} content={null} />;
     }
-    return (
-      <details className="cell diff">
-        <summary className="muted small">📝 {label}</summary>
-        {inline != null && (
-          <pre className="tool-body">{typeof inline === "string" ? inline : JSON.stringify(inline, null, 2)}</pre>
-        )}
-        {contentFiles.map((f, i) => (
-          <pre key={i} className="tool-body">
-            {typeof f.content === "string" ? f.content : JSON.stringify(f.content, null, 2)}
-          </pre>
-        ))}
-      </details>
-    );
+    if (inline != null) {
+      return <DiffViewer path={label} content={inline} />;
+    }
+    return <DiffViewer path={label} content={contentFiles.map((f) => f.content).join("\n")} />;
   }
 
   return (
@@ -138,32 +131,6 @@ function QuestionCell({
             </button>
           ))}
         </div>
-      )}
-      <time className="muted small">{ts}</time>
-    </div>
-  );
-}
-
-function ToolCallCell({
-  tool, exitCode, summary, ts,
-}: {
-  tool: string; exitCode: unknown; summary: unknown; ts: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const code = typeof exitCode === "number" ? exitCode : null;
-  return (
-    <div className="tool-call cell">
-      <button className="tool-head" onClick={() => setOpen((v) => !v)}>
-        <span className={`badge ${code === 0 ? "ok" : code === null ? "" : "bad"}`}>
-          {code === null ? "•" : code}
-        </span>
-        <span className="mono">{tool}</span>
-        <span className="muted small">{open ? "▾" : "▸"}</span>
-      </button>
-      {open && summary != null && (
-        <pre className="tool-body">
-          {typeof summary === "string" ? summary : JSON.stringify(summary, null, 2)}
-        </pre>
       )}
       <time className="muted small">{ts}</time>
     </div>

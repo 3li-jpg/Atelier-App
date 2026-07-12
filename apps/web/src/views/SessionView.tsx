@@ -53,11 +53,6 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
         <button className="ghost" onClick={onBack}>← back</button>
         <h1 className="ellipsis">{session?.task ?? id.slice(0, 8)}</h1>
         {!terminal && <span className={`live-dot ${live ? "" : "off"}`} title={live ? "live" : "reconnecting"} />}
-        {!terminal && session?.machine_id && (
-          <a className="ghost" href={`/sessions/${id}/workspace`} target="_blank" rel="noreferrer" title="open workspace (openchamber)">
-            workspace ↗
-          </a>
-        )}
         {!terminal && (
           <button className="ghost" title="finish: commit, push & shut down" onClick={() => api.finishSession(id).catch(() => {})}>
             finish
