@@ -1,0 +1,295 @@
+/* ============================================================
+   ATELIER LANDING — DOPE.SECURITY DESIGN SYSTEM
+   Midnight terminal with violet beacons
+   ============================================================ */
+
+:root {
+  /* Colors */
+  --color-near-black: #090909;
+  --color-almost-white: #f7f9fa;
+  --color-soft-white: #f0f0f0;
+  --color-steel: #828384;
+  --color-graphite: #474747;
+  --color-iron: #423738;
+  --color-ash: #6b6b6b;
+  --color-signal-violet: #af50ff;
+  --color-lavender-mist: #e1bdff;
+
+  /* Surfaces */
+  --surface-void-canvas: #090909;
+  --surface-translucent-panel: rgba(51, 50, 72, 0.7);
+  --surface-iron-wash: #423738;
+  --surface-violet-bloom: #af50ff;
+
+  /* Typography — Font Families (Google Font substitutes for proprietary faces) */
+  --font-whyte: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-whyte-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-grandslang: 'Playfair Display', ui-serif, Georgia, serif;
+
+  /* Typography — Scale */
+  --text-caption: 10px;
+  --leading-caption: 1;
+  --tracking-caption: 1.8px;
+
+  --text-body-sm: 14px;
+  --leading-body-sm: 1.5;
+
+  --text-body: 16px;
+  --leading-body: 1.5;
+
+  --text-subheading: 20px;
+  --leading-subheading: 1;
+  --tracking-subheading: -0.2px;
+
+  --text-heading-sm: 32px;
+  --leading-heading-sm: 1.2;
+  --tracking-heading-sm: -0.32px;
+
+  --text-heading: 48px;
+  --leading-heading: 1.2;
+  --tracking-heading: -0.48px;
+
+  --text-heading-lg: 64px;
+  --leading-heading-lg: 1.2;
+  --tracking-heading-lg: -0.64px;
+
+  --text-section-stamp: 74px;
+  --leading-section-stamp: 0.9;
+  --tracking-section-stamp: 14.8px;
+
+  --text-display: 88px;
+  --leading-display: 0.8;
+  --tracking-display: -2.64px;
+
+  --text-display-xl: 146px;
+  --leading-display-xl: 1.5;
+  --tracking-display-xl: -0.04em;
+
+  /* Spacing */
+  --spacing-4: 4px;
+  --spacing-8: 8px;
+  --spacing-12: 12px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-32: 32px;
+  --spacing-40: 40px;
+  --spacing-48: 48px;
+  --spacing-64: 64px;
+  --spacing-72: 72px;
+  --spacing-80: 80px;
+  --spacing-96: 96px;
+  --spacing-128: 128px;
+  --spacing-160: 160px;
+
+  /* Layout */
+  --page-max-width: 1200px;
+  --section-gap: 120px;
+  --card-padding: 40px;
+  --element-gap: 16px;
+
+  /* Border Radius */
+  --radius-cards: 19.2px;
+  --radius-pills: 1584px;
+  --radius-buttons: 8px;
+  --radius-small-controls: 6px;
+}
+
+/* ============================================================
+   RESET
+   ============================================================ */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--color-near-black);
+  color: var(--color-almost-white);
+  font-family: var(--font-whyte);
+  font-size: var(--text-body);
+  font-weight: 400;
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+a { color: inherit; text-decoration: none; }
+
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+
+input { font-family: inherit; }
+
+/* ============================================================
+   LAYOUT UTILITIES
+   ============================================================ */
+
+.container {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding: 0 var(--spacing-24);
+}
+
+.section {
+  padding-top: var(--section-gap);
+  padding-bottom: var(--section-gap);
+}
+
+/* ============================================================
+   STAMPED SECTION HEADING — Whyte Inktrap Mono 74px, 0.2em tracking
+   ============================================================ */
+
+.section-stamp {
+  font-family: var(--font-whyte-mono);
+  font-size: var(--text-section-stamp);
+  font-weight: 400;
+  line-height: var(--leading-section-stamp);
+  letter-spacing: var(--tracking-section-stamp);
+  color: var(--color-soft-white);
+  text-transform: uppercase;
+  margin-bottom: var(--spacing-64);
+}
+
+@media (max-width: 768px) {
+  .section-stamp { font-size: 48px; letter-spacing: 0.15em; }
+}
+
+@media (max-width: 480px) {
+  .section-stamp { font-size: 36px; letter-spacing: 0.12em; }
+}
+
+/* ============================================================
+   HAIRLINE DIVIDER
+   ============================================================ */
+
+.hairline {
+  width: 100%;
+  height: 1px;
+  background: rgba(247, 249, 250, 0.15);
+  border: none;
+}
+
+/* ============================================================
+   BUTTONS — 8px radius (filled) and 1584px radius (pill)
+   ============================================================ */
+
+/* Filled Action Button — near-black bg, white border */
+.btn-filled {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  background: var(--color-near-black);
+  border: 1px solid var(--color-almost-white);
+  border-radius: var(--radius-buttons);
+  padding: var(--spacing-16);
+  color: var(--color-almost-white);
+  font-size: var(--text-body);
+  font-weight: 400;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.btn-filled:hover {
+  background: rgba(247, 249, 250, 0.05);
+}
+
+/* Ghost Pill Button — faint wash, pill radius */
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  border-radius: var(--radius-pills);
+  padding: 20px 32px;
+  color: var(--color-almost-white);
+  font-size: var(--text-body);
+  font-weight: 400;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.btn-pill-wash {
+  background: rgba(247, 249, 250, 0.08);
+  border: 1px solid rgba(247, 249, 250, 0.15);
+}
+
+.btn-pill-wash:hover {
+  background: rgba(247, 249, 250, 0.12);
+}
+
+.btn-pill-violet {
+  background: var(--color-signal-violet);
+  color: var(--color-almost-white);
+}
+
+.btn-pill-violet:hover {
+  background: #9a3ee6;
+}
+
+/* Compact Outlined Button */
+.btn-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  background: rgba(247, 249, 250, 0.08);
+  border: 1px solid var(--color-almost-white);
+  border-radius: var(--radius-small-controls);
+  padding: 9px 15px;
+  color: var(--color-almost-white);
+  font-size: var(--text-body-sm);
+  font-weight: 400;
+  transition: background 0.2s ease;
+}
+
+.btn-compact:hover {
+  background: rgba(247, 249, 250, 0.12);
+}
+
+/* ============================================================
+   CARDS
+   ============================================================ */
+
+.card {
+  border-radius: var(--radius-cards);
+  padding: var(--card-padding);
+}
+
+.card-translucent {
+  background: rgba(247, 249, 250, 0.03);
+  border: 1px solid rgba(247, 249, 250, 0.15);
+}
+
+.card-violet-bloom {
+  background: var(--color-signal-violet);
+  color: var(--color-almost-white);
+}
+
+/* ============================================================
+   TEXT STYLES
+   ============================================================ */
+
+.text-steel { color: var(--color-steel); }
+.text-violet { color: var(--color-signal-violet); }
+.text-lavender { color: var(--color-lavender-mist); }
+
+.muted { color: var(--color-steel); }
+
+.caption {
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+  text-transform: uppercase;
+  color: var(--color-steel);
+}
+
+.mono-label {
+  font-family: var(--font-whyte-mono);
+  font-size: 12px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-steel);
+}
+
+.display-italic {
+  font-family: var(--font-grandslang);
+  font-style: italic;
+  font-weight: 400;
+}
