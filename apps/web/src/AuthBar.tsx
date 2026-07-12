@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, setAuthToken } from "./api.ts";
-import { Button, Input } from "@atelier/ui";
+import { Button, Input, useToast } from "@atelier/ui";
 
 type AuthStatus = {
   oauth: boolean;
@@ -14,6 +14,7 @@ type AuthStatus = {
 //  - OAuth configured + not authed: Login button -> /auth/github/login
 //  - no OAuth + not authed (AUTH_TOKEN owner-alpha): static-token input
 export function AuthBar() {
+  const toast = useToast();
   const [status, setStatus] = useState<AuthStatus>(null);
   const [tok, setTok] = useState("");
 
@@ -26,7 +27,11 @@ export function AuthBar() {
     return (
       <div className="authbar">
         <span className="muted small">{status.user?.login ?? "owner"}</span>
-        <Button variant="ghost" size="sm" onClick={async () => { await api.logout(); load(); }}>logout</Button>
+        <Button variant="ghost" size="sm" onClick={async () => {
+          await api.logout();
+          toast.push("Logged out", "info");
+          load();
+        }}>logout</Button>
       </div>
     );
   }

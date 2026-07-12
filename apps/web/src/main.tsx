@@ -2,7 +2,13 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { setAuthToken } from "./api.ts";
 import { supabase } from "./supabase.ts";
+import { ToastProvider } from "@atelier/ui";
+import { CommandPalette, useCommandPaletteHotkey } from "./components/CommandPalette.tsx";
+import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
+import { OfflineIndicator } from "./components/OfflineIndicator.tsx";
 import "./styles.css";
+import "./components/command-palette.css";
+import "./components/states.css";
 
 // Pick up Supabase access token from URL hash (passed by the landing page
 // after signup). Store it so the API client sends it as
@@ -35,7 +41,24 @@ supabase.auth.onAuthStateChange((_event, session) => {
 // to the app instead of a hard flash.
 document.documentElement.classList.add("boot-done");
 
-createRoot(document.getElementById("root")!).render(<App />);
+// App wrapper: ToastProvider gives all child components access to
+// useToast() for success/error notifications. CommandPalette is a
+// global overlay rendered as a sibling to App — it uses a hotkey
+// hook (Cmd+K / Ctrl+K) to toggle visibility.
+function Root() {
+  const [paletteOpen, togglePalette] = useCommandPaletteHotkey();
+  return (
+    <ToastProvider>
+      <ErrorBoundary>
+        <OfflineIndicator />
+        <App />
+        <CommandPalette open={paletteOpen} onClose={togglePalette} />
+      </ErrorBoundary>
+    </ToastProvider>
+  );
+}
+
+createRoot(document.getElementById("root")!).render(<Root />);
 
 // ponytail: SW registered in prod only (it breaks Vite HMR in dev). Verify the
 // install + offline shell with `npm run build && npm run preview` (handoff T7.6).

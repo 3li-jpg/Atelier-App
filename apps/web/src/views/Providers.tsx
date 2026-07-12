@@ -1,31 +1,51 @@
 import { useEffect, useState } from "react";
 import { api, type ProviderSummary, type ProviderCreate, type ValidationResult } from "../api.ts";
 import { DIALECTS, validateProviderForm, type FieldErrors } from "../lib.ts";
-import { Input, Select, Button, Card, Badge, Skeleton } from "@atelier/ui";
+import { Input, Select, Button, Card, Badge, Skeleton, useToast } from "@atelier/ui";
+import { StateMessage } from "../components/StateMessage.tsx";
 
 // T7.4: Providers screen — list, add, and validate (FR-1.3: cheap completion +
 // tool-call round-trip; shows latency + tool-call fidelity).
 export function Providers() {
+  const toast = useToast();
   const [providers, setProviders] = useState<ProviderSummary[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const load = () => {
     setErr(null);
-    api.listProviders().then(setProviders).catch((e) => { setProviders([]); setErr(String(e)); });
+    api.listProviders().then(setProviders).catch((e) => {
+      setProviders([]);
+      const msg = String(e).replace(/^Error:\s*/, "");
+      setErr(msg);
+      toast.push("Failed to load providers", "error");
+    });
   };
-  useEffect(load, []);
+  useEffect(load, [retryCount]);
+
+  const retry = () => setRetryCount((n) => n + 1);
 
   return (
     <>
       <AddProvider onSaved={load} />
-      {err && <div className="error padded">{err}</div>}
-      {providers === null ? (
+      {err ? (
+        <StateMessage
+          kind="error"
+          title="Couldn't load providers"
+          description={err}
+          action={<Button variant="ghost" size="sm" onClick={retry}>Retry</Button>}
+        />
+      ) : providers === null ? (
         <div className="padded" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <Skeleton height="4rem" radius="var(--radius)" />
           <Skeleton height="4rem" radius="var(--radius)" />
         </div>
       ) : providers.length === 0 ? (
-        <p className="muted padded">no providers yet</p>
+        <StateMessage
+          kind="empty"
+          title="No providers configured"
+          description="Add your first model provider above to start running agentic coding sessions."
+        />
       ) : (
         <ul className="session-list padded">
           {providers.map((p) => (
@@ -47,6 +67,7 @@ export function Providers() {
 }
 
 function AddProvider({ onSaved }: { onSaved: () => void }) {
+  const toast = useToast();
   const [form, setForm] = useState({
     name: "", base_url: "", dialect: "openai-chat", model_id: "", api_key: "",
   });
@@ -69,14 +90,23 @@ function AddProvider({ onSaved }: { onSaved: () => void }) {
     if (Object.keys(e).length > 0) return;
     setBusy(true); setErr(null); setResult(null);
     try { await fn(); }
-    catch (e2) { setErr(String(e2)); }
+    catch (e2) {
+      const msg = String(e2);
+      setErr(msg);
+      toast.push("Provider operation failed", "error");
+    }
     finally { setBusy(false); }
   };
 
-  const validate = () => run(async () => setResult(await api.validateProvider(build())));
+  const validate = () => run(async () => {
+    const res = await api.validateProvider(build());
+    setResult(res);
+    toast.push(res.ok ? "Provider validated ✓" : "Provider unusable", res.ok ? "success" : "error");
+  });
   const save = () => run(async () => {
     await api.createProvider(build());
     setForm({ name: "", base_url: "", dialect: "openai-chat", model_id: "", api_key: "" });
+    toast.push("Provider saved", "success");
     onSaved();
   });
 

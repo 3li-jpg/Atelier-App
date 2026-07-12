@@ -19,4 +19,43 @@ export default defineConfig({
       "/webhooks": "http://localhost:3000",
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+
+          // React core — needed for initial render, keep in its own chunk
+          // so it's cached independently of app code.
+          if (
+            id.includes("/node_modules/react/") ||
+            id.includes("/node_modules/react-dom/") ||
+            id.includes("/node_modules/scheduler/")
+          ) {
+            return "react-vendor";
+          }
+
+          // framer-motion — only needed once a view mounts; split it out
+          // so the initial paint doesn't download the animation library.
+          if (
+            id.includes("/node_modules/framer-motion/") ||
+            id.includes("/node_modules/motion-dom/") ||
+            id.includes("/node_modules/motion-utils/") ||
+            id.includes("/node_modules/tslib/")
+          ) {
+            return "motion-vendor";
+          }
+
+          // Supabase client + data libraries — lazy-loaded with views.
+          if (
+            id.includes("/node_modules/@supabase/") ||
+            id.includes("/node_modules/web-streams-polyfill/") ||
+            id.includes("/node_modules/cross-fetch/")
+          ) {
+            return "supabase-vendor";
+          }
+        },
+      },
+    },
+  },
 });

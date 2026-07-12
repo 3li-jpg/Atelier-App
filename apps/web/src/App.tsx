@@ -1,15 +1,27 @@
 // ponytail: view-state navigation (no router yet). Add history routing + deep
 // links when PWA web-push lands (handoff T7.6) — that's what needs real URLs.
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
-import { SessionsList } from "./views/SessionsList.tsx";
-import { SessionView } from "./views/SessionView.tsx";
-import { NewTask } from "./views/NewTask.tsx";
-import { Providers } from "./views/Providers.tsx";
 import { InstallPrompt } from "./InstallPrompt.tsx";
 import { AuthBar } from "./AuthBar.tsx";
-import { Onboarding } from "./onboarding/Onboarding.tsx";
 import { pageTransition, tapScale } from "./motion.ts";
+
+// Code-split heavy views so the initial bundle stays small.
+const SessionsList = lazy(() =>
+  import("./views/SessionsList.tsx").then((m) => ({ default: m.SessionsList })),
+);
+const SessionView = lazy(() =>
+  import("./views/SessionView.tsx").then((m) => ({ default: m.SessionView })),
+);
+const NewTask = lazy(() =>
+  import("./views/NewTask.tsx").then((m) => ({ default: m.NewTask })),
+);
+const Providers = lazy(() =>
+  import("./views/Providers.tsx").then((m) => ({ default: m.Providers })),
+);
+const Onboarding = lazy(() =>
+  import("./onboarding/Onboarding.tsx").then((m) => ({ default: m.Onboarding })),
+);
 
 type View =
   | { kind: "list" }
@@ -48,7 +60,9 @@ export function App() {
             exit="exit"
             style={{ height: "100%" }}
           >
-            <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />
+            <Suspense fallback={null}>
+              <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />
+            </Suspense>
           </motion.div>
         </AnimatePresence>
       </MotionConfig>
@@ -67,16 +81,18 @@ export function App() {
             exit="exit"
             style={{ height: "100%" }}
           >
-            <Onboarding
-              onComplete={(sessionId) => {
-                try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
-                setView({ kind: "session", id: sessionId });
-              }}
-              onSkip={() => {
-                try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
-                setView({ kind: "list" });
-              }}
-            />
+            <Suspense fallback={null}>
+              <Onboarding
+                onComplete={(sessionId) => {
+                  try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
+                  setView({ kind: "session", id: sessionId });
+                }}
+                onSkip={() => {
+                  try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
+                  setView({ kind: "list" });
+                }}
+              />
+            </Suspense>
           </motion.div>
         </AnimatePresence>
       </MotionConfig>
@@ -118,9 +134,21 @@ export function App() {
               animate="animate"
               exit="exit"
             >
-              {view.kind === "list" && <SessionsList onOpen={(id) => setView({ kind: "session", id })} />}
-              {view.kind === "new" && <NewTask onCreated={(id) => setView({ kind: "session", id })} />}
-              {view.kind === "providers" && <Providers />}
+              {view.kind === "list" && (
+                <Suspense fallback={null}>
+                  <SessionsList onOpen={(id) => setView({ kind: "session", id })} />
+                </Suspense>
+              )}
+              {view.kind === "new" && (
+                <Suspense fallback={null}>
+                  <NewTask onCreated={(id) => setView({ kind: "session", id })} />
+                </Suspense>
+              )}
+              {view.kind === "providers" && (
+                <Suspense fallback={null}>
+                  <Providers />
+                </Suspense>
+              )}
             </motion.div>
           </AnimatePresence>
         </main>

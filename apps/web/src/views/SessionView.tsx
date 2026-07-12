@@ -6,11 +6,13 @@ import { EventCell } from "../components/EventCell.tsx";
 import { FileTree, type FileEntry } from "../components/FileTree.tsx";
 import { DiffPanel } from "../components/DiffPanel.tsx";
 import { stateTone, TERMINAL_STATES } from "../lib.ts";
+import { useToast } from "@atelier/ui";
 import "./session-view.css";
 
 type MobileTab = "files" | "diff" | "chat";
 
 export function SessionView({ id, onBack }: { id: string; onBack: () => void }) {
+  const toast = useToast();
   const [session, setSession] = useState<SessionDetail | null>(null);
   const { events, live } = useEventStream(id);
   const [reply, setReply] = useState("");
@@ -54,15 +56,19 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
           break;
         }
         case "error": {
-          announceAlert(`Error: ${String(p.message ?? "")}`);
+          const msg = String(p.message ?? "");
+          announceAlert(`Error: ${msg}`);
+          if (msg) toast.push(msg.slice(0, 100), "error");
           break;
         }
         case "state_change": {
           const state = String(p.state ?? "");
           if (state === "awaiting_user") {
             announceAlert(`Session is now awaiting your input`);
+            toast.push("Session awaiting your input", "info");
           } else if (TERMINAL_STATES.has(state)) {
             announceAlert(`Session ${state}`);
+            toast.push(`Session ${state}`, state === "completed" ? "success" : "error");
           } else {
             announce(`State: ${state}`);
           }
@@ -78,7 +84,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
         }
       }
     }
-  }, [events, announce, announceAlert]);
+  }, [events, announce, announceAlert, toast]);
 
   // Focus the composer when session enters awaiting_user
   const wasAwaiting = useRef(false);
@@ -91,6 +97,8 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
       await api.reply(id, body);
       setReply("");
       announce("Message sent");
+    } catch (e) {
+      toast.push(`Failed to send: ${String(e).slice(0, 60)}`, "error");
     } finally {
       setSending(false);
     }
@@ -116,7 +124,12 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
   const cancel = async () => {
     if (cancelling || terminal) return;
     setCancelling(true);
-    try { await api.cancelSession(id); }
+    try {
+      await api.cancelSession(id);
+      toast.push("Session cancelled", "info");
+    } catch (e) {
+      toast.push(`Cancel failed: ${String(e).slice(0, 60)}`, "error");
+    }
     finally { setCancelling(false); }
   };
 
@@ -281,7 +294,10 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
           <button
             className="ghost"
             title="finish: commit, push & shut down"
-            onClick={() => api.finishSession(id).catch(() => {})}
+            onClick={() => api.finishSession(id).then(
+              () => toast.push("Finishing session…", "info"),
+              (e) => toast.push(`Finish failed: ${String(e).slice(0, 60)}`, "error"),
+            )}
             aria-label="Finish session: commit, push and shut down"
           >
             finish
@@ -497,7 +513,10 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
               <div className="ide-steer-actions" role="group" aria-label="Session actions">
                 <button
                   className="ghost"
-                  onClick={() => api.finishSession(id).catch(() => {})}
+                  onClick={() => api.finishSession(id).then(
+                    () => toast.push("Finishing session…", "info"),
+                    (e) => toast.push(`Finish failed: ${String(e).slice(0, 60)}`, "error"),
+                  )}
                   aria-label="Finish session"
                 >finish</button>
                 <button

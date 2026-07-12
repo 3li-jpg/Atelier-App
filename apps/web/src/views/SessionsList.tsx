@@ -2,28 +2,42 @@ import { useEffect, useState } from "react";
 import { api, type SessionSummary } from "../api.ts";
 import { formatRelTime, stateTone } from "../lib.ts";
 import { Button, Badge, Card, Skeleton } from "@atelier/ui";
+import { StateMessage } from "../components/StateMessage.tsx";
 
 export function SessionsList({ onOpen }: { onOpen: (id: string) => void }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const load = () => {
     setErr(null);
-    api.listSessions().then(setSessions).catch((e) => { setSessions([]); setErr(String(e)); });
+    api.listSessions().then(setSessions).catch((e) => { setSessions([]); setErr(String(e).replace(/^Error:\s*/, "")); });
   };
-  useEffect(load, []);
+  useEffect(load, [retryCount]);
+
+  const retry = () => setRetryCount((n) => n + 1);
 
   return (
     <>
-      {err && <div className="error padded">{err}</div>}
-      {sessions === null ? (
+      {err ? (
+        <StateMessage
+          kind="error"
+          title="Couldn't load sessions"
+          description={err}
+          action={<Button variant="ghost" size="sm" onClick={retry}>Retry</Button>}
+        />
+      ) : sessions === null ? (
         <div className="padded" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <Skeleton height="5rem" radius="var(--radius)" />
           <Skeleton height="5rem" radius="var(--radius)" />
           <Skeleton height="5rem" radius="var(--radius)" />
         </div>
       ) : sessions.length === 0 ? (
-        <p className="muted padded">no sessions yet — create one from the New tab</p>
+        <StateMessage
+          kind="empty"
+          title="No sessions yet"
+          description="Head to the New tab to start your first agentic coding session."
+        />
       ) : (
         <ul className="session-list">
           {sessions.map((s) => (

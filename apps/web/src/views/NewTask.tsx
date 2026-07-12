@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, type ProviderSummary, type CreateSessionReq, type RepoSummary, type BranchSummary } from "../api.ts";
 import { validateNewTask, type FieldErrors } from "../lib.ts";
-import { Input, Select, Textarea, Button, Card } from "@atelier/ui";
+import { Input, Select, Textarea, Button, Card, useToast } from "@atelier/ui";
+import { StateMessage } from "../components/StateMessage.tsx";
 
 // T7.3: NewTask form. OAuth users browse their own repos via GET /repos;
 // AUTH_TOKEN/dev mode falls back to manual repo_url + branch entry.
 export function NewTask({ onCreated }: { onCreated: (id: string) => void }) {
+  const toast = useToast();
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [form, setForm] = useState({
     repo_url: "", branch: "main", provider_id: "", model_id: "", task: "",
@@ -60,16 +62,25 @@ export function NewTask({ onCreated }: { onCreated: (id: string) => void }) {
         task: form.task.trim(),
       };
       const res = await api.createSession(req);
+      toast.push("Session started", "success");
       onCreated(res.id);
     } catch (e2) {
-      setErr(String(e2));
+      const msg = String(e2).replace(/^Error:\s*/, "");
+      setErr(msg);
+      toast.push(`Failed to start session: ${msg.slice(0, 80)}`, "error");
     } finally {
       setSubmitting(false);
     }
   };
 
   if (providers.length === 0) {
-    return <p className="muted padded">add a provider first (Providers tab).</p>;
+    return (
+      <StateMessage
+        kind="info"
+        title="Add a provider first"
+        description="You need at least one model provider before creating a session. Switch to the Providers tab to add one."
+      />
+    );
   }
 
   return (

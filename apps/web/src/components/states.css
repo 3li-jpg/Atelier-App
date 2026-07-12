@@ -1,0 +1,144 @@
+/* ============================================================
+   STATE COMPONENTS — Offline banner, state messages, error boundary
+   Scoped to avoid colliding with styles.css and session-view.css.
+   Uses the same CSS custom properties from styles.css :root.
+   ============================================================ */
+
+/* ── Offline banner ──────────────────────────────────────────────
+   Fixed at the top of the viewport, slides in from above when the
+   browser goes offline. z-index sits below the command palette
+   (10000) but above the topbar (2) so it's always visible. */
+.offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 1rem;
+  background: color-mix(in srgb, var(--bad) 12%, var(--bg));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--bad);
+  color: var(--bad);
+  font-size: 0.82rem;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+.offline-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.offline-text {
+  flex: 1;
+  line-height: 1.3;
+}
+
+/* ── State message (empty / error / info) ───────────────────────
+   Replaces bare <p className="muted padded"> patterns with a
+   consistent icon + title + description + action layout. */
+.state-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.6rem;
+  padding: 2.5rem 1.5rem;
+  max-width: 400px;
+  margin: 0 auto;
+}
+.state-message-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  margin-bottom: 0.3rem;
+}
+.state-empty .state-message-icon { color: var(--muted); }
+.state-error .state-message-icon { color: var(--bad); }
+.state-info .state-message-icon { color: var(--accent); }
+
+.state-message-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+.state-message-title {
+  font-size: 0.95rem;
+  font-weight: 550;
+  margin: 0;
+  color: var(--text);
+}
+.state-message-desc {
+  margin: 0;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.state-message-action {
+  margin-top: 0.5rem;
+}
+
+/* ── Error boundary (full-screen crash fallback) ──────────────── */
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.8rem;
+  padding: 3rem 1.5rem;
+  max-width: 440px;
+  margin: 0 auto;
+  min-height: 60vh;
+  justify-content: center;
+}
+.error-boundary-icon {
+  color: var(--bad);
+  opacity: 0.8;
+}
+.error-boundary-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0;
+}
+.error-boundary-desc {
+  margin: 0;
+  line-height: 1.5;
+}
+.error-boundary-details {
+  width: 100%;
+  text-align: left;
+  margin-top: 0.5rem;
+}
+.error-boundary-trace {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  overflow-x: auto;
+  color: var(--bad);
+  margin-top: 0.4rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Reduced motion ───────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .offline-banner {
+    transition: none;
+  }
+}
+
+/* ── High contrast adjustments ────────────────────────────────── */
+@media (prefers-contrast: high) {
+  .state-message-icon {
+    opacity: 1;
+  }
+  .error-boundary-icon {
+    opacity: 1;
+  }
+}

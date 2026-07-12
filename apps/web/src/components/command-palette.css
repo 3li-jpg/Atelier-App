@@ -1,0 +1,201 @@
+/* ============================================================
+   COMMAND PALETTE — Midnight Terminal Theme
+   Cmd+K command palette. Uses @atelier/ui design tokens
+   (violet accent on near-black panel). Scoped to .cmdk-* to
+   avoid colliding with styles.css and components.css.
+   ============================================================ */
+
+/* ── Overlay backdrop ── */
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ── Panel ── */
+.cmdk-panel {
+  width: 90%;
+  max-width: 560px;
+  background: var(--panel-solid, #141414);
+  border: 1px solid var(--border-strong, rgba(247, 249, 250, 0.2));
+  border-radius: var(--radius-lg, 12px);
+  box-shadow:
+    0 0 0 1px var(--accent-soft, rgba(175, 80, 255, 0.12)),
+    0 20px 60px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+}
+
+/* ── Input row ── */
+.cmdk-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border, rgba(247, 249, 250, 0.12));
+}
+
+.cmdk-search-icon {
+  color: var(--muted, #828384);
+  flex-shrink: 0;
+}
+
+.cmdk-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text, #f7f9fa);
+  font: 15px/1.5 var(--font-sans, 'Inter', sans-serif);
+}
+
+.cmdk-input::placeholder {
+  color: var(--muted, #828384);
+  opacity: 0.7;
+}
+
+.cmdk-esc-hint {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border, rgba(247, 249, 250, 0.12));
+  color: var(--muted, #828384);
+  background: var(--panel-2, rgba(247, 249, 250, 0.06));
+  flex-shrink: 0;
+}
+
+/* ── Results list ── */
+.cmdk-list {
+  overflow-y: auto;
+  padding: 0.4rem;
+  flex: 1;
+}
+
+.cmdk-list::-webkit-scrollbar {
+  width: 6px;
+}
+.cmdk-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cmdk-list::-webkit-scrollbar-thumb {
+  background: var(--border, rgba(247, 249, 250, 0.12));
+  border-radius: 3px;
+}
+
+/* ── Group label ── */
+.cmdk-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted, #828384);
+  padding: 0.6rem 0.6rem 0.3rem;
+}
+
+/* ── Command item ── */
+.cmdk-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  padding: 0.5rem 0.6rem;
+  color: var(--text, #f7f9fa);
+  font: 14px/1.4 var(--font-sans, 'Inter', sans-serif);
+  cursor: pointer;
+  transition: background var(--duration-fast, 0.15s) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.cmdk-item:hover,
+.cmdk-item.active {
+  background: var(--accent-soft, rgba(175, 80, 255, 0.12));
+  color: var(--accent, #af50ff);
+}
+
+.cmdk-item.active {
+  background: var(--accent-soft, rgba(175, 80, 255, 0.12));
+  box-shadow: inset 2px 0 0 var(--accent, #af50ff);
+}
+
+.cmdk-item-icon {
+  color: var(--muted, #828384);
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 13px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.cmdk-item.active .cmdk-item-icon {
+  color: var(--accent, #af50ff);
+}
+
+.cmdk-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmdk-item-hint {
+  font-size: 12px;
+  color: var(--muted, #828384);
+  flex-shrink: 0;
+}
+
+/* ── Empty state ── */
+.cmdk-empty {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--muted, #828384);
+  font-size: 14px;
+}
+
+/* ── Footer ── */
+.cmdk-footer {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--border, rgba(247, 249, 250, 0.12));
+  font-size: 11px;
+  color: var(--muted, #828384);
+}
+
+.cmdk-footer-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.cmdk-footer kbd {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border, rgba(247, 249, 250, 0.12));
+  background: var(--panel-2, rgba(247, 249, 250, 0.06));
+  color: var(--text, #f7f9fa);
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .cmdk-overlay,
+  .cmdk-panel {
+    transition: none !important;
+    animation: none !important;
+  }
+}
