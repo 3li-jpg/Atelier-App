@@ -37,7 +37,7 @@ emit() { # emit <type> <json-payload> — stdout always, control plane if config
   fi
 }
 
-# ponytail: surface any crash (clone failure, opencode error, etc.) as a failed
+# ponytail: surface any crash (clone failure, hermes error, etc.) as a failed
 # state so the session doesn't hang in a transient state.
 trap 'ec=$?; if [ $ec -ne 0 ]; then emit error "{\"message\":\"supervisor exited ($ec)\"}" 2>/dev/null || true; emit state_change "{\"state\":\"failed\"}" 2>/dev/null || true; fi' EXIT
 
@@ -64,54 +64,60 @@ git config user.name "Atelier Agent"
 emit state_change '{"state":"setup"}'
 # nftables is Linux-only (Fly VM); skip on macOS/local runs.
 if [[ -z "${SKIP_FIREWALL:-}" ]]; then
-  # models.dev: opencode fetches its model catalog at startup and stalls without it
   bash "${RUNNER_BIN}/firewall.sh" "$LLM_BASE_URL" github.com api.github.com \
-    codeload.github.com registry.npmjs.org models.dev "${EVENTS_URL:-github.com}"
+    codeload.github.com "${EVENTS_URL:-github.com}"
 fi
 
-# Point OpenCode at the custom endpoint. Config lives on tmpfs (RAM) so the key
+# Point Hermes at the BYOK endpoint. Config lives on tmpfs (RAM) so the key
 # is never written to the persistent rootfs (audit C2: PRD §9.3 "never on disk").
-# ~/.config/opencode symlinks to the tmpfs dir so opencode finds its default path.
-OC_CFG=/dev/shm/opencode
-if mkdir -p "$OC_CFG" 2>/dev/null && [ -w "$OC_CFG" ]; then
-  mkdir -p "$HOME/.config"
-  ln -sfn "$OC_CFG" "$HOME/.config/opencode"   # opencode reads ~/.config/opencode -> tmpfs
+# HERMES_HOME → tmpfs so config.yaml + .env stay in memory only.
+HERMES_CFG=/dev/shm/hermes
+if mkdir -p "$HERMES_CFG" 2>/dev/null && [ -w "$HERMES_CFG" ]; then
+  ln -sfn "$HERMES_CFG" "$HOME/.hermes"
 else
-  OC_CFG="$HOME/.config/opencode"               # ponytail: fallback if tmpfs unavailable
-  mkdir -p "$OC_CFG"
+  HERMES_CFG="$HOME/.hermes"
+  mkdir -p "$HERMES_CFG"
 fi
-jq -n --arg url "$LLM_BASE_URL" --arg key "$LLM_API_KEY" --arg model "$LLM_MODEL" '{
-  provider: { custom: {
-    npm: "@ai-sdk/openai-compatible",
-    options: { baseURL: $url, apiKey: $key },
-    models: { ($model): { name: $model } } } },
-  model: ("custom/" + $model)
-}' > "$OC_CFG/opencode.json"
-unset LLM_API_KEY   # scrub from PID 1 env (audit C3) — opencode reads the key from its config
+# Write Hermes config.yaml for the BYOK endpoint
+cat > "$HERMES_CFG/config.yaml" <<EOF
+model:
+  default: $LLM_MODEL
+  provider: openai
+  base_url: $LLM_BASE_URL
+  api_key: $LLM_API_KEY
+platform_toolsets:
+  api_server:
+    - terminal
+    - file
+    - code_execution
+    - web
+    - skills
+    - memory
+    - todo
+agent:
+  max_turns: 100
+terminal:
+  cwd: $WORKSPACE/repo
+EOF
+# API server key (bearer token for the bridge — random per session)
+HERMES_KEY=$(openssl rand -hex 32)
+export API_SERVER_ENABLED=1
+export API_SERVER_KEY="$HERMES_KEY"
+export API_SERVER_HOST=127.0.0.1
+export API_SERVER_PORT=8642
+export HERMES_HOME="$HERMES_CFG"
+unset LLM_API_KEY   # scrub from PID 1 env (audit C3) — Hermes reads it from config
 
 emit state_change '{"state":"running"}'
 REPLIES_URL="${EVENTS_URL%/events}/replies"
-# No server password: opencode binds 127.0.0.1 in a single-tenant VM; the
-# localhost boundary is the isolation. (openchamber's remote-auth support is
-# undocumented — password removed rather than guessed at.)
-opencode serve --hostname 127.0.0.1 --port 4096 >"$WORKSPACE/opencode.log" 2>&1 &
-OC_PID=$!
-
-# openchamber workspace UI — attaches to the opencode server above; reachable
-# from the workspace proxy over Fly 6PN on :3000 (egress firewall only filters
-# outbound; established-state replies to inbound connections pass).
-# Auth is handled by the workspace proxy (signed cookies); openchamber runs
-# unauthenticated on the VM's private network interface.
-# --host :: binds IPv6 any (Fly 6PN is IPv6-only); dual-stack accepts IPv4 too.
-OPENCODE_SKIP_START=true OPENCODE_HOST=http://127.0.0.1:4096 \
-  OPENCHAMBER_ALLOW_UNAUTHENTICATED_LAN=true \
-  openchamber --host :: --port 3000 >"$WORKSPACE/openchamber.log" 2>&1 &
-CHAMBER_PID=$!
+# Launch the Hermes gateway (which starts the api_server platform) in the background
+hermes gateway run >"$WORKSPACE/hermes.log" 2>&1 &
+HERMES_PID=$!
 
 finalize() {  # graceful stop (fly machine stop -> SIGINT; kill_timeout=120s window)
   trap - TERM INT EXIT
   emit state_change '{"state":"finalizing"}'
-  kill "$BRIDGE_PID" "$CHAMBER_PID" "$OC_PID" 2>/dev/null || true
+  kill "$BRIDGE_PID" "$HERMES_PID" 2>/dev/null || true
   cd "$WORKSPACE/repo"
   if [[ -n "$(git status --porcelain)" || -n "$(git log origin/$BRANCH..HEAD --oneline 2>/dev/null)" ]]; then
     git checkout -b "atelier/$(date +%s)" 2>/dev/null || true
@@ -136,9 +142,11 @@ finalize() {  # graceful stop (fly machine stop -> SIGINT; kill_timeout=120s win
 }
 trap finalize TERM INT
 
-# Bridge relays opencode events for the hub timeline and injects the initial
-# task; it now runs for the whole session (idle no longer stops it).
-OC_PORT=4096 REPLIES_URL="$REPLIES_URL" TASK="$TASK" node "${RUNNER_BIN}/bridge.mjs" &
+# Bridge relays Hermes /v1/runs SSE events to the control plane and injects
+# the initial task. It runs for the whole session (idle no longer stops it).
+HERMES_PORT=8642 HERMES_KEY="$HERMES_KEY" REPLIES_URL="$REPLIES_URL" \
+  TASK="$TASK" SESSION_ID="${SESSION_ID}" \
+  node "${RUNNER_BIN}/hermes-bridge.mjs" &
 BRIDGE_PID=$!
 wait "$BRIDGE_PID" || ec=$?; ec=${ec:-0}
 # propagate the bridge's exit code: a clean exit (0) must not be misreported as

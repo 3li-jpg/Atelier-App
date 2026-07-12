@@ -3,7 +3,7 @@
 # Usage: firewall.sh <url-or-host> [host...]
 #
 # Cross-session isolation boundary (audit M4): the default-drop policy here is
-# what stops one sandbox machine reaching another's openchamber (:3000) over Fly
+# what stops one sandbox machine reaching another's services over Fly
 # 6PN. Inbound is intentionally unfiltered (the workspace proxy is the legit
 # ingress). This is fail-closed — supervisor.sh runs under `set -e`, so if nft
 # fails to apply, the session never starts. Don't add broad allow rules without
