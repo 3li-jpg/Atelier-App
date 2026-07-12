@@ -5,3 +5,13 @@ dist/
 *.db
 .DS_Store
 .env*
+
+# Hermes desktop app
+.hermes/
+.mcp.json
+
+# Next.js build output
+.next/
+
+# TypeScript build info
+*.tsbuildinfo

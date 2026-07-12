@@ -5,10 +5,10 @@ Agentic coding from any browser (installable PWA, desktop + mobile) against **yo
 ## Layout
 
 ```
-runner/              atelier-runner image: Dockerfile, supervisor.sh (opencode-serve bridge), firewall.sh, bridge.mjs
+runner/              atelier-runner image: Dockerfile, supervisor.sh (hermes bridge), firewall.sh, hermes-bridge.mjs, map-event.mjs
 apps/api/            control plane: Hono + sqlite-or-Postgres store (DATABASE_URL, e.g. Supabase), FSM orchestrator, SSE stream, GitHub OAuth + per-user scoping
 apps/web/            installable PWA: Vite + React (sessions, chat timeline, NewTask, providers, cancel, workspace, finish)
-apps/workspace-proxy/  cookie-routing reverse proxy (HTTP+WS) to per-session sandbox machines over Fly 6PN
+apps/workspace-proxy/  health-check stub (openchamber proxy retired; placeholder for future live-WS upgrade)
 packages/schema/     zod schemas: events, session FSM, provider config
 packages/sandbox/    SandboxProvider interface + FlyMachinesProvider (+ orphan scan)
 packages/conformance/  provider scoring: tool-call fidelity, edit reliability, streaming stability
@@ -19,7 +19,7 @@ infra/               fly.toml files
 
 ```bash
 npm install
-npm test                       # 45 tests across api/web/workspace-proxy/sandbox/schema/conformance
+npm test                       # 49 tests across api/web/workspace-proxy/sandbox/schema/conformance
 MASTER_KEY=dev npm run dev    # API on :3000
 npm run dev:web                # PWA on :5173 (proxies API calls to :3000)
 ```
@@ -35,7 +35,7 @@ Local API without Fly credentials will fail sessions at `provisioning` (by desig
    ```
 2. Boot one machine by hand per guide §1.2 (curl to api.machines.dev) with your
    Umans key + a fine-grained GitHub PAT. Exit criteria: a real PR on GitHub.
-   (This also verifies the supervisor bridge against a real `opencode serve`.)
+   (This also verifies the supervisor bridge against a real `hermes gateway run`.)
 3. Measure suspend→start latency (guide §1.3) — this tunes hibernation policy.
 4. Run the control plane against real Fly:
    ```bash
@@ -56,8 +56,8 @@ Local API without Fly credentials will fail sessions at `provisioning` (by desig
 | Firewall resolves IPs once at boot | long sessions hit CDN rotation → dynamic sets |
 | Prefix-only secret redaction | if a leak slips past → add a high-entropy heuristic |
 | openai-chat dialect only | first anthropic-messages provider |
-| `opencode serve` bridge event shapes assumed | verify against a real run (T1), then harden |
-| Cookie-routing proxy (one workspace per browser) | per-session subdomains on a custom domain |
+| Hermes API server SSE event shapes verified against source | conformance suite scores Hermes across BYOK models |
+| Cookie-routing proxy stub (retired) | per-session subdomains on a custom domain for live-WS |
 
 ## License
 
@@ -65,4 +65,4 @@ MIT — see [LICENSE](LICENSE). Self-hosting is encouraged.
 
 ## Status
 
-Most of the plan is implemented. Still open: Fly deploy (🔑), GitHub App repo/branch listing + webhooks (🔑 registration), Web Push notifications (VAPID 🔑), Stripe billing, and verifying the supervisor bridge against a real `opencode serve` run (T1 spike 🔑).
+Most of the plan is implemented. Still open: Fly deploy (🔑), GitHub App repo/branch listing + webhooks (🔑 registration), Web Push notifications (VAPID 🔑), Stripe billing, and a Phase 0 spike to validate Hermes headless in a real sandbox (manual — see .hermes/plans/).
