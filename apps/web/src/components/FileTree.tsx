@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 export type FileEntry = {
   path: string;
@@ -20,6 +20,12 @@ const STATUS_LABELS: Record<FileStatus, string> = {
   added: "A",
   modified: "M",
   deleted: "D",
+};
+
+const STATUS_FULL: Record<FileStatus, string> = {
+  added: "added",
+  modified: "modified",
+  deleted: "deleted",
 };
 
 function buildTree(files: Map<string, FileEntry>): TreeNode {
@@ -63,6 +69,22 @@ function inferStatus(content: unknown): FileStatus {
   return "modified";
 }
 
+// Flatten visible tree nodes into a linear list for keyboard navigation.
+function flattenVisible(
+  nodes: TreeNode[],
+  expanded: Set<string>,
+  depth = 0,
+  acc: { node: TreeNode; depth: number }[] = [],
+): { node: TreeNode; depth: number }[] {
+  for (const node of nodes) {
+    acc.push({ node, depth });
+    if (node.isDir && expanded.has(node.path)) {
+      flattenVisible(node.children, expanded, depth + 1, acc);
+    }
+  }
+  return acc;
+}
+
 export function FileTree({ files, selected, onSelect }: {
   files: Map<string, FileEntry>;
   selected: string | null;
@@ -70,6 +92,9 @@ export function FileTree({ files, selected, onSelect }: {
 }) {
   const tree = useMemo(() => buildTree(files), [files]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const treeContainerRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const focusedKey = useRef<string | null>(null);
 
   // Auto-expand all directories when new ones appear
   useEffect(() => {
@@ -99,17 +124,109 @@ export function FileTree({ files, selected, onSelect }: {
     });
   };
 
+  // Keyboard navigation per WAI-ARIA tree pattern:
+  // ArrowUp/Down: move focus between visible items
+  // ArrowRight: expand dir or move to first child
+  // ArrowLeft: collapse dir or move to parent
+  // Enter/Space: activate (open file / toggle dir)
+  // Home/End: first/last visible item
+  const handleKeyDown = (e: React.KeyboardEvent, node: TreeNode) => {
+    const flat = flattenVisible(tree.children, expanded);
+    const currentIdx = flat.findIndex((f) => f.node.path === node.path);
+    if (currentIdx === -1) return;
+
+    let targetIdx: number | null = null;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        targetIdx = currentIdx < flat.length - 1 ? currentIdx + 1 : currentIdx;
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        targetIdx = currentIdx > 0 ? currentIdx - 1 : currentIdx;
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        if (node.isDir && !expanded.has(node.path)) {
+          toggle(node.path);
+        } else if (node.isDir && node.children.length > 0) {
+          targetIdx = currentIdx + 1;
+        }
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        if (node.isDir && expanded.has(node.path)) {
+          toggle(node.path);
+        } else {
+          // Find parent
+          for (let i = currentIdx - 1; i >= 0; i--) {
+            if (flat[i].depth < flat[currentIdx].depth) {
+              targetIdx = i;
+              break;
+            }
+          }
+        }
+        break;
+      case "Home":
+        e.preventDefault();
+        targetIdx = 0;
+        break;
+      case "End":
+        e.preventDefault();
+        targetIdx = flat.length - 1;
+        break;
+      case "Enter":
+      case " ":
+        e.preventDefault();
+        if (node.isDir) {
+          toggle(node.path);
+        } else {
+          onSelect(node.path);
+        }
+        return;
+    }
+
+    if (targetIdx !== null && targetIdx >= 0 && targetIdx < flat.length) {
+      const target = flat[targetIdx].node;
+      const el = itemRefs.current.get(target.path);
+      if (el) {
+        focusedKey.current = target.path;
+        el.focus();
+      }
+    }
+  };
+
+  // Move focus when selected changes programmatically
+  useEffect(() => {
+    if (!selected) return;
+    const el = itemRefs.current.get(selected);
+    if (el) el.focus();
+  }, [selected]);
+
   function renderNode(node: TreeNode, depth: number): ReactNode {
+    const setRef = (el: HTMLButtonElement | null) => {
+      if (el) itemRefs.current.set(node.path, el);
+      else itemRefs.current.delete(node.path);
+    };
+
     if (node.isDir) {
       const isExpanded = expanded.has(node.path);
       return (
         <div key={node.path}>
           <button
+            ref={setRef}
             className="ide-tree-item dir"
             style={{ paddingLeft: `${depth * 0.8 + 0.6}rem` }}
             onClick={() => toggle(node.path)}
+            onKeyDown={(e) => handleKeyDown(e, node)}
+            role="treeitem"
+            aria-expanded={isExpanded}
+            aria-label={`${node.name}, folder${node.children.length > 0 ? `, ${node.children.length} item${node.children.length > 1 ? "s" : ""}` : ""}`}
+            aria-level={depth + 1}
+            tabIndex={node.path === focusedKey.current || (!focusedKey.current && depth === 0) ? 0 : -1}
           >
-            <span className="ide-tree-icon">{isExpanded ? "▾" : "▸"}</span>
+            <span className="ide-tree-icon" aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
             <span className="ide-tree-name">{node.name}</span>
           </button>
           {isExpanded && node.children.map((child) => renderNode(child, depth + 1))}
@@ -117,41 +234,55 @@ export function FileTree({ files, selected, onSelect }: {
       );
     }
     const status = node.fileEntry ? inferStatus(node.fileEntry.content) : "modified";
+    const isSelected = selected === node.path;
     return (
       <button
         key={node.path}
-        className={`ide-tree-item file ${selected === node.path ? "selected" : ""}`}
+        ref={setRef}
+        className={`ide-tree-item file ${isSelected ? "selected" : ""}`}
         style={{ paddingLeft: `${depth * 0.8 + 0.6}rem` }}
         onClick={() => onSelect(node.path)}
+        onKeyDown={(e) => handleKeyDown(e, node)}
+        role="treeitem"
+        aria-selected={isSelected}
+        aria-label={`${node.name}, file, ${STATUS_FULL[status]}`}
+        aria-level={depth + 1}
+        aria-current={isSelected ? "true" : undefined}
+        tabIndex={node.path === focusedKey.current ? 0 : -1}
       >
-        <span className="ide-tree-icon">○</span>
+        <span className="ide-tree-icon" aria-hidden="true">○</span>
         <span className="ide-tree-name">{node.name}</span>
-        <span className={`ide-file-status ${status}`}>{STATUS_LABELS[status]}</span>
+        <span className={`ide-file-status ${status}`} aria-label={`Status: ${STATUS_FULL[status]}`}>{STATUS_LABELS[status]}</span>
       </button>
     );
   }
 
   if (files.size === 0) {
     return (
-      <>
-        <div className="ide-panel-header">
+      <section aria-label="Files" aria-labelledby="files-heading">
+        <div className="ide-panel-header" id="files-heading">
           Files
-          <span className="ide-panel-count">0</span>
+          <span className="ide-panel-count" aria-label="0 files">0</span>
         </div>
-        <div className="ide-tree-empty muted">No files changed yet</div>
-      </>
+        <div className="ide-tree-empty muted" role="status">No files changed yet</div>
+      </section>
     );
   }
 
   return (
-    <>
-      <div className="ide-panel-header">
+    <section aria-label="Files panel" className="ide-files-section">
+      <div className="ide-panel-header" id="files-heading">
         Files
-        <span className="ide-panel-count">{files.size}</span>
+        <span className="ide-panel-count" aria-label={`${files.size} files`}>{files.size}</span>
       </div>
-      <div className="ide-file-tree">
+      <div
+        className="ide-file-tree"
+        role="tree"
+        aria-labelledby="files-heading"
+        ref={treeContainerRef}
+      >
         {tree.children.map((child) => renderNode(child, 0))}
       </div>
-    </>
+    </section>
   );
 }

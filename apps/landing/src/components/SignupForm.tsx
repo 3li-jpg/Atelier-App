@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
+import TransitionOverlay from "@/components/TransitionOverlay";
 
 const DASHBOARD_URL =
   process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:5173";
@@ -14,6 +15,7 @@ export default function SignupForm() {
   const [passwordError, setPasswordError] = useState("");
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -52,7 +54,12 @@ export default function SignupForm() {
       // If session is active immediately, redirect
       if (signUpData.session) {
         const token = signUpData.session.access_token;
-        window.location.href = `${DASHBOARD_URL}#token=${encodeURIComponent(token)}`;
+        setTransitioning(true);
+        // Brief delay so the overlay paints before the cross-origin navigation
+        // freezes the page. The web app's own loading state picks up from here.
+        setTimeout(() => {
+          window.location.href = `${DASHBOARD_URL}#token=${encodeURIComponent(token)}`;
+        }, 350);
         return;
       }
 
@@ -71,7 +78,10 @@ export default function SignupForm() {
 
       if (signInData.session) {
         const token = signInData.session.access_token;
-        window.location.href = `${DASHBOARD_URL}#token=${encodeURIComponent(token)}`;
+        setTransitioning(true);
+        setTimeout(() => {
+          window.location.href = `${DASHBOARD_URL}#token=${encodeURIComponent(token)}`;
+        }, 350);
         return;
       }
 
@@ -85,6 +95,7 @@ export default function SignupForm() {
 
   return (
     <section id="join" style={{ padding: "80px 0" }}>
+      <TransitionOverlay show={transitioning} message="Redirecting to dashboard…" />
       <div className="container">
         <div className="section-stamp">J O I N</div>
 

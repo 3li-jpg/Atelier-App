@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { api, type ProviderSummary, type CreateSessionReq } from "../api.ts";
 import type { FieldErrors } from "../lib.ts";
+import { hoverLift, tapScale } from "../motion.ts";
 
 const EXAMPLE_PROMPTS = [
   "Fix the failing tests in src/auth.ts and explain what was wrong.",
@@ -107,13 +109,17 @@ export function StepTask({ providerId, repoUrl, branch, onDone, onBack }: {
       {/* Example prompts */}
       <div className="onb-task-examples">
         {EXAMPLE_PROMPTS.map((ex, i) => (
-          <button
+          <motion.button
             key={i}
             className="onb-task-example"
             onClick={() => setTask(ex)}
+            variants={hoverLift}
+            initial="rest"
+            whileHover="hover"
+            whileTap="hover"
           >
             {ex}
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -133,10 +139,14 @@ export function StepTask({ providerId, repoUrl, branch, onDone, onBack }: {
       {err && <div className="error">{err}</div>}
 
       <div className="onb-nav">
-        <button className="ghost" onClick={onBack}>← Back</button>
-        <button className="primary" onClick={submit} disabled={submitting || !task.trim()}>
+        <motion.button className="ghost" onClick={onBack}
+          variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+        >← Back</motion.button>
+        <motion.button className="primary" onClick={submit} disabled={submitting || !task.trim()}
+          variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+        >
           {submitting ? "starting…" : "Launch session →"}
-        </button>
+        </motion.button>
       </div>
     </div>
   );

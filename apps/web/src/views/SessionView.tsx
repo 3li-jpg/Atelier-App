@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
 import { api, type SessionDetail } from "../api.ts";
 import { useEventStream } from "../useEventStream.ts";
+import { useLiveRegion } from "../useLiveRegion.ts";
 import { EventCell } from "../components/EventCell.tsx";
 import { FileTree, type FileEntry } from "../components/FileTree.tsx";
 import { DiffPanel } from "../components/DiffPanel.tsx";
 import { stateTone, TERMINAL_STATES } from "../lib.ts";
-import { fadeIn, hoverLift, tapScale } from "../motion.ts";
 import "./session-view.css";
 
 type MobileTab = "files" | "diff" | "chat";
@@ -21,6 +20,9 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const composerInputRef = useRef<HTMLInputElement>(null);
+  const announce = useLiveRegion("polite");
+  const announceAlert = useLiveRegion("assertive");
 
   useEffect(() => {
     api.getSession(id).then(setSession).catch(() => {});
@@ -30,6 +32,57 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [events.length]);
 
+  // Screen reader announcements for key streaming events
+  const lastEventCount = useRef(0);
+  useEffect(() => {
+    if (events.length <= lastEventCount.current) return;
+    const newEvents = events.slice(lastEventCount.current);
+    lastEventCount.current = events.length;
+
+    for (const e of newEvents) {
+      const p = (e.payload ?? {}) as Record<string, unknown>;
+      switch (e.type) {
+        case "assistant_text": {
+          const text = String(p.text ?? "");
+          if (text) announce(`Assistant: ${text.slice(0, 200)}`);
+          break;
+        }
+        case "tool_call": {
+          const tool = String(p.tool ?? p.name ?? "tool");
+          const status = typeof p.status === "string" ? p.status : "done";
+          announce(`Tool ${tool}: ${status}`);
+          break;
+        }
+        case "error": {
+          announceAlert(`Error: ${String(p.message ?? "")}`);
+          break;
+        }
+        case "state_change": {
+          const state = String(p.state ?? "");
+          if (state === "awaiting_user") {
+            announceAlert(`Session is now awaiting your input`);
+          } else if (TERMINAL_STATES.has(state)) {
+            announceAlert(`Session ${state}`);
+          } else {
+            announce(`State: ${state}`);
+          }
+          break;
+        }
+        case "question": {
+          announceAlert(`Question: ${String(p.prompt ?? p.message ?? "")}`);
+          break;
+        }
+        case "commit": {
+          announce(`Commit: ${String(p.sha ?? "").slice(0, 7)} — ${String(p.message ?? "")}`);
+          break;
+        }
+      }
+    }
+  }, [events, announce, announceAlert]);
+
+  // Focus the composer when session enters awaiting_user
+  const wasAwaiting = useRef(false);
+
   const send = async (text: string) => {
     const body = text.trim();
     if (!body || sending) return;
@@ -37,6 +90,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
     try {
       await api.reply(id, body);
       setReply("");
+      announce("Message sent");
     } finally {
       setSending(false);
     }
@@ -50,6 +104,14 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
 
   const terminal = TERMINAL_STATES.has(state);
   const awaitingUser = state === "awaiting_user";
+
+  // Focus the composer when session enters awaiting_user
+  useEffect(() => {
+    if (awaitingUser && !wasAwaiting.current) {
+      composerInputRef.current?.focus();
+    }
+    wasAwaiting.current = awaitingUser;
+  }, [awaitingUser]);
 
   const cancel = async () => {
     if (cancelling || terminal) return;
@@ -79,8 +141,12 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
   }, [events]);
 
   // ── Auto-select first file when files arrive ──
+  // Only auto-select on the first batch; once the user explicitly goes back
+  // to the timeline (selectedFile = null via onBack), don't re-auto-select.
+  const autoSelectedRef = useRef(false);
   useEffect(() => {
-    if (!selectedFile && fileMap.size > 0) {
+    if (!selectedFile && fileMap.size > 0 && !autoSelectedRef.current) {
+      autoSelectedRef.current = true;
       setSelectedFile(fileMap.keys().next().value ?? null);
     }
   }, [fileMap, selectedFile]);
@@ -178,87 +244,113 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
     ? `${session.repo_url.replace(/\.git$/, "").replace(/^https:\/\/github\.com\//, "")} · ${session.branch} · ${session.model_id}`
     : "";
 
+  const tabIds: Record<MobileTab, string> = {
+    files: "tab-files",
+    diff: "tab-diff",
+    chat: "tab-chat",
+  };
+  const panelIds: Record<MobileTab, string> = {
+    files: "panel-files",
+    diff: "panel-diff",
+    chat: "panel-chat",
+  };
+
   return (
-    <div className="ide-shell">
+    <div className="ide-shell" role="application" aria-label="Session workspace">
       {/* ── Topbar ── */}
-      <header className="ide-topbar">
-        <motion.button
+      <header className="ide-topbar" role="banner">
+        <button
           className="ghost"
           onClick={onBack}
-          variants={tapScale}
-          initial="rest"
-          whileHover="hover"
-          whileTap="pressed"
-        >← back</motion.button>
-        <h1 className="ellipsis">{session?.task ?? id.slice(0, 8)}</h1>
-        {!terminal && <span className={`live-dot ${live ? "" : "off"}`} title={live ? "live" : "reconnecting"} />}
+          aria-label="Back to sessions list"
+        >
+          ← back
+        </button>
+        <h1 className="ellipsis" aria-label={`Session: ${session?.task ?? id.slice(0, 8)}`}>
+          {session?.task ?? id.slice(0, 8)}
+        </h1>
         {!terminal && (
-          <motion.button
+          <span
+            className={`live-dot ${live ? "" : "off"}`}
+            title={live ? "live" : "reconnecting"}
+            role="status"
+            aria-label={live ? "Stream live" : "Stream reconnecting"}
+          />
+        )}
+        {!terminal && (
+          <button
             className="ghost"
             title="finish: commit, push & shut down"
             onClick={() => api.finishSession(id).catch(() => {})}
-            variants={tapScale}
-            initial="rest"
-            whileHover="hover"
-            whileTap="pressed"
+            aria-label="Finish session: commit, push and shut down"
           >
             finish
-          </motion.button>
+          </button>
         )}
         {!terminal && (
-          <motion.button
+          <button
             className="ghost"
             onClick={cancel}
             disabled={cancelling}
             title="cancel session"
-            variants={tapScale}
-            initial="rest"
-            whileHover="hover"
-            whileTap="pressed"
+            aria-label="Cancel session"
           >
             {cancelling ? "…" : "✕"}
-          </motion.button>
+          </button>
         )}
       </header>
 
       {/* ── State banner ── */}
-      <div className={`ide-statebar tone-${stateTone(state)}`}>
+      <div
+        className={`ide-statebar tone-${stateTone(state)}`}
+        role="status"
+        aria-label={`Session state: ${state}${session ? `, ${repoLabel}` : ""}`}
+      >
         <span>{state}</span>
         {session && <span className="muted small meta">{repoLabel}</span>}
       </div>
 
       {/* ── Mobile tabs ── */}
-      <div className="ide-mobile-tabs">
-        <motion.button
+      <div className="ide-mobile-tabs" role="tablist" aria-label="Workspace panels">
+        <button
           className={`ide-mobile-tab ${mobileTab === "files" ? "active" : ""}`}
           onClick={() => setMobileTab("files")}
-          variants={tapScale}
-          initial="rest"
-          whileHover="hover"
-          whileTap="pressed"
-        >Files</motion.button>
-        <motion.button
+          role="tab"
+          id={tabIds.files}
+          aria-selected={mobileTab === "files"}
+          aria-controls={panelIds.files}
+          tabIndex={mobileTab === "files" ? 0 : -1}
+        >Files</button>
+        <button
           className={`ide-mobile-tab ${mobileTab === "diff" ? "active" : ""}`}
           onClick={() => setMobileTab("diff")}
-          variants={tapScale}
-          initial="rest"
-          whileHover="hover"
-          whileTap="pressed"
-        >Diff</motion.button>
-        <motion.button
+          role="tab"
+          id={tabIds.diff}
+          aria-selected={mobileTab === "diff"}
+          aria-controls={panelIds.diff}
+          tabIndex={mobileTab === "diff" ? 0 : -1}
+        >Diff</button>
+        <button
           className={`ide-mobile-tab ${mobileTab === "chat" ? "active" : ""}`}
           onClick={() => setMobileTab("chat")}
-          variants={tapScale}
-          initial="rest"
-          whileHover="hover"
-          whileTap="pressed"
-        >Chat</motion.button>
+          role="tab"
+          id={tabIds.chat}
+          aria-selected={mobileTab === "chat"}
+          aria-controls={panelIds.chat}
+          tabIndex={mobileTab === "chat" ? 0 : -1}
+        >Chat</button>
       </div>
 
       {/* ── Three-panel layout ── */}
       <div className="ide-panels">
         {/* ── Left: File tree ── */}
-        <div className={`ide-panel ide-files ${mobileTab === "files" ? "active" : ""}`}>
+        <div
+          className={`ide-panel ide-files ${mobileTab === "files" ? "active" : ""}`}
+          role="region"
+          aria-label="Files panel"
+          id={panelIds.files}
+          aria-labelledby={tabIds.files}
+        >
           <FileTree
             files={fileMap}
             selected={selectedFile}
@@ -267,7 +359,13 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
         </div>
 
         {/* ── Middle: Diff / Timeline ── */}
-        <div className={`ide-panel ide-middle ${mobileTab === "diff" ? "active" : ""}`}>
+        <div
+          className={`ide-panel ide-middle ${mobileTab === "diff" ? "active" : ""}`}
+          role="region"
+          aria-label="Timeline and diff panel"
+          id={panelIds.diff}
+          aria-labelledby={tabIds.diff}
+        >
           {selectedEntry ? (
             <DiffPanel
               path={selectedEntry.path}
@@ -276,46 +374,60 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
             />
           ) : (
             <>
-              <div className="ide-panel-header">
+              <div className="ide-panel-header" id="timeline-heading">
                 Timeline
-                <span className="ide-panel-count">{events.length}</span>
+                <span className="ide-panel-count" aria-label={`${events.length} events`}>{events.length}</span>
               </div>
-              <div className="ide-timeline" ref={chatScrollRef}>
+              <div
+                className="ide-timeline"
+                ref={chatScrollRef}
+                role="log"
+                aria-labelledby="timeline-heading"
+                aria-live="polite"
+                aria-relevant="additions"
+              >
                 {events.length === 0 && (
-                  <p className="muted" style={{ padding: "0.5rem" }}>waiting for events…</p>
+                  <p className="muted" role="status" style={{ padding: "0.5rem" }}>waiting for events…</p>
                 )}
                 {timelineItems.map(({ e, idx, label, dotClass, clickable, filePath }) => (
-                  <motion.div
-                    key={idx}
-                    className="ide-timeline-item"
-                    variants={fadeIn}
-                    initial="hidden"
-                    animate="visible"
-                  >
-                    <div className="ide-timeline-marker">
+                  <div key={idx} className="ide-timeline-item ide-fade-in" role="listitem">
+                    <div className="ide-timeline-marker" aria-hidden="true">
                       <span className={`ide-timeline-dot ${dotClass}`} />
                       <span className="ide-timeline-line" />
                     </div>
                     <div className="ide-timeline-content">
-                      <motion.span
+                      <span
                         className={`ide-timeline-text ${clickable ? "clickable" : ""}`}
-                        variants={clickable ? hoverLift : undefined}
-                        initial={clickable ? "rest" : false}
-                        whileHover={clickable ? "hover" : undefined}
                         onClick={() => {
                           if (filePath) {
                             setSelectedFile(filePath);
                             setMobileTab("diff");
                           }
                         }}
+                        role={clickable ? "button" : undefined}
+                        tabIndex={clickable ? 0 : undefined}
+                        aria-label={
+                          clickable
+                            ? `View diff for ${filePath}`
+                            : label
+                        }
+                        onKeyDown={(ev) => {
+                          if (clickable && (ev.key === "Enter" || ev.key === " ")) {
+                            ev.preventDefault();
+                            if (filePath) {
+                              setSelectedFile(filePath);
+                              setMobileTab("diff");
+                            }
+                          }
+                        }}
                       >
                         {label}
-                      </motion.span>
-                      <span className="muted small">
+                      </span>
+                      <span className="muted small" aria-label={`at ${new Date(e.ts).toLocaleTimeString()}`}>
                         {new Date(e.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
             </>
@@ -323,21 +435,40 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
         </div>
 
         {/* ── Right: Chat + tools ── */}
-        <div className={`ide-panel ide-chat ${mobileTab === "chat" ? "active" : ""}`}>
+        <div
+          className={`ide-panel ide-chat ${mobileTab === "chat" ? "active" : ""}`}
+          role="region"
+          aria-label="Chat and activity panel"
+          id={panelIds.chat}
+          aria-labelledby={tabIds.chat}
+        >
           {/* Progress bar when streaming */}
           {isStreaming && (
-            <div className="ide-progress">
-              <div className="ide-progress-bar" />
+            <div
+              className="ide-progress"
+              role="progressbar"
+              aria-label="Session activity in progress"
+              aria-valuenow={undefined}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div className="ide-progress-bar" aria-hidden="true" />
             </div>
           )}
 
           {/* Chat messages */}
-          <div className="ide-chat-messages">
-            {events.length === 0 && <p className="muted">waiting for events…</p>}
+          <div
+            className="ide-chat-messages"
+            role="log"
+            aria-label="Chat messages"
+            aria-live="polite"
+            aria-relevant="additions"
+          >
+            {events.length === 0 && <p className="muted" role="status">waiting for events…</p>}
             {events.map((e, idx) => (
-              <div key={idx} className="ide-fade-in">
+              <div key={idx} className="ide-fade-in" role="listitem">
                 {pendingQuestion?.seq === e.seq && e.type === "question" ? (
-                  <div className="ide-approval">
+                  <div className="ide-approval" role="alert">
                     <EventCell event={e} onReply={(t) => send(t)} />
                   </div>
                 ) : (
@@ -346,10 +477,14 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
               </div>
             ))}
             {isStreaming && (
-              <div className="ide-typing">
-                <span className="ide-typing-dot" />
-                <span className="ide-typing-dot" />
-                <span className="ide-typing-dot" />
+              <div
+                className="ide-typing"
+                role="status"
+                aria-label="Assistant is typing"
+              >
+                <span className="ide-typing-dot" aria-hidden="true" />
+                <span className="ide-typing-dot" aria-hidden="true" />
+                <span className="ide-typing-dot" aria-hidden="true" />
               </div>
             )}
             <div ref={bottomRef} />
@@ -357,11 +492,20 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
 
           {/* Inline steering bar when awaiting user */}
           {awaitingUser && !terminal && (
-            <div className="ide-steer-bar">
+            <div className="ide-steer-bar" role="alert" aria-label="Awaiting your input">
               <span className="muted">⚠ Awaiting your input</span>
-              <div className="ide-steer-actions">
-                <button className="ghost" onClick={() => api.finishSession(id).catch(() => {})}>finish</button>
-                <button className="ghost" onClick={cancel} disabled={cancelling}>
+              <div className="ide-steer-actions" role="group" aria-label="Session actions">
+                <button
+                  className="ghost"
+                  onClick={() => api.finishSession(id).catch(() => {})}
+                  aria-label="Finish session"
+                >finish</button>
+                <button
+                  className="ghost"
+                  onClick={cancel}
+                  disabled={cancelling}
+                  aria-label="Cancel session"
+                >
                   {cancelling ? "…" : "cancel"}
                 </button>
               </div>
@@ -370,12 +514,25 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
 
           {/* PR status */}
           {prInfo && (
-            <div className="ide-pr-status">
-              <span className="badge ok">PR</span>
+            <div
+              className="ide-pr-status"
+              role="status"
+              aria-label={`Pull request: ${prInfo.sha}, ${prInfo.message}, ${prInfo.count} commit${prInfo.count > 1 ? "s" : ""}`}
+            >
+              <span className="badge ok" aria-hidden="true">PR</span>
               <span className="mono">{prInfo.sha}</span>
               <span className="ellipsis" style={{ flex: 1 }}>{prInfo.message}</span>
-              {prInfo.url && <a href={prInfo.url} target="_blank" rel="noopener noreferrer">view →</a>}
-              <span className="muted small">{prInfo.count} commit{prInfo.count > 1 ? "s" : ""}</span>
+              {prInfo.url && (
+                <a
+                  href={prInfo.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`View pull request ${prInfo.sha} on GitHub (opens in new tab)`}
+                >view →</a>
+              )}
+              <span className="muted small" aria-label={`${prInfo.count} commits`}>
+                {prInfo.count} commit{prInfo.count > 1 ? "s" : ""}
+              </span>
             </div>
           )}
 
@@ -383,21 +540,23 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
           <form
             className={`ide-composer ${awaitingUser ? "awaiting" : ""}`}
             onSubmit={(e) => { e.preventDefault(); send(reply); }}
+            role="search"
+            aria-label="Send a message"
           >
             <input
+              ref={composerInputRef}
               value={reply}
               onChange={(e) => setReply(e.target.value)}
               placeholder={terminal ? "session ended" : awaitingUser ? "reply or steer…" : "reply…"}
               disabled={terminal}
+              aria-label={terminal ? "Session ended" : awaitingUser ? "Reply or steer the session" : "Reply to the session"}
+              aria-disabled={terminal}
             />
-            <motion.button
+            <button
               type="submit"
               disabled={terminal || sending || !reply.trim()}
-              variants={tapScale}
-              initial="rest"
-              whileHover="hover"
-              whileTap="pressed"
-            >send</motion.button>
+              aria-label="Send message"
+            >send</button>
           </form>
         </div>
       </div>

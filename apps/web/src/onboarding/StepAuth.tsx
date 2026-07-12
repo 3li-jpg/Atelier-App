@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { api, setAuthToken } from "../api.ts";
 import { validateAuthForm, type FieldErrors } from "../lib.ts";
+import { tapScale } from "../motion.ts";
 
 type AuthStatus = {
   oauth: boolean;
@@ -33,7 +35,9 @@ export function StepAuth({ status, onDone }: {
           Logged in as {status.user?.login ?? "owner"}. Continue to set up your model provider.
         </p>
         <div className="onb-nav">
-          <button className="primary" onClick={onDone}>Continue →</button>
+          <motion.button className="primary" onClick={onDone}
+            variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+          >Continue →</motion.button>
         </div>
       </div>
     );
@@ -66,23 +70,32 @@ export function StepAuth({ status, onDone }: {
 
       {status?.oauth && (
         <>
-          <button
+          <motion.button
             className="primary onb-oauth-btn"
             onClick={() => { window.location.href = "/auth/github/login"; }}
+            variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
           >
             Continue with GitHub
-          </button>
+          </motion.button>
           <div className="onb-auth-mode-toggle">
-            <button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Sign up</button>
-            <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>Log in</button>
+            <motion.button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}
+              variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+            >Sign up</motion.button>
+            <motion.button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}
+              variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+            >Log in</motion.button>
           </div>
         </>
       )}
 
       {!status?.oauth && (
         <div className="onb-auth-mode-toggle">
-          <button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Sign up</button>
-          <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>Log in</button>
+          <motion.button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}
+            variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+          >Sign up</motion.button>
+          <motion.button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}
+            variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+          >Log in</motion.button>
         </div>
       )}
 
@@ -112,9 +125,11 @@ export function StepAuth({ status, onDone }: {
       {err && <div className="error">{err}</div>}
 
       <div className="onb-nav">
-        <button className="primary" onClick={submit} disabled={busy}>
+        <motion.button className="primary" onClick={submit} disabled={busy}
+          variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+        >
           {busy ? "…" : mode === "signup" ? "Create account" : "Log in"}
-        </button>
+        </motion.button>
       </div>
     </div>
   );

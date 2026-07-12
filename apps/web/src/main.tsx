@@ -29,6 +29,12 @@ supabase.auth.onAuthStateChange((_event, session) => {
   }
 });
 
+// Fade out the boot loading state (defined in index.html) right before
+// React mounts. The 0.3s CSS animation runs concurrently with React's
+// first paint, so the user sees a smooth crossfade from the boot screen
+// to the app instead of a hard flash.
+document.documentElement.classList.add("boot-done");
+
 createRoot(document.getElementById("root")!).render(<App />);
 
 // ponytail: SW registered in prod only (it breaks Vite HMR in dev). Verify the

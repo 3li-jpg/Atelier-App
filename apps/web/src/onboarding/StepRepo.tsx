@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { api, type RepoSummary, type BranchSummary } from "../api.ts";
 import { isValidUrl, type FieldErrors } from "../lib.ts";
+import { hoverLift, tapScale } from "../motion.ts";
 
 // Step 3: Repo selection. Two modes:
 //  - OAuth authed: searchable dropdown of GitHub repos + branch picker
@@ -72,7 +74,10 @@ export function StepRepo({ onDone, onBack }: {
       {usePicker ? (
         <>
           <div className="onb-repo-toggle">
-            <button className="ghost" onClick={() => { setUsePicker(false); setSelectedFullName(""); setRepoUrl(""); }}>Switch to manual</button>
+            <motion.button className="ghost"
+              onClick={() => { setUsePicker(false); setSelectedFullName(""); setRepoUrl(""); }}
+              variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+            >Switch to manual</motion.button>
           </div>
           <input
             className="onb-repo-search"
@@ -88,13 +93,17 @@ export function StepRepo({ onDone, onBack }: {
             <ul className="onb-repo-list">
               {filtered.slice(0, 50).map((r) => (
                 <li key={r.id}>
-                  <button
+                  <motion.button
                     className={`onb-repo-item ${selectedFullName === r.full_name ? "selected" : ""}`}
                     onClick={() => onRepoSelect(r.full_name)}
+                    variants={hoverLift}
+                    initial="rest"
+                    whileHover="hover"
+                    whileTap="hover"
                   >
                     <div className="repo-name">{r.full_name}</div>
                     <div className="repo-branch">default: {r.default_branch}{r.private ? " · private" : ""}</div>
-                  </button>
+                  </motion.button>
                 </li>
               ))}
             </ul>
@@ -134,10 +143,14 @@ export function StepRepo({ onDone, onBack }: {
       )}
 
       <div className="onb-nav">
-        <button className="ghost" onClick={onBack}>← Back</button>
-        <button className="primary" onClick={next} disabled={!repoUrl.trim() || !branch.trim()}>
+        <motion.button className="ghost" onClick={onBack}
+          variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+        >← Back</motion.button>
+        <motion.button className="primary" onClick={next} disabled={!repoUrl.trim() || !branch.trim()}
+          variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+        >
           Continue →
-        </button>
+        </motion.button>
       </div>
     </div>
   );

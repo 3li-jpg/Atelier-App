@@ -64,13 +64,25 @@ export function DiffPanel({ path, content, onBack }: {
 }) {
   if (content == null) {
     return (
-      <>
+      <section
+        className="ide-diff-section"
+        role="region"
+        aria-label={`Diff for ${path}`}
+      >
         <div className="ide-diff-header">
-          {onBack && <button className="ghost" onClick={onBack}>←</button>}
+          {onBack && (
+            <button
+              className="ghost"
+              onClick={onBack}
+              aria-label="Back to timeline"
+            >
+              ←
+            </button>
+          )}
           <span className="ide-diff-path">{path}</span>
         </div>
-        <div className="ide-diff-empty">No diff content available</div>
-      </>
+        <div className="ide-diff-empty" role="status">No diff content available</div>
+      </section>
     );
   }
 
@@ -80,18 +92,37 @@ export function DiffPanel({ path, content, onBack }: {
   const isDiff = lines.some((l) => l.type === "add" || l.type === "del" || l.type === "hunk");
 
   return (
-    <>
+    <section
+      className="ide-diff-section"
+      role="region"
+      aria-label={`Diff for ${path}${isDiff ? `, ${stats.additions} additions, ${stats.deletions} deletions` : ""}`}
+    >
       <div className="ide-diff-header">
-        {onBack && <button className="ghost" onClick={onBack}>←</button>}
-        <span className="ide-diff-path">{path}</span>
+        {onBack && (
+          <button
+            className="ghost"
+            onClick={onBack}
+            aria-label="Back to timeline"
+          >
+            ←
+          </button>
+        )}
+        <span className="ide-diff-path" aria-label={`File path: ${path}`}>{path}</span>
         {isDiff && (
-          <span className="ide-diff-stats">
-            <span className="add">+{stats.additions}</span>
-            <span className="del">-{stats.deletions}</span>
+          <span
+            className="ide-diff-stats"
+            aria-label={`${stats.additions} additions, ${stats.deletions} deletions`}
+          >
+            <span className="add" aria-hidden="true">+{stats.additions}</span>
+            <span className="del" aria-hidden="true">-{stats.deletions}</span>
           </span>
         )}
       </div>
-      <div className="ide-diff-body">
+      <div
+        className="ide-diff-body"
+        role="article"
+        aria-label={`Diff content for ${path}`}
+      >
         {lines.map((line, i) => {
           const sign = line.type === "add" ? "+" : line.type === "del" ? "-" : "";
           const lineNo =
@@ -101,14 +132,19 @@ export function DiffPanel({ path, content, onBack }: {
                 ? line.oldLine
                 : null;
           return (
-            <div key={i} className={`ide-diff-line ${line.type}`}>
-              <span className="ide-diff-lineno">{lineNo ?? ""}</span>
-              <span className="ide-diff-sign">{sign}</span>
+            <div
+              key={i}
+              className={`ide-diff-line ${line.type}`}
+              role="text"
+              aria-label={`Line ${lineNo ?? ""}${sign ? ` ${sign}` : ""}: ${line.text}`}
+            >
+              <span className="ide-diff-lineno" aria-hidden="true">{lineNo ?? ""}</span>
+              <span className="ide-diff-sign" aria-hidden="true">{sign}</span>
               <span className="ide-diff-content">{line.text}</span>
             </div>
           );
         })}
       </div>
-    </>
+    </section>
   );
 }

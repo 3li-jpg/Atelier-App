@@ -293,3 +293,79 @@ input { font-family: inherit; }
   font-style: italic;
   font-weight: 400;
 }
+
+/* ============================================================
+   TRANSITION OVERLAY — landing → app redirect
+   Matches the web app's initial loading state (apps/web/index.html)
+   so the cross-origin navigation feels seamless.
+   ============================================================ */
+
+.atelier-transition-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-near-black);
+  overflow: hidden;
+}
+
+.atelier-transition-bloom {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 50% 45%,
+    rgba(175, 80, 255, 0.12),
+    transparent 55%
+  );
+  pointer-events: none;
+}
+
+.atelier-transition-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.atelier-transition-wordmark {
+  font-family: var(--font-whyte);
+  font-weight: 500;
+  font-size: 28px;
+  letter-spacing: -0.3px;
+  color: var(--color-almost-white);
+}
+
+.atelier-transition-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-signal-violet);
+}
+
+.atelier-transition-spinner svg {
+  width: 28px;
+  height: 28px;
+  animation: atelier-transition-spin 0.7s linear infinite;
+}
+
+@keyframes atelier-transition-spin {
+  to { transform: rotate(360deg); }
+}
+
+.atelier-transition-message {
+  font-family: var(--font-whyte-mono);
+  font-size: 12px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-steel);
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atelier-transition-spinner svg {
+    animation-duration: 1.5s;
+  }
+}

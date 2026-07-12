@@ -287,3 +287,17 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     --user: rgba(154, 62, 230, 0.1);
   }
 }
+
+/* ============================================================
+   BOOT LOADING STATE — cleanup after React mount
+   The #atelier-boot element lives inside #root in index.html.
+   When React calls createRoot(#root).render(), it replaces
+   #root's innerHTML, removing the boot screen. The fade-out
+   animation is triggered by the .boot-done class on <html>
+   (added in main.tsx). This rule ensures that if the boot
+   element somehow persists, it doesn't block interaction.
+   ============================================================ */
+
+.boot-done #atelier-boot {
+  pointer-events: none;
+}

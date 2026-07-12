@@ -504,3 +504,99 @@
     display: none;
   }
 }
+
+/* ── Accessibility: focus-visible outlines ── */
+/* Visible focus ring for keyboard navigation on all interactive elements */
+.ide-shell :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.ide-tree-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.ide-mobile-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.ide-composer input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.ide-timeline-text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Screen reader only text ── */
+.ide-shell .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Skip link ── */
+.ide-skip-link {
+  position: absolute;
+  top: -100px;
+  left: 0;
+  z-index: 1000;
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  color: var(--bg);
+  text-decoration: none;
+  font-size: 0.85rem;
+  border-radius: 0 0 6px 0;
+  transition: top 0.2s ease;
+}
+.ide-skip-link:focus {
+  top: 0;
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .ide-progress-bar {
+    animation: none;
+    width: 100%;
+  }
+  .ide-typing-dot {
+    animation: none;
+    opacity: 0.7;
+  }
+  .ide-fade-in {
+    animation: none;
+    opacity: 1;
+  }
+  .ide-approval {
+    animation: none;
+  }
+  .ide-shell * {
+    scroll-behavior: auto;
+  }
+}
+
+/* ── High contrast adjustments ── */
+@media (prefers-contrast: high) {
+  .ide-tree-item {
+    border: 1px solid transparent;
+  }
+  .ide-tree-item.selected {
+    border-color: var(--accent);
+  }
+  .ide-diff-line.add {
+    background: color-mix(in srgb, var(--ok) 15%, transparent);
+    border-left: 3px solid var(--ok);
+  }
+  .ide-diff-line.del {
+    background: color-mix(in srgb, var(--bad) 15%, transparent);
+    border-left: 3px solid var(--bad);
+  }
+}

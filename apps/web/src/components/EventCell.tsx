@@ -14,19 +14,29 @@ export function EventCell({ event, onReply }: { event: Event; onReply: (text: st
   const ts = new Date(event.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   if (variant === "assistant") {
+    const text = String(p.text ?? "");
     return (
-      <div className="cell assistant">
-        <div className="bubble">{String(p.text ?? "")}</div>
-        <time className="muted small">{ts}</time>
-      </div>
+      <article
+        className="cell assistant"
+        role="article"
+        aria-label={`Assistant message at ${ts}`}
+      >
+        <div className="bubble">{text}</div>
+        <time className="muted small" dateTime={event.ts}>{ts}</time>
+      </article>
     );
   }
 
   if (variant === "user") {
+    const text = String(p.text ?? "");
     return (
-      <div className="cell user">
-        <div className="bubble">{String(p.text ?? "")}</div>
-      </div>
+      <article
+        className="cell user"
+        role="article"
+        aria-label={`Your message at ${ts}`}
+      >
+        <div className="bubble">{text}</div>
+      </article>
     );
   }
 
@@ -37,6 +47,7 @@ export function EventCell({ event, onReply }: { event: Event; onReply: (text: st
         options={Array.isArray(p.options) ? p.options.map(String) : []}
         onReply={onReply}
         ts={ts}
+        eventTs={event.ts}
       />
     );
   }
@@ -54,28 +65,44 @@ export function EventCell({ event, onReply }: { event: Event; onReply: (text: st
   }
 
   if (variant === "error") {
+    const msg = String(p.message ?? JSON.stringify(p));
     return (
-      <div className="cell error">
-        <div className="bubble">{String(p.message ?? JSON.stringify(p))}</div>
-      </div>
+      <article
+        className="cell error"
+        role="alert"
+        aria-label={`Error at ${ts}: ${msg}`}
+      >
+        <div className="bubble">{msg}</div>
+      </article>
     );
   }
 
   if (variant === "state") {
     const to = String(p.state ?? "");
     return (
-      <div className="cell state">
+      <div
+        className="cell state"
+        role="status"
+        aria-label={`State changed to ${to} at ${ts}`}
+      >
         <span className={`pill tone-${stateTone(to)}`}>{to}</span>
-        <time className="muted small">{ts}</time>
+        <time className="muted small" dateTime={event.ts}>{ts}</time>
       </div>
     );
   }
 
   if (variant === "commit") {
+    const sha = String(p.sha ?? "").slice(0, 7);
+    const message = String(p.message ?? "");
     return (
-      <div className="cell commit">
-        ⌥ commit {String(p.sha ?? "").slice(0, 7)} — {String(p.message ?? "")}
-      </div>
+      <article
+        className="cell commit"
+        role="article"
+        aria-label={`Commit ${sha} at ${ts}: ${message}`}
+      >
+        <span aria-hidden="true">⌥ </span>
+        commit {sha} — {message}
+      </article>
     );
   }
 
@@ -96,43 +123,52 @@ export function EventCell({ event, onReply }: { event: Event; onReply: (text: st
   }
 
   return (
-    <details className="cell verbose">
+    <details className="cell verbose" aria-label={`Event: ${event.type}`}>
       <summary className="muted small">{event.type}</summary>
-      <pre>{JSON.stringify(p, null, 2)}</pre>
+      <pre aria-label={`Raw payload for ${event.type} event`}>{JSON.stringify(p, null, 2)}</pre>
     </details>
   );
 }
 
 function QuestionCell({
-  prompt, options, onReply, ts,
+  prompt, options, onReply, ts, eventTs,
 }: {
-  prompt: string; options: string[]; onReply: (t: string) => void; ts: string;
+  prompt: string; options: string[]; onReply: (t: string) => void; ts: string; eventTs: string;
 }) {
   const [answered, setAnswered] = useState(false);
   if (answered) {
     return (
-      <div className="cell question answered">
+      <article
+        className="cell question answered"
+        role="article"
+        aria-label={`Answered question: ${prompt}`}
+      >
         <div className="bubble">{prompt}</div>
-      </div>
+      </article>
     );
   }
   return (
-    <div className="cell question">
+    <article
+      className="cell question"
+      role="form"
+      aria-label={`Question requires response: ${prompt}`}
+    >
       <div className="bubble">{prompt}</div>
       {options.length > 0 && (
-        <div className="chips">
+        <div className="chips" role="group" aria-label="Quick reply options">
           {options.map((o) => (
             <button
               key={o}
               className="chip"
               onClick={() => { onReply(o); setAnswered(true); }}
+              aria-label={`Reply: ${o}`}
             >
               {o}
             </button>
           ))}
         </div>
       )}
-      <time className="muted small">{ts}</time>
-    </div>
+      <time className="muted small" dateTime={eventTs}>{ts}</time>
+    </article>
   );
 }
