@@ -5,7 +5,7 @@ import { streamSSE } from "hono/streaming";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { Event, ProviderConfig, CreateSession } from "@atelier/schema";
-import { FlyMachinesProvider, LocalSandboxProvider } from "@atelier/sandbox";
+import { FlyMachinesProvider, LocalSandboxProvider, DaytonaProvider, E2BProvider, type SandboxProvider } from "@atelier/sandbox";
 import { Store, bus } from "./store.ts";
 import { PgStore, type AnyStore } from "./pg-store.ts";
 import { Orchestrator } from "./orchestrator.ts";
@@ -13,10 +13,25 @@ import { encryptKey, redact } from "./secrets.ts";
 import { validateProvider } from "./validate.ts";
 import {
   signSession, verifySession, signWorkspaceToken, exchangeGithubCode, loginUrl, newState, isSecure,
-  authConfigured, oauthEnabled, OWNER_ID, SESSION_COOKIE,
+  authConfigured, oauthEnabled, OWNER_ID, SESSION_COOKIE, hashPassword, verifyPassword,
 } from "./auth.ts";
+import { supabaseAdmin } from "./supabase.ts";
 
 const uidOf = (c: any): string | undefined => c.get("userId") as string | undefined;
+
+// Verify a Supabase JWT access token and return the user's UUID.
+// Uses the supabaseAdmin client to getUser() — validates the JWT signature
+// against Supabase's JWKS and returns the user record.
+async function verifySupabaseToken(token: string): Promise<string | null> {
+  if (!process.env.SUPABASE_URL) return null;
+  try {
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !data.user) return null;
+    return data.user.id;
+  } catch {
+    return null;
+  }
+}
 
 export function buildApp(store: AnyStore, orch: Orchestrator) {
   const app = new Hono();
@@ -35,12 +50,29 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     const uid = verifySession(getCookie(c, SESSION_COOKIE));
     if (uid) { c.set("userId", uid); return next(); }
 
-    const tok = process.env.AUTH_TOKEN;
-    if (tok) {
-      const auth = c.req.header("Authorization") ?? "";
-      const expected = `Bearer ${tok}`;
-      if (auth.length === expected.length && timingSafeEqual(Buffer.from(auth), Buffer.from(expected))) {
+    // Also accept the session token as a Bearer header (cross-origin: landing
+    // page on :3001 passes the token to the PWA on :5173 via URL hash; the
+    // PWA stores it and sends it as Authorization: Bearer <token>).
+    // Also accepts Supabase JWT access tokens.
+    const authHeader = c.req.header("Authorization") ?? "";
+    if (authHeader.startsWith("Bearer ")) {
+      const bearerToken = authHeader.slice(7);
+      // First check if it's the static AUTH_TOKEN
+      const staticTok = process.env.AUTH_TOKEN;
+      if (staticTok && bearerToken === staticTok) {
         c.set("userId", OWNER_ID);
+        return next();
+      }
+      // Then check if it's a signed session token (custom auth)
+      const sessionUid = verifySession(bearerToken);
+      if (sessionUid) {
+        c.set("userId", sessionUid);
+        return next();
+      }
+      // Finally, check if it's a Supabase JWT access token
+      const supabaseUid = await verifySupabaseToken(bearerToken);
+      if (supabaseUid) {
+        c.set("userId", supabaseUid);
         return next();
       }
     }
@@ -51,7 +83,18 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
 
   // ---- Auth routes ----
   app.get("/auth/status", async (c) => {
-    const uid = verifySession(getCookie(c, SESSION_COOKIE));
+    let uid = verifySession(getCookie(c, SESSION_COOKIE)) ?? undefined;
+    // Also check bearer token (Supabase JWT or custom session token)
+    if (!uid) {
+      const auth = c.req.header("Authorization") ?? "";
+      if (auth.startsWith("Bearer ")) {
+        const token = auth.slice(7);
+        uid = verifySession(token) ?? undefined;
+        if (!uid) {
+          uid = (await verifySupabaseToken(token)) ?? undefined;
+        }
+      }
+    }
     const owner = uid === OWNER_ID;
     const user = uid ? (owner ? { login: "owner" } : await store.getUser(uid)) : null;
     return c.json({ oauth: oauthEnabled(), authed: Boolean(uid), owner, user });
@@ -91,6 +134,35 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
   app.post("/auth/logout", (c) => {
     deleteCookie(c, SESSION_COOKIE, { path: "/" });
     return c.json({ ok: true });
+  });
+
+  // ---- Email/password auth ----
+  app.post("/auth/signup", async (c) => {
+    const body = await c.req.json().catch(() => null) as { email?: string; password?: string } | null;
+    if (!body?.email || !body?.password) return c.json({ error: "email and password required" }, 400);
+    if (!/^.+@.+\..+$/.test(body.email)) return c.json({ error: "invalid email" }, 400);
+    if (body.password.length < 8) return c.json({ error: "password must be at least 8 characters" }, 400);
+    const existing = await store.getEmailUser(body.email);
+    if (existing) return c.json({ error: "email already registered" }, 409);
+    const uid = await store.createEmailUser(body.email, hashPassword(body.password));
+    const sessionToken = signSession(uid);
+    setCookie(c, SESSION_COOKIE, sessionToken, {
+      httpOnly: true, sameSite: "Lax", secure: isSecure(), maxAge: 60 * 60 * 24 * 7, path: "/",
+    });
+    return c.json({ ok: true, user: { login: body.email }, session_token: sessionToken });
+  });
+
+  app.post("/auth/login", async (c) => {
+    const body = await c.req.json().catch(() => null) as { email?: string; password?: string } | null;
+    if (!body?.email || !body?.password) return c.json({ error: "email and password required" }, 400);
+    const user = await store.getEmailUser(body.email);
+    if (!user || !user.password_hash) return c.json({ error: "invalid credentials" }, 401);
+    if (!verifyPassword(body.password, user.password_hash)) return c.json({ error: "invalid credentials" }, 401);
+    const sessionToken = signSession(user.id);
+    setCookie(c, SESSION_COOKIE, sessionToken, {
+      httpOnly: true, sameSite: "Lax", secure: isSecure(), maxAge: 60 * 60 * 24 * 7, path: "/",
+    });
+    return c.json({ ok: true, user: { login: body.email }, session_token: sessionToken });
   });
 
   // ---- Repos (FR: browse the user's own GitHub repos via their stored token) ----
@@ -321,19 +393,44 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
   return app;
 }
 
+function selectSandbox(): SandboxProvider {
+  const provider = process.env.SANDBOX_PROVIDER ?? (process.env.SANDBOX === "local" ? "local" : "fly");
+  switch (provider) {
+    case "local":
+      return new LocalSandboxProvider();
+    case "daytona":
+      return new DaytonaProvider(
+        process.env.DAYTONA_API_KEY ?? "",
+        process.env.DAYTONA_WORKSPACE_ID ?? "",
+      );
+    case "e2b":
+      return new E2BProvider(
+        process.env.E2B_API_KEY ?? "",
+      );
+    case "fly":
+    default:
+      return new FlyMachinesProvider(
+        process.env.FLY_SANDBOX_APP ?? "atelier-sandboxes",
+        process.env.FLY_SANDBOX_TOKEN ?? "",
+      );
+  }
+}
+
 if (process.env.NODE_ENV !== "test" && process.argv[1]?.endsWith("index.ts")) {
   // DATABASE_URL (Supabase or any Postgres) → PgStore; otherwise sqlite on disk.
   const store = process.env.DATABASE_URL
     ? await new PgStore(process.env.DATABASE_URL).init()
     : new Store();
-  const sandbox = process.env.SANDBOX === "local"
-    ? new LocalSandboxProvider()
-    : new FlyMachinesProvider(
-        process.env.FLY_SANDBOX_APP ?? "atelier-sandboxes",
-        process.env.FLY_SANDBOX_TOKEN ?? "",
-      );
-  if (process.env.SANDBOX !== "local" && !process.env.FLY_SANDBOX_TOKEN) {
-    console.warn("WARNING: FLY_SANDBOX_TOKEN is not set — every session will fail at provisioning with a Fly 401. Set it (see .env.example) or run with SANDBOX=local.");
+  const sandbox = selectSandbox();
+  const sp = process.env.SANDBOX_PROVIDER ?? (process.env.SANDBOX === "local" ? "local" : "fly");
+  if (sp === "fly" && !process.env.FLY_SANDBOX_TOKEN) {
+    console.warn("WARNING: FLY_SANDBOX_TOKEN is not set — every session will fail at provisioning with a Fly 401. Set it (see .env.example) or set SANDBOX_PROVIDER=local.");
+  }
+  if (sp === "daytona" && !process.env.DAYTONA_API_KEY) {
+    console.warn("WARNING: DAYTONA_API_KEY is not set — sessions will fail at provisioning. Set it (see .env.example) or set SANDBOX_PROVIDER=local.");
+  }
+  if (sp === "e2b" && !process.env.E2B_API_KEY) {
+    console.warn("WARNING: E2B_API_KEY is not set — sessions will fail at provisioning. Set it (see .env.example) or set SANDBOX_PROVIDER=local.");
   }
   const orch = new Orchestrator(store, sandbox);
   orch.startReaper();

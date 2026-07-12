@@ -31,7 +31,8 @@ export class PgStore {
     await this.sql.unsafe(`
       create table if not exists users (
         id text primary key, github_id bigint unique, login text, name text,
-        avatar_url text, github_token_ciphertext bytea, created_at text);
+        avatar_url text, github_token_ciphertext bytea, created_at text,
+        email text, password_hash text);
       create table if not exists providers (
         id text primary key, name text, base_url text, dialect text,
         key_ciphertext bytea, models text, quirks text, created_at text, user_id text);
@@ -64,6 +65,17 @@ export class PgStore {
 
   async getUser(id: string): Promise<any> {
     const [row] = await this.sql`select id,github_id,login,name,avatar_url from users where id = ${id}`;
+    return row ?? null;
+  }
+
+  async createEmailUser(email: string, passwordHash: string): Promise<string> {
+    const id = randomUUID();
+    await this.sql`insert into users (id,login,email,password_hash,created_at) values (${id},${email},${email},${passwordHash},${utcNow()})`;
+    return id;
+  }
+
+  async getEmailUser(email: string): Promise<any> {
+    const [row] = await this.sql`select id,email,password_hash from users where email = ${email}`;
     return row ?? null;
   }
 

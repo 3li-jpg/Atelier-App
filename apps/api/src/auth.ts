@@ -4,7 +4,7 @@
 // MASTER_KEY so the alpha works with one secret; set a dedicated SESSION_SECRET
 // before multi-user. Auth also accepts a static bearer AUTH_TOKEN (owner/admin
 // backdoor) so CLI use + owner-alpha keep working without OAuth.
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual, scryptSync, randomUUID } from "node:crypto";
 
 const COOKIE = "atelier_session";
 export const OWNER_ID = "owner";
@@ -124,4 +124,18 @@ export function verifyWorkspaceToken(token: string | undefined | null, secret = 
     if (typeof exp !== "number" || exp < Date.now()) return null;
     return { sid: String(sid), uid: String(uid) };
   } catch { return null; }
+}
+
+// --- Email/password auth helpers ---
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+export function verifyPassword(password: string, stored: string): boolean {
+  const [salt, hash] = stored.split(":");
+  if (!salt || !hash) return false;
+  const test = scryptSync(password, salt, 64).toString("hex");
+  return timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(test, "hex"));
 }

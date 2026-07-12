@@ -37,6 +37,8 @@ export class Store {
     safeAlter(this.db, "alter table sessions add column user_id text");
     safeAlter(this.db, "alter table users add column github_token_ciphertext blob");
     safeAlter(this.db, "alter table sessions add column last_activity text");
+    safeAlter(this.db, "alter table users add column email text");
+    safeAlter(this.db, "alter table users add column password_hash text");
   }
 
   upsertUser(githubId: number, login: string, name: string | null, avatarUrl: string | null): string {
@@ -54,6 +56,18 @@ export class Store {
 
   getUser(id: string): any {
     return this.db.prepare("select id,github_id,login,name,avatar_url from users where id = ?").get(id) ?? null;
+  }
+
+  // --- Email/password auth ---
+  createEmailUser(email: string, passwordHash: string): string {
+    const id = randomUUID();
+    this.db.prepare("insert into users (id,login,email,password_hash,created_at) values (?,?,?,?,datetime('now'))")
+      .run(id, email, email, passwordHash);
+    return id;
+  }
+
+  getEmailUser(email: string): any {
+    return this.db.prepare("select id,email,password_hash from users where email = ?").get(email) ?? null;
   }
 
   storeUserToken(userId: string, plaintext: string): void {

@@ -9,7 +9,7 @@ const PUBLIC_URL = process.env.PUBLIC_URL ?? "http://localhost:3000";
 // Hibernation thresholds from measured data (docs/spike-notes.md):
 // suspend→start ≈ 0.75 s. Read lazily so tests (and ops) can override via env.
 const envMs = (name: string, dflt: number) => Number(process.env[name] ?? dflt);
-// 300 s, NOT PRD D6's 30 s: interactive workspaces (handoff-openchamber.md) ping
+// 300 s, NOT PRD D6's 30 s: interactive workspaces ping
 // activity at most once per 60 s, so the fuse must exceed the ping throttle.
 // No stop-demotion: a stopped Fly machine loses its rootfs (= the workspace).
 const SUSPEND_AFTER_MS = () => envMs("SUSPEND_AFTER_MS", 300_000);  // awaiting_user → suspend
@@ -198,7 +198,7 @@ export class Orchestrator {
         await this.kill(s.id, "reaper: absolute 24h cap exceeded");
         continue;
       }
-      // Idle budget (handoff-openchamber.md Task 4): an actively-used workspace
+      // Idle budget: an actively-used workspace
       // must not be finished at max_wall_clock_s — the 24h cap above is the only
       // absolute limit. Idle past budget → graceful finish (work gets pushed).
       const lastMs = new Date((s.last_activity ?? s.started_at) + "Z").getTime();
