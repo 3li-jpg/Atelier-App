@@ -30,7 +30,7 @@ Atelier is an open-source, chat-first agentic coding platform. You connect a mod
                         └──────────────────┘
 ```
 
-- **Landing** — the marketing site lives in its own private repo ([Atelier-Landing](https://github.com/3li-jpg/Atelier-Landing)); its CTAs link into this app. Sign-in/sign-up happens in the PWA itself.
+- **Landing** — the marketing site lives in its own private repo ([Atelier-Landing](https://github.com/3li-jpg/atelier-landing)); its CTAs link into this app. Sign-in/sign-up happens in the PWA itself.
 - **Web PWA** (`apps/web`) — Vite + React 18 single-page app: onboarding, session list, provider settings, and the chat workspace (timeline + replies rail). Dev server on `:5173` proxies API paths to `:3000` so the SPA is same-origin with the API in dev. In production the API serves the built bundle from one origin (`WEB_DIST`).
 - **Control plane** (`apps/api`) — Hono service on `:3000`. Session FSM orchestrator, store (SQLite via `node:sqlite`, or Postgres/Supabase when `DATABASE_URL` is set), AES-256-GCM secret encryption, SSE event fanout with cursor replay, and auth (session cookie, static bearer, or Supabase JWT). Route surface: `/auth/*`, `/providers`, `/sessions`, `/repos`, `/account`, plus `/internal/*` for the sandbox supervisor.
 - **Sandbox providers** (`packages/sandbox`) — one `SandboxProvider` interface, four implementations: Fly Machines, E2B, Daytona, and a local subprocess. `SANDBOX_PROVIDER` selects the default; per-user BYOC keys override it per session.
