@@ -77,6 +77,27 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
       }
     }
 
+    // EventSource (SSE) cannot send Authorization headers, so accept the token
+    // as a query parameter for the stream endpoint.
+    const queryToken = c.req.query("token");
+    if (queryToken) {
+      const staticTok = process.env.AUTH_TOKEN;
+      if (staticTok && queryToken === staticTok) {
+        c.set("userId", OWNER_ID);
+        return next();
+      }
+      const sessionUid = verifySession(queryToken);
+      if (sessionUid) {
+        c.set("userId", sessionUid);
+        return next();
+      }
+      const supabaseUid = await verifySupabaseToken(queryToken);
+      if (supabaseUid) {
+        c.set("userId", supabaseUid);
+        return next();
+      }
+    }
+
     if (authConfigured()) return c.json({ error: "unauthorized" }, 401);
     return next(); // open: dev / owner-alpha with no auth configured
   });
