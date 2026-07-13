@@ -1,5 +1,6 @@
-// ponytail: view-state navigation + auth gate (no router yet). Add history
-// routing + deep links when PWA web-push lands (handoff T7.6).
+// ponytail: minimal hash routing. No router lib — a View↔hash map +
+// pushState/popstate. Onboarding still takes precedence over any hash (a
+// not-yet-onboarded user landing on #/w/abc sees onboarding, not the gate).
 import { lazy, Suspense, useEffect, useState } from "react";
 import { MotionConfig } from "framer-motion";
 import { api, setAuthToken } from "./api.ts";
@@ -34,19 +35,79 @@ const ONBOARDED_KEY = "atelier:onboarded";
 
 type AuthState = "checking" | "authed" | "guest";
 
+// ── Hash routing ──────────────────────────────────────────────────────────
+// Views ↔ hashes: #/workspaces (default), #/repos, #/providers, #/settings,
+// #/w/<id> (session). Onboarding keeps no hash — it precedes routing entirely.
+// `history.pushState` drives nav; `popstate`/`hashchange` sync Back/Forward.
+// The session id is encoded into the path segment; `encodeURIComponent` keeps
+// slashes / special chars out of the hash. `decodeURIComponent` + a fallback
+// to `list` keep malformed hashes from crashing the app.
+
+function viewToHash(view: View): string | null {
+  switch (view.kind) {
+    case "list": return "#/workspaces";
+    case "repos": return "#/repos";
+    case "providers": return "#/providers";
+    case "settings": return "#/settings";
+    case "session": return `#/w/${encodeURIComponent(view.id)}`;
+    // onboarding owns the URL (no hash) until it completes.
+    case "onboarding": return null;
+  }
+}
+
+function hashToView(hash: string): View {
+  // Strip leading '#'.
+  const path = hash.replace(/^#/, "");
+  if (path === "/workspaces" || path === "/") return { kind: "list" };
+  if (path === "/repos") return { kind: "repos" };
+  if (path === "/providers") return { kind: "providers" };
+  if (path === "/settings") return { kind: "settings" };
+  const sessionMatch = path.match(/^\/w\/(.+)$/);
+  if (sessionMatch) {
+    const id = decodeURIComponent(sessionMatch[1]);
+    if (id) return { kind: "session", id };
+  }
+  // Unknown hash → list (the documented fallback).
+  return { kind: "list" };
+}
+
 export function App() {
   const [view, setView] = useState<View>(() => {
-    // Show onboarding for first-time users who haven't completed it.
+    // Onboarding takes precedence: a not-yet-onboarded browser shows onboarding
+    // regardless of the hash (the hash is read after onboarding completes).
     try {
       if (!localStorage.getItem(ONBOARDED_KEY)) return { kind: "onboarding" };
     } catch { /* private mode */ }
-    return { kind: "list" };
+    // ponytail: unknown/empty hash → list (hashToView's documented fallback).
+    return hashToView(window.location.hash);
   });
   const authError = new URLSearchParams(window.location.search).get("auth_error");
 
   const [auth, setAuth] = useState<AuthState>("checking");
   const [user, setUser] = useState<{ login: string } | null>(null);
   const [oauth, setOauth] = useState(false);
+
+  // ponytail: push state on view change — only when the hash actually differs,
+  // so programmatic + browser-driven changes don't loop (popstate handler
+  // updates state without pushing back). Guard against onboarding (no hash).
+  useEffect(() => {
+    const nextHash = viewToHash(view);
+    if (nextHash === null) return; // onboarding owns the URL.
+    if (window.location.hash === nextHash) return; // already there.
+    history.pushState(null, "", nextHash);
+  }, [view]);
+
+  // Back/Forward: hash changes → read it back into state. No push here, so the
+  // above effect won't re-fire a pushState (the hash already matches by then).
+  useEffect(() => {
+    const onPop = () => setView(hashToView(window.location.hash));
+    window.addEventListener("popstate", onPop);
+    window.addEventListener("hashchange", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      window.removeEventListener("hashchange", onPop);
+    };
+  }, []);
 
   // ponytail: re-checks only while "checking" — once decided, stable. Re-trigger
   // after logout by resetting to "checking". Never runs during onboarding.
@@ -77,7 +138,10 @@ export function App() {
   // AnimatePresence mode="wait" holds the OLD view until a framer rAF tick
   // confirms exit — in throttled tabs/webviews that tick can never come and
   // the app strands on the previous view. CSS needs no such confirmation.
-  if (view.kind === "session") {
+  // Auth gate: a guest deep-linking #/w/<id> falls through to the sign-in card
+  // below, then lands on the session after login — `view` keeps the requested
+  // id, no separate stash needed.
+  if (view.kind === "session" && auth === "authed") {
     return (
       <MotionConfig reducedMotion="user">
         <div key="session" className="view-fade" style={{ height: "100%" }}>

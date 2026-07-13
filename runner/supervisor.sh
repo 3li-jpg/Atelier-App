@@ -62,9 +62,29 @@ trap 'ec=$?; if [ $ec -ne 0 ]; then emit error "{\"message\":\"supervisor exited
 emit state_change '{"state":"cloning"}'
 CAN_PUSH=0
 CRED_FILE=""
+# Capture clone stderr so a failed clone is diagnosable after the VM is gone.
+# The generic EXIT-trap message ("supervisor exited (128)") alone is useless —
+# the real cause used to live only in machine logs that die with the VM.
+CLONE_LOG="$WORKSPACE/clone.log"
+clone_fail_event() {  # emit clone stderr (scrubbed) + hint, then exit non-zero so the trap marks failed
+  cat "$CLONE_LOG" >&2 2>/dev/null || true   # also mirror to machine stderr
+  local detail=""
+  if [[ -s "$CLONE_LOG" ]]; then
+    # tail ~400 chars; scrub the token from any x-access-token:<token>@ URL echo
+    detail=$(tail -c 400 "$CLONE_LOG" | sed -E 's#x-access-token:[^@]*@#x-access-token:***@#g' | tr -d '\r')
+  fi
+  local payload
+  payload=$(jq -cn --arg m "git clone failed" --arg d "$detail" '{message:$m, detail:$d}')
+  if grep -qiE "could not read Username|Authentication failed|Invalid username or token" "$CLONE_LOG" 2>/dev/null; then
+    payload=$(jq -c --arg h "The repo may be private — connect GitHub so Atelier can clone with your token." '.hint=$h' <<<"$payload")
+  fi
+  emit error "$payload" || true
+  exit 128
+}
 if [[ -n "$GIT_TOKEN" ]]; then
   git clone --depth 50 --branch "$BRANCH" \
-    "https://x-access-token:${GIT_TOKEN}@${REPO_URL#https://}" "$WORKSPACE/repo"
+    "https://x-access-token:${GIT_TOKEN}@${REPO_URL#https://}" "$WORKSPACE/repo" 2>"$CLONE_LOG" \
+    || clone_fail_event
   CAN_PUSH=1
   # Stash the token in tmpfs (RAM) for the finalize push and strip it from the
   # stored remote URL so it's not left in .git/config on disk (audit C2/C3).
@@ -72,7 +92,8 @@ if [[ -n "$GIT_TOKEN" ]]; then
   if printf '%s' "$GIT_TOKEN" > "$CRED_FILE" 2>/dev/null; then chmod 600 "$CRED_FILE"; else CRED_FILE=""; fi
   git -C "$WORKSPACE/repo" remote set-url origin "$REPO_URL"
 else
-  git clone --depth 50 --branch "$BRANCH" "$REPO_URL" "$WORKSPACE/repo"
+  git clone --depth 50 --branch "$BRANCH" "$REPO_URL" "$WORKSPACE/repo" 2>"$CLONE_LOG" \
+    || clone_fail_event
 fi
 unset GIT_TOKEN   # scrub from PID 1 env (audit C3)
 cd "$WORKSPACE/repo"

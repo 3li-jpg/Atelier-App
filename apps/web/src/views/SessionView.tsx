@@ -155,14 +155,9 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
     return map;
   }, [events]);
 
-  // ── Auto-select first file when files arrive (first batch only) ──
-  const autoSelectedRef = useRef(false);
-  useEffect(() => {
-    if (!selectedFile && fileMap.size > 0 && !autoSelectedRef.current) {
-      autoSelectedRef.current = true;
-      setSelectedFile(fileMap.keys().next().value ?? null);
-    }
-  }, [fileMap, selectedFile]);
+  // Chat is the primary surface: diffs open only on explicit click. (An
+  // auto-select-first-file effect used to live here — on mobile it replaced
+  // the conversation with a diff panel the moment any file event arrived.)
 
   const selectedEntry = selectedFile ? fileMap.get(selectedFile) ?? null : null;
 

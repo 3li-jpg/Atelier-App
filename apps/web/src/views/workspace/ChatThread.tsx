@@ -26,25 +26,37 @@ function toolLabel(s: ToolStatus, code?: number): string {
 
 type TodoItem = { text: string; done: boolean };
 
-// Latest todo list — last todo event wins, items optional.
-// ponytail: e.type is a zod enum that hasn't added "todo"/"subagent" yet
-// (schema is out of scope); widen to string so these forward-compat events
-// still match when the bridge ships them.
+// Todo events on the live hermes wire carry only {status, preview} — the
+// item list itself is not forwarded (verified against a real run). Render
+// the plan ACTIVITY: each "started" preview becomes an entry, marked done
+// when its matching "completed" arrives. If a richer payload with items[]
+// ever ships, prefer it.
 export function latestTodos(events: Event[]): TodoItem[] {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i];
+  const activity: TodoItem[] = [];
+  for (const e of events) {
     if ((e.type as string) !== "todo") continue;
     const p = (e.payload ?? {}) as Record<string, unknown>;
-    const items = Array.isArray(p.items) ? p.items : [];
-    return items.map((it) => {
-      const o = (it ?? {}) as Record<string, unknown>;
-      return {
-        text: String(o.text ?? o.label ?? o.title ?? ""),
-        done: Boolean(o.done ?? o.completed ?? o.checked ?? false),
-      };
-    });
+    const items = Array.isArray(p.items) ? p.items : null;
+    if (items) {
+      // Rich payload: last full list wins.
+      activity.length = 0;
+      for (const it of items) {
+        const o = (it ?? {}) as Record<string, unknown>;
+        activity.push({
+          text: String(o.text ?? o.label ?? o.title ?? ""),
+          done: Boolean(o.done ?? o.completed ?? o.checked ?? false),
+        });
+      }
+      continue;
+    }
+    const status = String(p.status ?? "");
+    if (status === "started") {
+      activity.push({ text: String(p.preview ?? "todo update"), done: false });
+    } else if (activity.length > 0) {
+      activity[activity.length - 1] = { ...activity[activity.length - 1], done: status !== "failed" };
+    }
   }
-  return [];
+  return activity;
 }
 
 type SubagentInfo = { status: string; goal: string; summary: string };
@@ -64,8 +76,67 @@ export function collectSubagents(events: Event[]): SubagentInfo[] {
   return out;
 }
 
+// Make the sandbox's absolute paths human: everything through "/repo/" is
+// noise ("/tmp/.../<sid>/repo/README" → "README").
+export function humanPath(path: string): string {
+  const i = path.indexOf("/repo/");
+  if (i >= 0) return path.slice(i + "/repo/".length);
+  return path.replace(/^\/+/, "") || path;
+}
+
+// Live streams arrive as many small events; render them like a chat, not a
+// ledger (verified against a real hermes run):
+// - consecutive assistant_text chunks merge into one block
+// - a completed tool_call replaces its preceding "running" row (same tool)
+// - file_diff paths are relativized to the repo root
+export function coalesceForThread(events: Event[]): Event[] {
+  const out: Event[] = [];
+  for (const e of events) {
+    if (e.type === "assistant_text") {
+      const prev = out[out.length - 1];
+      if (prev && prev.type === "assistant_text") {
+        const prevText = String((prev.payload as Record<string, unknown>)?.text ?? "");
+        const addText = String((e.payload as Record<string, unknown>)?.text ?? "");
+        out[out.length - 1] = { ...prev, payload: { ...(prev.payload as object), text: prevText + addText } };
+        continue;
+      }
+      out.push(e);
+      continue;
+    }
+    if (e.type === "tool_call") {
+      const p = (e.payload ?? {}) as Record<string, unknown>;
+      if (p.status !== "running") {
+        // Find the nearest unresolved "running" row for the same tool and
+        // replace it in place so the row transitions instead of duplicating.
+        let matched = false;
+        for (let i = out.length - 1; i >= 0; i--) {
+          const cand = out[i];
+          if (cand.type !== "tool_call") continue;
+          const cp = (cand.payload ?? {}) as Record<string, unknown>;
+          if (cp.status === "running" && String(cp.tool ?? "") === String(p.tool ?? "")) {
+            out[i] = { ...cand, payload: { ...cp, ...p } };
+            matched = true;
+            break;
+          }
+        }
+        if (matched) continue;
+      }
+      out.push(e);
+      continue;
+    }
+    if (e.type === "file_diff") {
+      const p = (e.payload ?? {}) as Record<string, unknown>;
+      const path = String(p.path ?? "");
+      out.push({ ...e, payload: { ...p, path: humanPath(path) } });
+      continue;
+    }
+    out.push(e);
+  }
+  return out;
+}
+
 export function ChatThread({
-  events,
+  events: rawEvents,
   isStreaming,
   pendingQuestionSeq,
   repoName,
@@ -81,6 +152,7 @@ export function ChatThread({
   onOpenFile: (path: string) => void;
   selectedFile: string | null;
 }) {
+  const events = coalesceForThread(rawEvents);
   if (events.length === 0) {
     return <Welcome repoName={repoName} onPick={onReply} />;
   }

@@ -36,12 +36,23 @@ export function mapEvent(data, state) {
 
   // ---- tool lifecycle ----
   if (evt === "tool.started") {
-    // File-producing tools — surface as file_diff so the web UI can render them.
+    // File-producing tools — surface as file_diff so the web UI can render
+    // them, but only for files inside the workspace repo. Agents also write
+    // scratch files (e.g. /var/folders/.../hermes-verify-XXXX) that are not
+    // part of the change set — those stay plain tool_calls. Verified against
+    // a live run (temp verify script polluted the Files rail as a file_diff).
     if (data.tool === "patch" || data.tool === "write_file") {
       if (typeof data.preview === "string" && data.preview) {
-        return { type: "file_diff", payload: { path: data.preview, content: null } };
+        const i = data.preview.indexOf("/repo/");
+        if (i >= 0) {
+          return { type: "file_diff", payload: { path: data.preview.slice(i + 6), content: null } };
+        }
+        if (!data.preview.startsWith("/")) {
+          return { type: "file_diff", payload: { path: data.preview, content: null } };
+        }
+        // Absolute path outside the repo — scratch file; plain tool row below.
       }
-      // No preview string — fall through to a regular tool_call.
+      // No usable path — fall through to a regular tool_call.
     }
     // Clarify tool — the agent is asking the user a question.
     if (data.tool === "clarify") {
