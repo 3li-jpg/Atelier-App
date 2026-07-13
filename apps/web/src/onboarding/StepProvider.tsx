@@ -17,7 +17,7 @@ export function StepProvider({ onDone, onBack }: {
 }) {
   const [presetId, setPresetId] = useState<string>("umans");
   const [name, setName] = useState("Umans");
-  const [baseUrl, setBaseUrl] = useState("https://api.code.umans.ai");
+  const [baseUrl, setBaseUrl] = useState("https://api.code.umans.ai/v1");
   const [dialect, setDialect] = useState<ProviderCreate["dialect"]>("openai-chat");
   const [models, setModels] = useState<ModelEntry[]>([
     { id: "umans-glm-5.2", role: "coder" },

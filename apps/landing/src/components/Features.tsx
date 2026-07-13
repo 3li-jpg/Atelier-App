@@ -23,7 +23,10 @@ export default function Features() {
   return (
     <section id="features" className="section">
       <div className="container">
-        <h2 className="section-stamp">F E A T U R E S</h2>
+        <header className="section-header">
+          <span className="section-eyebrow">Features</span>
+          <h2 className="section-title">Everything you need to ship</h2>
+        </header>
 
         <div>
           {features.map((feature, i) => (

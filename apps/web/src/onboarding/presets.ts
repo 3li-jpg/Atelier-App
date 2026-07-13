@@ -17,7 +17,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     description: "Frontier open-source coding models (GLM 5.2, Kimi K2.7-Code)",
     build: (apiKey) => ({
       name: "Umans",
-      base_url: "https://api.code.umans.ai",
+      base_url: "https://api.code.umans.ai/v1",
       dialect: "openai-chat",
       models: [
         { id: "umans-glm-5.2", role: "coder", tool_calls: true },

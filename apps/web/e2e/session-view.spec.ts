@@ -231,9 +231,9 @@ async function navigateToSessionView(page: import("@playwright/test").Page) {
   await page.goto("/");
   // Wait for sessions list to render with the mock session.
   // Use .first() because the task text also appears in commit events and PR status.
-  await expect(page.locator(".session-row").first()).toBeVisible({ timeout: 10_000 });
-  // Click the session row to enter SessionView
-  await page.locator(".session-row").first().click();
+  await expect(page.locator(".session-card").first()).toBeVisible({ timeout: 10_000 });
+  // Click the session card to enter SessionView
+  await page.locator(".session-card").first().click();
   // The ide-shell should appear
   await expect(page.locator(".ide-shell")).toBeVisible({ timeout: 10_000 });
 }
@@ -284,7 +284,7 @@ test.describe("SessionsList skeleton loading", () => {
     resolveSessions!(undefined);
 
     // After load, the session should appear
-    await expect(page.locator(".session-row").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator(".session-card").first()).toBeVisible({ timeout: 10_000 });
     // Skeletons should be gone
     await expect(page.locator(".atelier-skeleton")).toHaveCount(0);
   });

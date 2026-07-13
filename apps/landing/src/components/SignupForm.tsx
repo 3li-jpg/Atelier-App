@@ -93,102 +93,72 @@ export default function SignupForm() {
   };
 
   return (
-    <section id="join" style={{ padding: "80px 0" }}>
+    <section id="join" className="section">
       <TransitionOverlay show={transitioning} message="Redirecting to dashboard…" />
       <div className="container">
-        <div className="section-stamp">J O I N</div>
+        <header className="section-header" style={{ textAlign: "center" }}>
+          <span className="section-eyebrow">Join</span>
+          <h2 className="section-title" style={{ margin: "0 auto" }}>
+            Create your account
+          </h2>
+        </header>
 
-        <div
-          className="reveal"
-          style={{
-            maxWidth: 480,
-            margin: "24px auto 0",
-            background: "rgba(247,249,250,0.03)",
-            border: "1px solid rgba(247,249,250,0.15)",
-            borderRadius: "19.2px",
-            padding: 40,
-          }}
-        >
+        <div className="signup-card reveal">
+          <p
+            style={{
+              fontFamily: "var(--font-whyte)",
+              fontSize: "14px",
+              lineHeight: "var(--leading-body-sm)",
+              color: "var(--color-steel)",
+              marginBottom: "var(--spacing-24)",
+              margin: "0 0 var(--spacing-24) 0",
+            }}
+          >
+            Start free — bring your model key and run your first agent in under a minute.
+          </p>
+
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: "var(--spacing-16)" }}>
+              <label className="signup-label" htmlFor="email">Email</label>
               <input
+                id="email"
                 type="email"
                 name="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 disabled={loading}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  background: "rgba(247,249,250,0.05)",
-                  border: "1px solid rgba(247,249,250,0.2)",
-                  borderRadius: 8,
-                  padding: 16,
-                  color: "#fff",
-                  fontSize: 15,
-                  fontFamily: "Inter, sans-serif",
-                  outline: "none",
-                }}
+                className="signup-input"
               />
               {emailError && (
-                <span
-                  style={{
-                    display: "block",
-                    marginTop: 6,
-                    color: "#f87171",
-                    fontSize: 12,
-                    fontFamily: "Inter, sans-serif",
-                  }}
-                >
-                  {emailError}
-                </span>
+                <span className="signup-error">{emailError}</span>
               )}
             </div>
 
-            <div style={{ marginBottom: 24 }}>
+            <div style={{ marginBottom: "var(--spacing-20)" }}>
+              <label className="signup-label" htmlFor="password">Password</label>
               <input
+                id="password"
                 type="password"
                 name="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="password"
+                placeholder="At least 8 characters"
                 disabled={loading}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  background: "rgba(247,249,250,0.05)",
-                  border: "1px solid rgba(247,249,250,0.2)",
-                  borderRadius: 8,
-                  padding: 16,
-                  color: "#fff",
-                  fontSize: 15,
-                  fontFamily: "Inter, sans-serif",
-                  outline: "none",
-                }}
+                className="signup-input"
               />
               {passwordError && (
-                <span
-                  style={{
-                    display: "block",
-                    marginTop: 6,
-                    color: "#f87171",
-                    fontSize: 12,
-                    fontFamily: "Inter, sans-serif",
-                  }}
-                >
-                  {passwordError}
-                </span>
+                <span className="signup-error">{passwordError}</span>
               )}
             </div>
 
             {formError && (
               <div
                 style={{
-                  marginBottom: 16,
+                  marginBottom: "var(--spacing-16)",
                   color: "#f87171",
                   fontSize: 13,
-                  fontFamily: "Inter, sans-serif",
+                  fontFamily: "var(--font-whyte)",
                   textAlign: "center",
                 }}
               >
@@ -199,19 +169,7 @@ export default function SignupForm() {
             <button
               type="submit"
               disabled={loading}
-              style={{
-                width: "100%",
-                background: "#af50ff",
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                padding: 16,
-                fontSize: 15,
-                fontFamily: "Inter, sans-serif",
-                fontWeight: 500,
-                cursor: loading ? "not-allowed" : "pointer",
-                opacity: loading ? 0.6 : 1,
-              }}
+              className="signup-submit"
             >
               {loading ? "Creating account..." : "Create account"}
             </button>
@@ -219,10 +177,10 @@ export default function SignupForm() {
 
           <p
             style={{
-              marginTop: 20,
-              fontSize: 12,
-              color: "#8a8f98",
-              fontFamily: "Inter, sans-serif",
+              marginTop: "var(--spacing-20)",
+              fontSize: 13,
+              color: "var(--color-steel)",
+              fontFamily: "var(--font-whyte)",
               textAlign: "center",
             }}
           >
@@ -230,7 +188,7 @@ export default function SignupForm() {
             <a
               href={DASHBOARD_URL}
               style={{
-                color: "#af50ff",
+                color: "var(--color-signal-violet)",
                 textDecoration: "none",
               }}
             >

@@ -15,3 +15,5 @@ dist/
 
 # TypeScript build info
 *.tsbuildinfo
+playwright-report/
+test-results/

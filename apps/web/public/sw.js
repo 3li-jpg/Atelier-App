@@ -2,7 +2,7 @@
 // ponytail: network-first for navigations (picks up new deploys), cache-first
 // for static assets; API + SSE stream requests are never cached. Web Push
 // (push event handler + VAPID) lands with T7.6 push-sending (needs keys).
-const CACHE = "atelier-shell-v1";
+const CACHE = "atelier-shell-v2";
 const PRECACHE = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg"];
 const API_PREFIXES = ["/sessions", "/providers", "/internal", "/health", "/webhooks"];
 

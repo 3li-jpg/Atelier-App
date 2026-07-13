@@ -53,10 +53,6 @@
   --leading-heading-lg: 1.2;
   --tracking-heading-lg: -0.64px;
 
-  --text-section-stamp: 74px;
-  --leading-section-stamp: 0.9;
-  --tracking-section-stamp: 14.8px;
-
   --text-display: 88px;
   --leading-display: 0.8;
   --tracking-display: -2.64px;
@@ -84,7 +80,7 @@
 
   /* Layout */
   --page-max-width: 1200px;
-  --section-gap: 80px;
+  --section-gap: 96px;
   --card-padding: 40px;
   --element-gap: 16px;
 
@@ -137,26 +133,39 @@ input { font-family: inherit; }
 }
 
 /* ============================================================
-   STAMPED SECTION HEADING — Whyte Inktrap Mono 74px, 0.2em tracking
+   SECTION HEADER — mono eyebrow + serif italic title
    ============================================================ */
 
-.section-stamp {
-  font-family: var(--font-whyte-mono);
-  font-size: var(--text-section-stamp);
-  font-weight: 400;
-  line-height: var(--leading-section-stamp);
-  letter-spacing: var(--tracking-section-stamp);
-  color: var(--color-soft-white);
-  text-transform: uppercase;
+.section-header {
   margin-bottom: var(--spacing-64);
 }
 
-@media (max-width: 768px) {
-  .section-stamp { font-size: 48px; letter-spacing: 0.15em; }
+.section-eyebrow {
+  font-family: var(--font-whyte-mono);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-steel);
+  display: block;
+  margin-bottom: var(--spacing-16);
 }
 
-@media (max-width: 480px) {
-  .section-stamp { font-size: 36px; letter-spacing: 0.12em; }
+.section-title {
+  font-family: var(--font-grandslang);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 1.15;
+  letter-spacing: -0.4px;
+  color: var(--color-almost-white);
+  margin: 0;
+  max-width: 640px;
+}
+
+@media (max-width: 768px) {
+  .section-title { font-size: 32px; }
+  .section-header { margin-bottom: var(--spacing-48); }
 }
 
 /* ============================================================
@@ -402,9 +411,183 @@ input { font-family: inherit; }
   }
 }
 
+@media (max-width: 768px) {
+  .section {
+    padding-top: var(--spacing-64);
+    padding-bottom: var(--spacing-64);
+  }
+}
+
 @media (max-width: 480px) {
   .container {
     padding: 0 var(--spacing-16);
+  }
+}
+
+/* ============================================================
+   PRICING CARDS
+   ============================================================ */
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+.pricing-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  padding: 30px;
+  background: rgba(247, 249, 250, 0.03);
+  border: 1px solid rgba(247, 249, 250, 0.12);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pricing-card--featured {
+  border: 1px solid var(--color-signal-violet);
+  box-shadow: 0 0 60px -24px rgba(175, 80, 255, 0.45);
+}
+
+.pricing-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border-radius: 8px;
+  padding: 13px 16px;
+  font-size: 15px;
+  font-family: var(--font-whyte);
+  font-weight: 500;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.pricing-cta--filled {
+  background: var(--color-signal-violet);
+  color: var(--color-almost-white);
+}
+
+.pricing-cta--filled:hover {
+  background: #9a3ee6;
+}
+
+.pricing-cta--outlined {
+  background: transparent;
+  border: 1px solid rgba(247, 249, 250, 0.25);
+  color: var(--color-almost-white);
+}
+
+.pricing-cta--outlined:hover {
+  border-color: var(--color-almost-white);
+}
+
+@media (max-width: 768px) {
+  .pricing-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================
+   SIGNUP CARD
+   ============================================================ */
+
+.signup-card {
+  max-width: 440px;
+  margin: 0 auto;
+  background: rgba(247, 249, 250, 0.03);
+  border: 1px solid rgba(247, 249, 250, 0.12);
+  border-radius: 16px;
+  padding: 32px;
+}
+
+.signup-label {
+  display: block;
+  font-family: var(--font-whyte-mono);
+  font-size: 12px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-steel);
+  margin-bottom: 8px;
+}
+
+.signup-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(247, 249, 250, 0.05);
+  border: 1px solid rgba(247, 249, 250, 0.18);
+  border-radius: 8px;
+  padding: 13px 14px;
+  color: var(--color-almost-white);
+  font-size: 15px;
+  font-family: var(--font-whyte);
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.signup-input:focus {
+  border-color: rgba(175, 80, 255, 0.6);
+}
+
+.signup-input::placeholder {
+  color: var(--color-ash);
+}
+
+.signup-submit {
+  width: 100%;
+  background: var(--color-signal-violet);
+  color: var(--color-almost-white);
+  border: none;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-family: var(--font-whyte);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.signup-submit:hover:not(:disabled) {
+  background: #9a3ee6;
+}
+
+.signup-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.signup-error {
+  display: block;
+  margin-top: 6px;
+  color: #f87171;
+  font-size: 12px;
+  font-family: var(--font-whyte);
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+
+.footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+@media (max-width: 768px) {
+  .footer-row {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
   }
 }
 

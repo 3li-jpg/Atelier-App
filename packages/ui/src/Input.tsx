@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes, type SelectHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useId, type InputHTMLAttributes, type TextareaHTMLAttributes, type SelectHTMLAttributes, type ReactNode } from "react";
 
 /* ---- Input ---- */
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -9,7 +9,8 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ label, error, leftIcon, className, id, ...rest }, ref) => {
-    const inputId = id ?? rest.name;
+    const autoId = useId();
+    const inputId = id ?? rest.name ?? autoId;
     return (
       <div className="atelier-input-wrap">
         {label && (
@@ -43,7 +44,8 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ label, error, className, id, ...rest }, ref) => {
-    const inputId = id ?? rest.name;
+    const autoId = useId();
+    const inputId = id ?? rest.name ?? autoId;
     return (
       <div className="atelier-input-wrap">
         {label && (
@@ -74,7 +76,8 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ label, error, className, id, children, ...rest }, ref) => {
-    const inputId = id ?? rest.name;
+    const autoId = useId();
+    const inputId = id ?? rest.name ?? autoId;
     return (
       <div className="atelier-input-wrap">
         {label && (

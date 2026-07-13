@@ -36,19 +36,18 @@ export default function Pricing() {
   return (
     <section id="pricing" className="section">
       <div className="container">
-        <h2 className="section-stamp">P R I C I N G</h2>
+        <header className="section-header">
+          <span className="section-eyebrow">Pricing</span>
+          <h2 className="section-title">Pick a plan, bring your key</h2>
+        </header>
 
         <div className="pricing-grid">
           {tiers.map((tier, i) => (
             <div
               key={tier.name}
-              className={`card card-translucent reveal reveal-${i + 1}`}
-              style={{
-                border: tier.featured
-                  ? "1px solid var(--color-signal-violet)"
-                  : "1px solid rgba(247,249,250,0.15)",
-                padding: "var(--spacing-40)",
-              }}
+              className={`pricing-card reveal reveal-${i + 1}${
+                tier.featured ? " pricing-card--featured" : ""
+              }`}
             >
               <h3
                 style={{
@@ -70,6 +69,7 @@ export default function Pricing() {
                   lineHeight: 1,
                   color: "var(--color-almost-white)",
                   marginBottom: "var(--spacing-12)",
+                  margin: 0,
                 }}
               >
                 {tier.price}
@@ -95,48 +95,28 @@ export default function Pricing() {
               <p
                 className="text-steel"
                 style={{
-                  fontSize: "16px",
+                  fontSize: "15px",
                   lineHeight: "var(--leading-body)",
                   marginBottom: "var(--spacing-32)",
+                  margin: "0 0 var(--spacing-32) 0",
                 }}
               >
                 {tier.description}
               </p>
 
-              {tier.featured ? (
-                <a
-                  href="#join"
-                  className="btn-pill btn-pill-violet"
-                  style={{ alignSelf: "flex-start" }}
-                >
-                  {tier.cta}
-                </a>
-              ) : (
-                <a
-                  href="#join"
-                  className="btn-compact"
-                  style={{ alignSelf: "flex-start" }}
-                >
-                  {tier.cta}
-                </a>
-              )}
+              <a
+                href="#join"
+                className={`pricing-cta${
+                  tier.featured ? " pricing-cta--filled" : " pricing-cta--outlined"
+                }`}
+                style={{ marginTop: "auto" }}
+              >
+                {tier.cta}
+              </a>
             </div>
           ))}
         </div>
       </div>
-
-      <style>{`
-        .pricing-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 24px;
-        }
-        @media (max-width: 768px) {
-          .pricing-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-      `}</style>
     </section>
   );
 }
