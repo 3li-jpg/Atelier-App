@@ -136,6 +136,15 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
   };
 
   // ── Build file map from file_diff events ──
+  // Paths are humanized (repo-relative) and agent scratch files outside the
+  // repo are dropped — old sessions recorded raw sandbox paths before the
+  // runner filtered them.
+  const cleanPath = (raw: string): string | null => {
+    if (!raw) return null;
+    const i = raw.indexOf("/repo/");
+    if (i >= 0) return raw.slice(i + "/repo/".length) || null;
+    return raw.startsWith("/") ? null : raw;
+  };
   const fileMap = useMemo(() => {
     const map = new Map<string, FileEntry>();
     for (const e of events) {
@@ -144,11 +153,11 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
       const files = (Array.isArray(p.files) ? p.files : []) as { path?: string; content?: unknown }[];
       if (files.length > 0) {
         for (const f of files) {
-          const fp = f.path ?? "";
+          const fp = cleanPath(String(f.path ?? ""));
           if (fp) map.set(fp, { path: fp, content: f.content, seq: e.seq ?? 0 });
         }
       } else {
-        const fp = String(p.path ?? p.file ?? "");
+        const fp = cleanPath(String(p.path ?? p.file ?? ""));
         if (fp) map.set(fp, { path: fp, content: p.content ?? null, seq: e.seq ?? 0 });
       }
     }
