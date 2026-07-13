@@ -1,7 +1,7 @@
 "use client";
 
 const DASHBOARD_URL =
-  process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:5199";
+  process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:5173";
 
 export default function Navbar() {
   return (

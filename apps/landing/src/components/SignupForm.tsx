@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import TransitionOverlay from "@/components/TransitionOverlay";
 
 const DASHBOARD_URL =
-  process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:5199";
+  process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:5173";
 
 export default function SignupForm() {
   const [email, setEmail] = useState("");
