@@ -23,9 +23,10 @@ const uidOf = (c: any): string | undefined => c.get("userId") as string | undefi
 // Uses the supabaseAdmin client to getUser() — validates the JWT signature
 // against Supabase's JWKS and returns the user record.
 async function verifySupabaseToken(token: string): Promise<string | null> {
-  if (!process.env.SUPABASE_URL) return null;
+  const admin = supabaseAdmin();
+  if (!admin) return null;
   try {
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    const { data, error } = await admin.auth.getUser(token);
     if (error || !data.user) return null;
     return data.user.id;
   } catch {
@@ -359,10 +360,14 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     for (const raw of batch) {
       const e = Event.parse(raw);
       const payload = JSON.parse(redact(JSON.stringify(e.payload)));
-      await store.appendEvent(id, { ts: e.ts, type: e.type, payload });
       if (e.type === "state_change" && typeof payload.state === "string") {
-        await orch.onSupervisorState(id, payload.state);
+        // Only record state changes the FSM accepts — a supervisor emitting
+        // "completed" after "failed" must not rewrite history (the UI renders
+        // the last state_change in the stream as the session status).
+        const accepted = await orch.onSupervisorState(id, payload.state);
+        if (!accepted) continue;
       }
+      await store.appendEvent(id, { ts: e.ts, type: e.type, payload });
     }
     await orch.activity(id);
     return c.json({ ok: true });

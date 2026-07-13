@@ -106,9 +106,11 @@ export class Orchestrator {
   // Routed through accrueBilling (not just setSessionState) so supervisor-driven
   // terminal transitions settle the open billable segment — otherwise the final
   // segment after the last wake is never accrued (audit H3).
-  async onSupervisorState(sessionId: string, state: string): Promise<void> {
+  // Returns false when the FSM rejects the transition (e.g. "completed" after
+  // "failed") so the caller can drop the event instead of recording a lie.
+  async onSupervisorState(sessionId: string, state: string): Promise<boolean> {
     const s = await this.store.getSession(sessionId);
-    if (!s || !canTransition(s.state, state as SessionState)) return;
+    if (!s || !canTransition(s.state, state as SessionState)) return false;
     await this.accrueBilling(sessionId, s.state, state as SessionState);
     await this.store.setSessionState(sessionId, state as SessionState);
     if (state === "running") {
@@ -119,6 +121,7 @@ export class Orchestrator {
     }
     if (state === "awaiting_user") this.scheduleSuspend(sessionId);
     if (["completed", "failed"].includes(state)) await this.reap(sessionId);
+    return true;
   }
 
   // Count agent turns (a `running` state = one model invocation cycle) and

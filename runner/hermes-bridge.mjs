@@ -58,7 +58,9 @@ function emit(type, payload) {
 // ---- Hermes API server helpers ----
 
 async function waitForHealth() {
-  const deadline = Date.now() + 30_000;
+  // 120s: hermes is a Python gateway — cold imports on a shared-cpu Fly VM
+  // can take well past 30s. Locally it's healthy in ~4s.
+  const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     try {
       const res = await fetch(`${BASE}/health`, { ...T(5_000) });
@@ -66,7 +68,7 @@ async function waitForHealth() {
     } catch {}
     await sleep(250);
   }
-  throw new Error("Hermes server did not become healthy within 30s");
+  throw new Error("Hermes server did not become healthy within 120s");
 }
 
 async function startRun(text = TASK) {

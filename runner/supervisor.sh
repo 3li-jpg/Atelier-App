@@ -149,6 +149,14 @@ HERMES_PORT=8642 HERMES_KEY="$HERMES_KEY" REPLIES_URL="$REPLIES_URL" \
   node "${RUNNER_BIN}/hermes-bridge.mjs" &
 BRIDGE_PID=$!
 wait "$BRIDGE_PID" || ec=$?; ec=${ec:-0}
+# Observability: a dead bridge usually means hermes never started. Ship the
+# hermes.log tail to the control plane so failures are diagnosable after the
+# VM is gone (key lines filtered — config.yaml holds the only secret, but
+# belt and braces).
+if [[ "$ec" != 0 && -s "$WORKSPACE/hermes.log" ]]; then
+  LOG_TAIL=$(tail -c 1500 "$WORKSPACE/hermes.log" | grep -vi 'api_key' || true)
+  emit error "$(jq -cn --arg m "hermes.log tail (bridge exit $ec)" --arg d "$LOG_TAIL" '{message:$m, detail:$d}')" || true
+fi
 # propagate the bridge's exit code: a clean exit (0) must not be misreported as
 # failed. The EXIT trap only emits on non-zero, so exit 0 leaves the session in
 # its last reported state for the reaper to finalize (audit M3).
