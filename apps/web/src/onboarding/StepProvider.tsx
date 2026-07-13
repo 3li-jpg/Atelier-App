@@ -93,12 +93,15 @@ export function StepProvider({ onDone, onBack }: {
       <p className="onb-step-sub">Bring your own key. Pick a provider preset, or choose Custom.</p>
 
       {/* Preset cards */}
-      <div className="onb-preset-grid">
+      <div className="onb-preset-grid" role="radiogroup" aria-label="Provider preset">
         {PROVIDER_PRESETS.map((p) => (
           <motion.button
             key={p.id}
             className={`onb-preset-card ${presetId === p.id ? "selected" : ""}`}
             onClick={() => selectPreset(p)}
+            role="radio"
+            aria-checked={presetId === p.id}
+            aria-label={`${p.label} — ${p.description}`}
             variants={hoverLift}
             initial="rest"
             whileHover="hover"
