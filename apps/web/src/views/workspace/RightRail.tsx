@@ -38,6 +38,20 @@ function inferStatus(content: unknown): FileStatus {
 }
 const STATUS_LETTER: Record<FileStatus, string> = { added: "A", modified: "M", deleted: "D" };
 
+// Strip absolute sandbox path parentheticals from a subagent goal for DISPLAY
+// only (the full goal stays in the title attr). Matches (/private/tmp/...),
+// (/var/folders/...), (/tmp/...), etc. Never invents a summary when none exists.
+function stripAbsPaths(goal: string): string {
+  return goal.replace(/\s*\((?:\/(?:private\/tmp|var\/folders|tmp|Users|home|root)[^)]*)\)\s*/g, " ").trim();
+}
+
+// Subagent status → chip tone. running pulses violet, completed=green, failed=red.
+function subagentTone(status: string): "running" | "ok" | "fail" {
+  if (status === "running") return "running";
+  if (status === "completed" || status === "ok" || status === "succeeded") return "ok";
+  return "fail";
+}
+
 export function RightRail({
   files,
   events,
@@ -168,18 +182,22 @@ export function RightRail({
             {subagents.length === 0 ? (
               <div className="ws-empty-row" role="status">No subagents active</div>
             ) : (
-              subagents.map((sa, i) => (
-                <div key={i} className="ws-subagent" role="listitem" aria-label={`Subagent: ${sa.goal || "working"}, ${sa.status}`}>
-                  <div className="ws-subagent-goal">{sa.goal || "Working…"}</div>
-                  <div className="ws-subagent-row">
-                    <span className="ws-subagent-status">
-                      <span className={`ws-tool-dot ${sa.status === "running" ? "running" : sa.status === "completed" || sa.status === "ok" ? "ok" : "fail"}`} aria-hidden="true" />
-                      {sa.status}
-                    </span>
+              subagents.map((sa, i) => {
+                const goal = sa.goal || "";
+                const display = goal ? stripAbsPaths(goal) : "Working…";
+                return (
+                  <div key={i} className="ws-subagent" role="listitem" aria-label={`Subagent: ${display}, ${sa.status}`}>
+                    <div className="ws-subagent-goal" title={goal || undefined}>{display}</div>
+                    <div className="ws-subagent-row">
+                      <span className={`ws-subagent-status tone-${subagentTone(sa.status)}`}>
+                        <span className={`ws-tool-dot ${subagentTone(sa.status)}`} aria-hidden="true" />
+                        {sa.status}
+                      </span>
+                    </div>
+                    {sa.summary && <div className="ws-subagent-summary">{sa.summary}</div>}
                   </div>
-                  {sa.summary && <div className="ws-subagent-summary">{sa.summary}</div>}
-                </div>
-              ))
+                );
+              })
             )}
             <div className="ws-activity-tools" aria-label={`${toolCount} tool calls`}>
               {toolCount} tool call{toolCount === 1 ? "" : "s"}

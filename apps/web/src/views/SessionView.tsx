@@ -15,7 +15,7 @@ import "./workspace/workspace.css";
 
 type MobileTab = "chat" | "files" | "activity";
 
-export function SessionView({ id, onBack }: { id: string; onBack: () => void }) {
+export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack: () => void; onOpenSession?: (id: string) => void }) {
   const toast = useToast();
   const [session, setSession] = useState<SessionDetail | null>(null);
   const { events, live } = useEventStream(id);
@@ -25,6 +25,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const announce = useLiveRegion("polite");
   const announceAlert = useLiveRegion("assertive");
@@ -112,6 +113,53 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
 
   const terminal = TERMINAL_STATES.has(state);
   const awaitingUser = state === "awaiting_user";
+
+  // ── Cumulative token usage from `usage` events ({input, output, total}) ──
+  // Each event is a turn's totals; sum for the session. `total` may be absent
+  // on older runs — derive from input+output then.
+  const usage = useMemo(() => {
+    let i = 0, o = 0;
+    for (const e of events) {
+      if ((e.type as string) !== "usage") continue;
+      const p = (e.payload ?? {}) as Record<string, unknown>;
+      const ni = Number(p.input ?? p.in ?? 0);
+      const no = Number(p.output ?? p.out ?? 0);
+      const tot = Number(p.total ?? 0);
+      if (ni || no) { i += ni || 0; o += no || 0; }
+      else if (tot) o += tot; // total-only payloads: count once, not twice
+    }
+    return i || o ? { in: i, out: o } : null;
+  }, [events]);
+
+  // ── Terminal: spin up a fresh workspace on this repo, reusing this
+  // session's own provider/model/branch/toolsets. budgets/toolsets are JSON
+  // strings on SessionDetail — parse defensively.
+  const newSessionOnRepo = async () => {
+    if (!session || creating) return;
+    setCreating(true);
+    try {
+      let toolsets: string[] | undefined;
+      try {
+        // toolsets is its own JSON-string column on the session row
+        // (verified against GET /sessions/:id — it is NOT inside budgets).
+        const raw = session.toolsets ? JSON.parse(session.toolsets) : null;
+        if (Array.isArray(raw)) toolsets = raw as string[];
+      } catch { /* old rows have no toolsets */ }
+      const res = await api.createSession({
+        repo_url: session.repo_url,
+        branch: session.branch,
+        provider_id: session.provider_id,
+        model_id: session.model_id,
+        toolsets,
+      });
+      if (onOpenSession) onOpenSession(res.id);
+      else toast.push("Workspace created", "success");
+    } catch (e) {
+      toast.push(humanizeToast(e), "error");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const cancel = async () => {
     if (cancelling || terminal) return;
@@ -302,6 +350,22 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
             modelId={modelId}
             repoBranch={repoBranch}
             placeholder={placeholder}
+            usage={usage}
+            endBar={terminal ? (
+              <div className="ws-endbar" role="status" aria-label="Workspace ended">
+                <span className="ws-endbar-text">
+                  This workspace has ended.
+                </span>
+                <button
+                  className="ws-endbar-cta"
+                  onClick={newSessionOnRepo}
+                  disabled={creating || !session}
+                  aria-label="New workspace on this repo"
+                >
+                  {creating ? "starting…" : "New workspace on this repo"}
+                </button>
+              </div>
+            ) : null}
           />
 
           {/* Center-stage diff overlay — inside .ws-center so it covers just

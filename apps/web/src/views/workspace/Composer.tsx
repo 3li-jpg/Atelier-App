@@ -1,8 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 // Sticky glass composer. Auto-growing textarea; Enter=send, Shift+Enter=newline.
 // Send = violet primary with a spring on press. No Stop button — cancel lives in
 // the topbar overflow menu (api.cancelSession cancels the session, not a turn).
+// `endBar` (when provided) replaces the input form — used for the terminal
+// end-of-session affordance. `usage` renders a subtle mono token line.
 export function Composer({
   value,
   onChange,
@@ -15,6 +17,8 @@ export function Composer({
   modelId,
   repoBranch,
   placeholder,
+  usage,
+  endBar,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -27,6 +31,8 @@ export function Composer({
   modelId: string;
   repoBranch: string;
   placeholder: string;
+  usage: { in: number; out: number } | null;
+  endBar: ReactNode | null;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -56,32 +62,34 @@ export function Composer({
   return (
     <div className="ws-composer">
       <div className="ws-composer-inner">
-        <form
-          className={`ws-composer-form ${awaiting ? "awaiting" : ""}`}
-          onSubmit={(e) => { e.preventDefault(); if (!disabled && !sending && value.trim()) onSend(); }}
-          aria-label="Send a message"
-        >
-          <textarea
-            ref={ref}
-            className="ws-textarea"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={placeholder}
-            disabled={disabled}
-            aria-label={disabled ? "Workspace ended" : awaiting ? "Reply or steer the workspace" : "Message the workspace"}
-            rows={1}
-            aria-disabled={disabled}
-          />
-          <button
-            type="submit"
-            className="ws-send"
-            disabled={disabled || sending || !value.trim()}
-            aria-label="Send message"
+        {endBar ?? (
+          <form
+            className={`ws-composer-form ${awaiting ? "awaiting" : ""}`}
+            onSubmit={(e) => { e.preventDefault(); if (!disabled && !sending && value.trim()) onSend(); }}
+            aria-label="Send a message"
           >
-            {sending ? "…" : "Send"}
-          </button>
-        </form>
+            <textarea
+              ref={ref}
+              className="ws-textarea"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={placeholder}
+              disabled={disabled}
+              aria-label={disabled ? "Workspace ended" : awaiting ? "Reply or steer the workspace" : "Message the workspace"}
+              rows={1}
+              aria-disabled={disabled}
+            />
+            <button
+              type="submit"
+              className="ws-send"
+              disabled={disabled || sending || !value.trim()}
+              aria-label="Send message"
+            >
+              {sending ? "…" : "Send"}
+            </button>
+          </form>
+        )}
         <div className="ws-statusline" role="status" aria-label={`State ${stateLabel}, model ${modelId}, ${repoBranch}`}>
           <span className={`ws-state-chip tone-${stateTone}`}>{stateLabel}</span>
           {modelId && <>
@@ -92,8 +100,23 @@ export function Composer({
             <span className="ws-dot-sep" aria-hidden="true">·</span>
             <span className="ellipsis" style={{ minWidth: 0 }}>{repoBranch}</span>
           </>}
+          {usage && (
+            <span
+              className="ws-usage"
+              title={`${usage.in.toLocaleString()} in · ${usage.out.toLocaleString()} out`}
+            >
+              <span className="ws-dot-sep" aria-hidden="true">·</span>
+              {fmtTokens(usage.in)} in · {fmtTokens(usage.out)} out
+            </span>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+// ponytail: compact token counts (12.3k, 1.9k, 850). No chart, no panel.
+function fmtTokens(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(n);
 }

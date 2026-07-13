@@ -36,6 +36,7 @@ export type SessionSummary = {
 export type SessionDetail = SessionSummary & {
   provider_id: string; permission_mode: string; machine_id: string | null;
   budgets: string; // sqlite JSON string; parse where needed
+  toolsets?: string | null; // sqlite JSON string array (e.g. '["terminal","file"]')
   billed_seconds?: number;
 };
 export type ProviderSummary = {

@@ -204,6 +204,40 @@ const TODO_SUBAGENT_EVENTS: MockEvent[] = [
   ...EVENTS.slice(3),
 ];
 
+// Terminal (completed) session with a usage event. The end-of-session bar
+// replaces the composer; the usage line renders in the statusline.
+const TERMINAL_USAGE_EVENTS: MockEvent[] = [
+  ...EVENTS,
+  {
+    seq: 30,
+    ts: "2026-07-12T10:00:50Z",
+    type: "usage",
+    payload: { input: 12300, output: 1900, total: 14200 },
+  },
+  {
+    seq: 31,
+    ts: "2026-07-12T10:00:51Z",
+    type: "state_change",
+    payload: { state: "completed" },
+  },
+];
+
+// Subagent goal with an absolute sandbox path parenthetical — display strips it.
+const ABS_PATH_SUBAGENT_EVENTS: MockEvent[] = [
+  ...EVENTS.slice(0, 3),
+  {
+    seq: 21,
+    ts: "2026-07-12T10:00:19Z",
+    type: "subagent",
+    payload: {
+      status: "completed",
+      goal: "Refactor auth module (/private/tmp/atelier/sess-abc/repo/src/auth)",
+      summary: "split into helpers",
+    },
+  },
+  ...EVENTS.slice(3),
+];
+
 // ── Route handler helpers ───────────────────────────────────────
 
 /** Intercept all API calls and respond with mock data. */
@@ -576,6 +610,71 @@ test.describe("SessionView — todos & subagents (right rail)", () => {
 
     // Tool call count in the activity footer (read_file + run_tests = 2).
     await expect(activityPanel.locator(".ws-activity-tools")).toContainText("2 tool calls");
+  });
+
+  test("subagent goal strips absolute path parenthetical from display, keeps it in title", async ({ page }) => {
+    await mockApi(page, ABS_PATH_SUBAGENT_EVENTS);
+    await navigateToSessionView(page);
+
+    const rail = page.locator(".ws-rail");
+    const activityPanel = rail.locator(".ws-panel").filter({ hasText: "Activity" });
+
+    const goal = activityPanel.locator(".ws-subagent-goal");
+    // Display text has the path stripped.
+    await expect(goal).toHaveText("Refactor auth module");
+    // Full goal (with the absolute path) is preserved in the title attribute.
+    await expect(goal).toHaveAttribute("title", /\/private\/tmp\/atelier/);
+    // Completed status renders the green tone.
+    await expect(activityPanel.locator(".ws-subagent-status")).toHaveClass(/tone-ok/);
+  });
+});
+
+test.describe("SessionView — terminal session & usage", () => {
+  test("terminal session shows end-of-session bar and new-workspace button POSTs /sessions", async ({ page }) => {
+    await mockApi(page, TERMINAL_USAGE_EVENTS);
+    await navigateToSessionView(page);
+
+    // The composer form is replaced by the end-of-session bar.
+    await expect(page.locator(".ws-endbar")).toBeVisible();
+    await expect(page.locator(".ws-textarea")).toHaveCount(0);
+    await expect(page.locator(".ws-endbar-text")).toContainText("This workspace has ended.");
+
+    const cta = page.locator('[aria-label="New workspace on this repo"]');
+    await expect(cta).toBeVisible();
+
+    // Capture the POST /sessions body — it must reuse this session's repo/branch/provider/model.
+    let createBody: Record<string, unknown> | null = null;
+    await page.route("**/sessions", (route: Route) => {
+      if (route.request().method() === "POST") {
+        createBody = JSON.parse(route.request().postData() ?? "null");
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "sess-new999", state: "running" }) });
+      } else {
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(MOCK_SESSIONS_LIST) });
+      }
+    });
+
+    await cta.click();
+
+    // The new workspace reuses the original session's repo/branch/provider/model.
+    await expect.poll(() => createBody).toMatchObject({
+      repo_url: "https://github.com/acme/widget-factory.git",
+      branch: "feature/auth",
+      provider_id: "prov-1",
+      model_id: "claude-sonnet-4-20250514",
+    });
+  });
+
+  test("usage event renders a token line in the statusline", async ({ page }) => {
+    await mockApi(page, TERMINAL_USAGE_EVENTS);
+    await navigateToSessionView(page);
+
+    // The usage line shows compacted counts (12.3k in · 1.9k out).
+    const usage = page.locator(".ws-usage");
+    await expect(usage).toBeVisible();
+    await expect(usage).toContainText("12.3k in");
+    await expect(usage).toContainText("1.9k out");
+    // Exact numbers in the title attribute.
+    await expect(usage).toHaveAttribute("title", "12,300 in · 1,900 out");
   });
 });
 

@@ -146,7 +146,7 @@ export function App() {
       <MotionConfig reducedMotion="user">
         <div key="session" className="view-fade" style={{ height: "100%" }}>
           <Suspense fallback={null}>
-            <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />
+            <SessionView id={view.id} onBack={() => setView({ kind: "list" })} onOpenSession={(id) => setView({ kind: "session", id })} />
           </Suspense>
         </div>
       </MotionConfig>
