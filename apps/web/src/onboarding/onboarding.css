@@ -241,6 +241,26 @@
   color: var(--muted);
 }
 
+/* Subtle skip-to-blank-workspace action under the primary nav row. */
+.onb-skip-blank {
+  align-self: center;
+  margin-top: 0.5rem;
+  background: transparent;
+  border: none;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s var(--ease-out, ease);
+}
+.onb-skip-blank:hover:not(:disabled) { color: var(--text); }
+.onb-skip-blank:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+.onb-skip-blank:disabled { opacity: 0.5; cursor: default; }
+
 /* ---- Summary card (final review before launch) ---- */
 .onb-summary {
   background: var(--panel);

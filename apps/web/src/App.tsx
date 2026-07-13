@@ -152,7 +152,7 @@ export function App() {
         user={user}
         onLogout={logout}
       >
-        {view.kind === "list" && <PageHeader title="Workspaces" subtitle="Your coding sessions" />}
+        {view.kind === "list" && <PageHeader title="Workspaces" subtitle="Your chat workspaces" />}
         {view.kind === "repos" && <PageHeader title="Repos" subtitle="Import a repo to start a workspace" />}
         {view.kind === "providers" && <PageHeader title="Providers" subtitle="Model providers and API keys" />}
         {view.kind === "settings" && <PageHeader title="Settings" subtitle="Account, plan, and compute" />}

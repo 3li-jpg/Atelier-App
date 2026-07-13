@@ -30,7 +30,7 @@ export function SessionsList({ onOpen }: { onOpen: (id: string) => void }) {
     return (
       <StateMessage
         kind="error"
-        title="Couldn't load sessions"
+        title="Couldn't load workspaces"
         description={err}
         action={<Button variant="ghost" size="sm" onClick={retry}>Retry</Button>}
       />

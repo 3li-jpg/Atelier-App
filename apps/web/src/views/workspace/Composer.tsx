@@ -69,7 +69,7 @@ export function Composer({
             onKeyDown={onKeyDown}
             placeholder={placeholder}
             disabled={disabled}
-            aria-label={disabled ? "Session ended" : awaiting ? "Reply or steer the session" : "Message the session"}
+            aria-label={disabled ? "Workspace ended" : awaiting ? "Reply or steer the workspace" : "Message the workspace"}
             rows={1}
             aria-disabled={disabled}
           />

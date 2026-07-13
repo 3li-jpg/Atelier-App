@@ -1,135 +1,101 @@
 # Atelier
 
-Agentic coding from any browser. Bring your own model key (BYOK), an agent runs in a cloud sandbox, edits your repo, and opens a PR. Installable PWA — works on desktop and mobile.
+Atelier is an open-source, chat-first agentic coding platform. You connect a model API key, pick a repo, and an agent runs in an isolated sandbox — editing files, running tools, and shipping a pull request while you watch a live workspace. It is self-hostable, installable as a PWA, and built so the free plan costs the operator nothing: users bring their own model key (BYOK) and their own compute credits (BYOC).
 
-## What is Atelier?
+- **Chat workspaces on your repos** — a workspace is a persistent chat against a cloned repo. Each message drives the agent one turn; the timeline streams assistant text, tool calls, file diffs, todos, subagent activity, and approvals.
+- **BYOK any endpoint** — any OpenAI- or Anthropic-compatible endpoint. Built-in presets for Umans, OpenRouter, Anthropic, OpenAI, and GLM; a custom field for anything else. Keys are encrypted at rest, never placed in sandbox machine env.
+- **BYOC free plan** — bring your own E2B or Daytona credits and Atelier runs your agent sandbox on them. No operator-hosted compute required for the free tier.
+- **Subagents, todos, skills via hermes-agent** — the agent runtime is [hermes-agent](https://github.com/) (pinned 0.18.2), exposing toolsets including `delegation` (parallel subagents), `todo`, `skills`, `memory`, `browser`, and `search`.
+- **PWA, mobile-first** — installable, offline-capable service worker, responsive from phone to desktop.
+- **Ships PRs** — on completion the supervisor commits to an `atelier/<ts>` branch and pushes via a per-session git token, then emits a `commit` event.
 
-Atelier is a self-hostable, agentic coding platform. You connect your own model API key (Umans, OpenRouter, Anthropic, OpenAI, GLM, or any OpenAI-compatible endpoint), pick a repo, describe a task, and the agent gets to work in an isolated sandbox — building, testing, and shipping a PR while you watch the live workspace.
-
-**Key features:**
-- **BYOK** — no hardcoded provider keys. Bring your own (Umans, OpenRouter, Anthropic, OpenAI, GLM, or custom).
-- **Multi-model per provider** — configure multiple models (coder + utility) per provider, switch between them per session.
-- **IDE-lite workspace** — three-panel layout: file tree (changed files with A/M/D badges), diff viewer (unified diff with syntax colors + line numbers), and chat/tool activity feed with streaming, inline approvals, and PR status.
-- **Guided onboarding** — signup → connect model key (with presets + test key) → pick repo (searchable GitHub dropdown) → describe task → land in live workspace. Under 60 seconds.
-- **Violet "midnight terminal" design system** — dark, high-contrast, Framer Motion animations, fully accessible (ARIA roles, keyboard nav, reduced-motion support).
-- **Installable PWA** — add to home screen, works offline (service worker), responsive on mobile and desktop.
-- **Multi-provider sandbox** — Fly.io (Firecracker microVMs), Daytona, E2B, or local.
-- **Supabase Auth** — email/password + GitHub OAuth.
-
-## Monorepo layout
+## Architecture
 
 ```
-apps/landing/           Next.js 15 + React 19 marketing site + Supabase auth (GitHub OAuth + email/password)
-apps/web/               Vite + React 18 PWA — the dashboard + workspace (onboarding, sessions, providers, IDE-lite session view)
-apps/api/               Hono control plane — FSM orchestrator, store (sqlite/Postgres/Supabase), AES-GCM secrets, SSE event fanout, auth
-apps/workspace-proxy/   reverse proxy to per-session sandboxes
-packages/schema/        zod schemas — events, session FSM, provider config (source of truth)
-packages/sandbox/       SandboxProvider interface + Fly/Daytona/E2B/local providers
-packages/ui/            shared component library — Button, Input, Card, Badge, Skeleton, Tabs, Toast + violet design tokens
-packages/conformance/   provider scoring — tool-call fidelity, edit reliability, streaming stability
-runner/                 sandbox image — supervisor.sh, hermes-bridge.mjs, map-event.mjs, firewall.sh
-infra/                   fly.toml files
+                         ┌──────────────┐
+                         │  landing     │  Next.js 15 — marketing + auth
+                         │  apps/landing│  (:3001)
+                         └──────┬───────┘
+                                │ GitHub OAuth / email
+                                ▼
+┌──────────────┐        ┌──────────────────┐        ┌─────────────────────┐
+│  web PWA     │  SSE   │  control plane   │  HTTPS  │  sandbox providers  │
+│  apps/web    │◄──────►│  apps/api        │◄───────►│  packages/sandbox   │
+│  Vite+React  │        │  Hono + sqlite|pg│         │  E2B | Daytona |    │
+│  (:5173)     │        │  (:3000)         │         │  Fly | local        │
+└──────────────┘        └────────┬─────────┘         └──────────┬──────────┘
+                                 │ sealed-box handshake          │ spawns
+                                 ▼                               ▼
+                        ┌──────────────────┐        ┌─────────────────────┐
+                        │  runner (sandbox │        │  hermes-agent       │
+                        │  image)          │        │  gateway + api_server│
+                        │  runner/         │◄──────►│  127.0.0.1:8642     │
+                        │  supervisor.sh   │  SSE   └─────────────────────┘
+                        │  hermes-bridge   │
+                        │  firewall.sh     │
+                        └──────────────────┘
 ```
 
-## Prerequisites
+- **Landing** (`apps/landing`) — Next.js 15 marketing site and auth entry point. Runs on `:3001`. Hosts GitHub OAuth and email/password signup; on success it hands a session token to the PWA via URL hash.
+- **Web PWA** (`apps/web`) — Vite + React 18 single-page app: onboarding, session list, provider settings, and the chat workspace (timeline + replies rail). Dev server on `:5173` proxies API paths to `:3000` so the SPA is same-origin with the API in dev. In production the API serves the built bundle from one origin (`WEB_DIST`).
+- **Control plane** (`apps/api`) — Hono service on `:3000`. Session FSM orchestrator, store (SQLite via `node:sqlite`, or Postgres/Supabase when `DATABASE_URL` is set), AES-256-GCM secret encryption, SSE event fanout with cursor replay, and auth (session cookie, static bearer, or Supabase JWT). Route surface: `/auth/*`, `/providers`, `/sessions`, `/repos`, `/account`, plus `/internal/*` for the sandbox supervisor.
+- **Sandbox providers** (`packages/sandbox`) — one `SandboxProvider` interface, four implementations: Fly Machines, E2B, Daytona, and a local subprocess. `SANDBOX_PROVIDER` selects the default; per-user BYOC keys override it per session.
+- **Runner** (`runner/`) — the sandbox image (Ubuntu 24.04 + Node 22 + hermes-agent). `supervisor.sh` is PID 1: it clones the repo, raises an nftables egress allowlist (`firewall.sh`), writes hermes config to tmpfs, launches `hermes gateway run`, and runs `hermes-bridge.mjs` to relay the agent's SSE events to the control plane and inject user replies.
 
-- **Node.js** 18+ (tested on 22/24)
-- **npm** 10+
-- For sandboxes: a Fly.io account (or Daytona/E2B/local)
-- For auth: a Supabase project (optional — runs open in dev without it)
+## Local development
 
-## Quick start
+Requires Node 18+ (tested on 22) and npm 10+. For `SANDBOX=local` mode you also need the `hermes` CLI installed (`curl -LsSf https://astral.sh/uv/install.sh | sh && uv pip install --system hermes-agent==0.18.2`).
 
 ```bash
-# 1. Install dependencies
+# 1. Install (npm workspaces — not pnpm)
 npm install
 
-# 2. Copy and edit env vars
+# 2. Env vars
 cp .env.example .env
-# At minimum set MASTER_KEY (used to encrypt stored API keys)
+#   At minimum set MASTER_KEY (encrypts stored provider keys).
+#   For local sandboxes set SANDBOX_PROVIDER=local (or SANDBOX=local).
 
-# 3. Start the API (port 3000)
+# 3. API on :3000  (reads ../../.env and ../../.env.fly automatically)
 npm run dev
 
-# 4. In another terminal, start the PWA (port 5173)
+# 4. PWA on :5173  (proxies /auth /sessions /providers /repos /account /internal to :3000)
 npm run dev:web
 
-# 5. (Optional) Start the landing page (port 3001)
+# 5. Landing on :3001  (optional)
 npm run dev -w @atelier/landing
 ```
 
-Open `http://localhost:5173` in your browser. The PWA proxies API calls to `:3000` automatically (no CORS config needed in dev).
+Open `http://localhost:5173`. With no `AUTH_TOKEN` and no OAuth configured, the API runs open (owner-alpha mode); set `AUTH_TOKEN` for a single-user bearer gate, or configure GitHub OAuth for multi-user.
 
-Without `AUTH_TOKEN` or OAuth configured, the API runs open (owner-alpha mode). Set `AUTH_TOKEN` in `.env` for a single-user gate, or configure GitHub OAuth for real multi-user auth.
+`SANDBOX_PROVIDER=local` runs the supervisor as a local subprocess via the installed `hermes` CLI — no Fly account, no microVM isolation, no suspend/resume. The firewall is skipped on macOS/local runs (`SKIP_FIREWALL=1` is set by the local provider).
 
-## Environment variables
+## Sandbox providers
 
-Copy `.env.example` to `.env` and fill in what you need:
+`SANDBOX_PROVIDER` selects the substrate. Per-user BYOC keys (E2B or Daytona, set via Settings → Account) override it for that user's sessions.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `MASTER_KEY` | ✅ | Encrypts stored provider API keys (AES-256-GCM) |
-| `AUTH_TOKEN` | — | Optional bearer token for single-user auth |
-| `SESSION_SECRET` | — | HMAC key for session cookies (defaults to `MASTER_KEY`) |
-| `PORT` | — | API port (default 3000) |
-| `DB_PATH` | — | SQLite file path (default `atelier.db`) |
-| `DATABASE_URL` | — | Postgres URL (e.g. Supabase). Overrides SQLite when set |
-| `PUBLIC_URL` | — | API URL reachable from sandbox machines |
-| `GITHUB_OAUTH_CLIENT_ID` | — | GitHub OAuth app client ID |
-| `GITHUB_OAUTH_CLIENT_SECRET` | — | GitHub OAuth app client secret |
-| `SANDBOX_PROVIDER` | — | `fly` / `daytona` / `e2b` / `local` (default `fly`) |
-| `FLY_SANDBOX_TOKEN` | — | Fly deploy token |
-| `DAYTONA_API_KEY` | — | Daytona API key |
-| `E2B_API_KEY` | — | E2B API key |
-| `GIT_TOKEN` | — | GitHub PAT for the agent to clone/push repos |
+| Provider | Env vars | Status |
+|----------|----------|--------|
+| `fly` (default) | `FLY_SANDBOX_APP`, `FLY_SANDBOX_TOKEN`, `RUNNER_IMAGE` | Battle-tested path. Real Fly Machines API client (`api.machines.dev`); used for all alpha sessions. |
+| `e2b` | `E2B_API_KEY` | Adapter implemented (`packages/sandbox/src/e2b.ts`); validated with mocked-fetch tests only. Real-API validation pending. |
+| `daytona` | `DAYTONA_API_KEY`, `DAYTONA_WORKSPACE_ID` | Adapter implemented (`packages/sandbox/src/daytona.ts`); validated with mocked-fetch tests only. Real-API validation pending. |
+| `local` | `SANDBOX=local` or `SANDBOX_PROVIDER=local` | Runs supervisor as a host subprocess; requires the `hermes` CLI. No isolation, no suspend/resume. Dev only. |
 
-## Supported model providers
+The API warns at boot if the selected provider's key is missing. BYOC keys are stored encrypted (same AES-256-GCM path as model keys) and decrypted only inside the sealed-box handshake.
 
-Atelier supports any OpenAI-compatible or Anthropic-compatible endpoint. Built-in presets:
+## Security model
 
-| Provider | Base URL | Default Model | Dialect |
-|----------|----------|---------------|---------|
-| **Umans** (default) | `https://api.code.umans.ai` | `umans-glm-5.2` | `openai-chat` |
-| OpenRouter | `https://openrouter.ai/api/v1` | `anthropic/claude-3.5-sonnet` | `openai-chat` |
-| Anthropic | `https://api.anthropic.com/v1` | `claude-3.5-sonnet` | `anthropic-messages` |
-| OpenAI | `https://api.openai.com/v1` | `gpt-4o` | `openai-chat` |
-| GLM (Zhipu) | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-plus` | `openai-chat` |
-| Custom | any | any | any |
+- **Keys encrypted at rest.** Provider API keys and BYOC compute keys are AES-256-GCM encrypted under `MASTER_KEY` before storage (`apps/api/src/secrets.ts`). The plaintext is never logged.
+- **Sealed-box handshake.** Secrets never sit in sandbox machine env. The supervisor generates an X25519 keypair, posts its pubkey to `/internal/sessions/:id/handshake`, and the control plane replies with the full session config (repo, model key, git token) AES-256-GCM-encrypted under the ECDH shared secret. The machine env carries only `SESSION_ID`, `HANDSHAKE_URL`, `EVENTS_URL`, and a per-session bearer.
+- **Egress allowlist.** `runner/firewall.sh` installs an nftables default-drop output policy allowing only DNS and HTTPS to a resolved host list (the model endpoint, GitHub, the control plane). Fail-closed: if `nft` fails to apply, the session never starts.
+- **Tokens scrubbed from the supervisor.** After the handshake, `GIT_TOKEN` and `LLM_API_KEY` are `unset` from PID 1's env. The git push token lives in tmpfs (`/dev/shm`) and is shredded after use; hermes config (which holds the model key) is written to a tmpfs `HERMES_HOME`.
+- **Streamed output redacted.** Events posted back through `/internal/sessions/:id/events` are passed through a `redact()` filter that strips known secret patterns (`sk-…`, `ghp_…`, `github_pat_…`, `AKIA…`, etc.) before persistence.
 
-Each provider can have multiple models (coder + utility roles). Switch between them when starting a session.
+## Roadmap
 
-## Testing
-
-```bash
-# Unit tests (all workspaces)
-npm test
-
-# E2E tests (Playwright — requires the web dev server)
-cd apps/web && npx playwright test
-
-# Type check
-npx tsc --noEmit -p apps/web/tsconfig.json
-```
-
-## Building
-
-```bash
-# PWA (code-split, lazy-loaded chunks)
-npm run build -w @atelier/web
-
-# Landing page (Next.js)
-npm run build -w @atelier/landing
-```
-
-## Deploy
-
-The API serves the built PWA bundle from one origin in production (set `WEB_DIST` to the web build output). Deploy to Fly.io:
-
-```bash
-fly deploy -c infra/fly.api.toml
-```
-
-See `infra/fly.api.toml`, `infra/fly.sandboxes.toml`, and `infra/fly.workspaces.toml` for Fly configuration.
+- **Hosted compute plans** — operator-run Fly/E2B capacity for paid tiers, so users don't need their own credits.
+- **Real-API BYOC validation** — exercise the E2B and Daytona adapters against live APIs; today they are covered by mocked-fetch unit tests only.
+- **Deep links / routing** — shareable workspace URLs and stable client-side routing.
+- **PWA push notifications** — agent completions and approval requests delivered to installed clients.
 
 ## License
 

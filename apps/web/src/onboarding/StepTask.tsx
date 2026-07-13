@@ -71,12 +71,33 @@ export function StepTask({ providerId, repoUrl, branch, onDone, onBack }: {
     }
   };
 
+  // Skip: create the workspace with no initial prompt — the user lands in a
+  // blank chat and types their first message there. createSession accepts an
+  // optional task; omitting it yields a chat workspace.
+  const skip = async () => {
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const res = await api.createSession({
+        repo_url: repoUrl,
+        branch,
+        provider_id: providerId,
+        model_id: modelId,
+      });
+      onDone(res.id);
+    } catch (e2) {
+      setErr(humanizeApiError(e2).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const repoShort = repoUrl.replace(/^https:\/\/github\.com\//, "");
 
   return (
     <div className="onb-step">
-      <h2 className="onb-step-title">Describe your task</h2>
-      <p className="onb-step-sub">Tell the agent what to do. Be specific for best results.</p>
+      <h2 className="onb-step-title">Start a chat</h2>
+      <p className="onb-step-sub">Describe what you want built, or skip to a blank workspace and type your first message there.</p>
 
       {/* Summary card */}
       <div className="onb-summary">
@@ -126,14 +147,14 @@ export function StepTask({ providerId, repoUrl, branch, onDone, onBack }: {
         ))}
       </div>
 
-      {/* Task textarea */}
+      {/* First message — optional. Leave empty to start a blank chat. */}
       <div className="form">
-        <label>Task
+        <label>First message
           <textarea
             rows={4}
             value={task}
             onChange={(e) => setTask(e.target.value)}
-            placeholder="Describe what the agent should do…"
+            placeholder="Describe what you want built…"
           />
           {errors.task && <span className="field-err">{errors.task}</span>}
         </label>
@@ -148,9 +169,17 @@ export function StepTask({ providerId, repoUrl, branch, onDone, onBack }: {
         <motion.button className="primary" onClick={submit} disabled={submitting || !task.trim()}
           variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
         >
-          {submitting ? "starting…" : "Launch session →"}
+          {submitting ? "starting…" : "Start chat →"}
         </motion.button>
       </div>
+      <button
+        type="button"
+        className="onb-skip-blank"
+        onClick={skip}
+        disabled={submitting}
+      >
+        Skip — start a blank workspace
+      </button>
     </div>
   );
 }

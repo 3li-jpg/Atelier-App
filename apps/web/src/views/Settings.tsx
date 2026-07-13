@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Account, type ComputeProvider } from "../api.ts";
-import { Button, useToast } from "@atelier/ui";
+import { Button, Input, Select, useToast } from "@atelier/ui";
 import { humanizeApiError } from "./humanize.ts";
 import "./settings.css";
 
@@ -149,43 +149,33 @@ export function Settings({ onLogout }: { onLogout: () => void }) {
           ) : (
             <>
               <div className="st-form">
-                <div className="st-form-row">
-                  <label>
-                    <span className="st-section-title">Compute provider</span>
-                    <select
-                      className="atelier-select"
-                      value={provider}
-                      onChange={(e) =>
-                        setProvider(e.target.value as ComputeProvider)
-                      }
-                    >
-                      <option value="e2b">E2B</option>
-                      <option value="daytona">Daytona</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="st-form-row">
-                  <label>
-                    <span className="st-section-title">API key</span>
-                    <input
-                      className="atelier-input"
-                      type="password"
-                      placeholder="paste your E2B/Daytona key"
-                      autoComplete="off"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                    />
-                  </label>
-                </div>
+                <Select
+                  label="Compute provider"
+                  value={provider}
+                  onChange={(e) =>
+                    setProvider(e.target.value as ComputeProvider)
+                  }
+                >
+                  <option value="e2b">E2B</option>
+                  <option value="daytona">Daytona</option>
+                </Select>
+                <Input
+                  label="API key"
+                  type="password"
+                  placeholder="paste your E2B/Daytona key"
+                  autoComplete="off"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
                 {computeErr && <div className="st-error">{computeErr}</div>}
-                <div>
+                <div className="st-form-actions">
                   <Button
                     variant="primary"
                     loading={saving}
                     disabled={!provider || !apiKey.trim() || saving}
                     onClick={saveCompute}
                   >
-                    Save compute
+                    {saving ? "Saving…" : "Save compute"}
                   </Button>
                 </div>
               </div>

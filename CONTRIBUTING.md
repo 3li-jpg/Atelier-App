@@ -11,7 +11,7 @@ npm test               # node --test across packages; must pass before any commi
 MASTER_KEY=dev npm run dev   # API on :3000
 ```
 
-Requires Node 24 (the API runs with `--experimental-strip-types`).
+Requires Node 18+ (tested on 22). The API runs with `--experimental-strip-types`.
 
 ## Where things are
 

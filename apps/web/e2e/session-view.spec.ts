@@ -1,19 +1,26 @@
 import { test, expect, type Route } from "@playwright/test";
 
 // ───────────────────────────────────────────────────────────────
-// E2E: SessionView workspace — full three-panel IDE-lite experience.
+// E2E: chat-first SessionView workspace.
 //
-// The SessionView is reached when the user clicks a session in SessionsList.
-// It calls api.getSession(id) (REST) and useEventStream(id) (EventSource SSE).
+// The SessionView is reached when the user opens a session from the
+// Workspaces list (or creates one from Repos). It calls api.getSession(id)
+// (REST) and useEventStream(id) (EventSource SSE).
+//
+// Layout: .ws-topbar + .ws-body → .ws-center (ChatThread + Composer, with a
+// center-stage diff overlay when a file is selected) and .ws-rail (Files /
+// Todos / Activity panels). Mobile swaps via .ws-mobile-tabs.
 //
 // This suite mocks ALL backend endpoints via page.route() so no API server is
 // needed. We cover:
-//   - Skeleton loading states (SessionsList null → populated)
-//   - Full workspace: file tree, timeline, diff panel, chat panel
-//   - Every event type: assistant_text, tool_call, file_diff, question,
-//     state_change, commit (and error / user_message)
-//   - Interactive behaviors: file selection → diff, question reply chips,
-//     composer send, state banner, PR status
+//   - Workspaces list skeleton → populated → open session
+//   - Chat thread: assistant_text, tool_call (collapsible), file_diff card,
+//     commit bar, error alert, state chip
+//   - Right rail: Files (from file_diff), Todos (from todo event), Activity
+//     (from subagent event), tool count
+//   - Composer: send → POST /sessions/:id/reply; awaiting_user focus
+//   - Question/approval: option chips + approve/deny buttons
+//   - Diff overlay: file select → DiffPanel, back
 //   - Mobile tab switching
 //   - Accessibility roles & labels
 // ───────────────────────────────────────────────────────────────
@@ -53,6 +60,8 @@ const MOCK_SESSIONS_LIST = [
 
 // ── SSE event fixtures ─────────────────────────────────────────
 // Each is a valid Event per packages/schema (ts, type, payload, seq).
+// "todo" and "subagent" are forward-compat types ChatThread reads via string
+// widening (schema enum hasn't added them yet).
 
 function sseEvent(data: object): string {
   return `data: ${JSON.stringify(data)}\n\n`;
@@ -66,18 +75,8 @@ type MockEvent = {
 };
 
 const EVENTS: MockEvent[] = [
-  {
-    seq: 1,
-    ts: "2026-07-12T10:00:01Z",
-    type: "state_change",
-    payload: { state: "provisioning" },
-  },
-  {
-    seq: 2,
-    ts: "2026-07-12T10:00:05Z",
-    type: "state_change",
-    payload: { state: "running" },
-  },
+  { seq: 1, ts: "2026-07-12T10:00:01Z", type: "state_change", payload: { state: "provisioning" } },
+  { seq: 2, ts: "2026-07-12T10:00:05Z", type: "state_change", payload: { state: "running" } },
   {
     seq: 3,
     ts: "2026-07-12T10:00:10Z",
@@ -164,10 +163,51 @@ const QUESTION_EVENTS: MockEvent[] = [
   },
 ];
 
+// Approval-style question (no options → Approve/Deny buttons).
+const APPROVAL_EVENTS: MockEvent[] = [
+  ...EVENTS.slice(0, 4),
+  {
+    seq: 10,
+    ts: "2026-07-12T10:00:45Z",
+    type: "question",
+    payload: { prompt: "Run this shell command?", request_id: "req-7" },
+  },
+  {
+    seq: 11,
+    ts: "2026-07-12T10:00:46Z",
+    type: "state_change",
+    payload: { state: "awaiting_user" },
+  },
+];
+
+// Events with a todo list + a subagent (forward-compat event types).
+const TODO_SUBAGENT_EVENTS: MockEvent[] = [
+  ...EVENTS.slice(0, 3),
+  {
+    seq: 20,
+    ts: "2026-07-12T10:00:18Z",
+    type: "todo",
+    payload: {
+      items: [
+        { text: "Read middleware", done: true },
+        { text: "Add JWT auth", done: false },
+        { text: "Write tests", done: false },
+      ],
+    },
+  },
+  {
+    seq: 21,
+    ts: "2026-07-12T10:00:19Z",
+    type: "subagent",
+    payload: { status: "running", goal: "Audit auth helpers", summary: "scanning src/auth" },
+  },
+  ...EVENTS.slice(3),
+];
+
 // ── Route handler helpers ───────────────────────────────────────
 
 /** Intercept all API calls and respond with mock data. */
-async function mockApi(page: import("@playwright/test").Page, events = EVENTS) {
+async function mockApi(page: import("@playwright/test").Page, events: MockEvent[] = EVENTS) {
   // REST endpoints
   await page.route("**/sessions", (route: Route) => {
     if (route.request().method() === "GET") {
@@ -201,15 +241,21 @@ async function mockApi(page: import("@playwright/test").Page, events = EVENTS) {
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
 
-  // Auth / providers / repos — return harmless defaults
+  // Auth / providers / repos / account — return harmless defaults
   await page.route("**/auth/status", (route: Route) => {
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ oauth: false, authed: true, owner: true, user: { login: "testuser" } }) });
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ oauth: true, authed: true, owner: true, user: { login: "testuser" } }) });
   });
-  await page.route("**/providers", (route: Route) => {
+  await page.route("**/auth/logout", (route: Route) => {
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+  await page.route("**/providers**", (route: Route) => {
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
   });
   await page.route("**/repos**", (route: Route) => {
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+  });
+  await page.route("**/account**", (route: Route) => {
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: { id: "u", login: "testuser", name: null, avatar_url: null, github_connected: true }, plan: { id: "free", name: "Free", byok: true, compute: "byoc" }, usage: { sessions: 1, billed_seconds: 0 }, compute: { byoc_provider: null } }) });
   });
 
   // SSE event stream — fulfill with the mock events
@@ -224,37 +270,39 @@ async function mockApi(page: import("@playwright/test").Page, events = EVENTS) {
   });
 }
 
-/** Navigate to the SessionView by loading the app, waiting for the sessions list,
- *  then clicking the mock session card. */
+/** Navigate to the SessionView by loading the app, waiting for the workspaces
+ *  list, then clicking the mock session card. */
 async function navigateToSessionView(page: import("@playwright/test").Page) {
   await page.addInitScript(() => localStorage.setItem("atelier:onboarded", "1"));
   await page.goto("/");
-  // Wait for sessions list to render with the mock session.
-  // Use .first() because the task text also appears in commit events and PR status.
+  // Wait for the workspaces list to render with the mock session.
   await expect(page.locator(".session-card").first()).toBeVisible({ timeout: 10_000 });
   // Click the session card to enter SessionView
   await page.locator(".session-card").first().click();
-  // The ide-shell should appear
-  await expect(page.locator(".ide-shell")).toBeVisible({ timeout: 10_000 });
+  // The workspace shell should appear
+  await expect(page.locator(".ws")).toBeVisible({ timeout: 10_000 });
 }
 
 /** When file_diff events arrive, SessionView auto-selects the first file,
- *  which replaces the timeline with the diff panel. This helper clicks
- *  "Back to timeline" to deselect and reveal the timeline again. */
-async function backToTimeline(page: import("@playwright/test").Page) {
-  const backBtn = page.locator('[aria-label="Back to timeline"]');
-  // Wait up to 5s for the diff panel to render and show the back button
-  await backBtn.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
-  if (await backBtn.isVisible().catch(() => false)) {
-    await backBtn.click();
-    // Wait for the timeline to reappear
-    await page.locator(".ide-timeline").waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
+ *  which opens the center-stage .ws-diff-overlay dialog. That overlay
+ *  intercepts pointer events over the thread/composer, so dismiss it (click
+ *  its back button) before interacting with anything underneath.
+ *
+ *  The SSE stream delivers file_diff events asynchronously after mount, so
+ *  wait for the overlay to appear (or settle) before dismissing. */
+async function dismissDiffOverlay(page: import("@playwright/test").Page) {
+  const overlay = page.locator(".ws-diff-overlay");
+  // Wait for the auto-select to open the overlay (file_diff events arrive via SSE).
+  await overlay.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
+  if (await overlay.isVisible().catch(() => false)) {
+    await overlay.locator('[aria-label="Back to timeline"]').click();
+    await expect(overlay).toHaveCount(0);
   }
 }
 
 // ── Tests ───────────────────────────────────────────────────────
 
-test.describe("SessionsList skeleton loading", () => {
+test.describe("Workspaces list skeleton loading", () => {
   test("shows skeleton placeholders while sessions are loading", async ({ page }) => {
     // Delay the /sessions response so the loading state is visible
     let resolveSessions: (val: unknown) => void;
@@ -270,9 +318,10 @@ test.describe("SessionsList skeleton loading", () => {
       });
     });
     // Need to mock other endpoints too so no errors
-    await page.route("**/auth/status", (route: Route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ oauth: false, authed: true, owner: true, user: { login: "testuser" } }) }));
-    await page.route("**/providers", (route: Route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }));
+    await page.route("**/auth/status", (route: Route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ oauth: true, authed: true, owner: true, user: { login: "testuser" } }) }));
+    await page.route("**/providers**", (route: Route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }));
     await page.route("**/repos**", (route: Route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }));
+    await page.route("**/account**", (route: Route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: { id: "u", login: "testuser", name: null, avatar_url: null, github_connected: true }, plan: { id: "free", name: "Free", byok: true, compute: "byoc" }, usage: { sessions: 1, billed_seconds: 0 }, compute: { byoc_provider: null } }) }));
 
     await page.goto("/");
 
@@ -290,328 +339,301 @@ test.describe("SessionsList skeleton loading", () => {
   });
 });
 
-test.describe("SessionView workspace — full experience", () => {
+test.describe("SessionView workspace — chat-first experience", () => {
   test.beforeEach(async ({ page }) => {
     await mockApi(page);
   });
 
-  test("renders the three-panel IDE shell with topbar and state banner", async ({ page }) => {
+  test("renders the workspace shell with topbar and state chip", async ({ page }) => {
     await navigateToSessionView(page);
 
     // Topbar
-    await expect(page.locator(".ide-topbar")).toBeVisible();
+    await expect(page.locator(".ws-topbar")).toBeVisible();
     await expect(page.locator('[aria-label="Back to sessions list"]')).toBeVisible();
     // Task title (in the topbar h1)
-    await expect(page.locator(".ide-topbar h1")).toContainText("Add JWT authentication middleware");
+    await expect(page.locator(".ws-topbar h1")).toContainText("Add JWT authentication middleware");
 
-    // State banner shows "running"
-    await expect(page.locator(".ide-statebar")).toBeVisible();
-    await expect(page.locator(".ide-statebar")).toContainText("running");
+    // Live dot for an active session
+    await expect(page.locator(".ws-live-dot")).toBeVisible();
 
-    // Three panels exist (use IDs to avoid ambiguity with inner sections)
-    await expect(page.locator("#panel-files")).toBeVisible();
-    await expect(page.locator("#panel-diff")).toBeVisible();
-    await expect(page.locator("#panel-chat")).toBeVisible();
+    // State chip in the composer statusline shows "running"
+    await expect(page.locator(".ws-state-chip")).toBeVisible();
+    await expect(page.locator(".ws-state-chip")).toHaveText("running");
   });
 
-  test("topbar shows finish and cancel buttons for active session", async ({ page }) => {
+  test("topbar overflow menu has finish and cancel actions for active session", async ({ page }) => {
     await navigateToSessionView(page);
 
+    await page.locator('[aria-label="Session actions menu"]').click();
     await expect(page.locator('[aria-label="Finish session: commit, push and shut down"]')).toBeVisible();
     await expect(page.locator('[aria-label="Cancel session"]')).toBeVisible();
-    // Live dot
-    await expect(page.locator(".live-dot")).toBeVisible();
   });
 
-  test("file tree populates from file_diff events and shows changed files", async ({ page }) => {
+  test("chat thread renders assistant_text messages", async ({ page }) => {
     await navigateToSessionView(page);
 
-    const filesPanel = page.locator("#panel-files");
-    await expect(filesPanel).toBeVisible();
-
-    // File tree header shows count
-    await expect(filesPanel.locator(".ide-panel-header")).toContainText("Files");
-
-    // Both files from file_diff events should appear as tree items
-    const treeItems = filesPanel.locator('[role="treeitem"]');
-    await expect(treeItems.filter({ hasText: "auth.ts" })).toBeVisible();
-    await expect(treeItems.filter({ hasText: "index.ts" })).toBeVisible();
-
-    // Directory "middleware" should be visible (auto-expanded)
-    await expect(treeItems.filter({ hasText: "middleware" })).toBeVisible();
-  });
-
-  test("clicking a file in the file tree opens the diff panel", async ({ page }) => {
-    await navigateToSessionView(page);
-
-    const filesPanel = page.locator('[aria-label="Files panel"]');
-    const treeItems = filesPanel.locator('[role="treeitem"]');
-
-    // Click on auth.ts (file tree item)
-    await treeItems.filter({ hasText: "auth.ts" }).click();
-
-    // Diff panel should now show the file path
-    await expect(page.locator(".ide-diff-path")).toContainText("auth.ts");
-
-    // Diff content should show added lines (it's a new file: --- /dev/null)
-    await expect(page.locator(".ide-diff-line.add").first()).toBeVisible();
-
-    // Back button in diff panel
-    await expect(page.locator('[aria-label="Back to timeline"]')).toBeVisible();
-  });
-
-  test("diff panel shows diff stats (additions/deletions)", async ({ page }) => {
-    await navigateToSessionView(page);
-
-    // Click index.ts which has both additions and deletions
-    const filesPanel = page.locator('[aria-label="Files panel"]');
-    const treeItems = filesPanel.locator('[role="treeitem"]');
-    await treeItems.filter({ hasText: "index.ts" }).click();
-
-    // Diff stats should be visible
-    await expect(page.locator(".ide-diff-stats")).toBeVisible();
-    await expect(page.locator(".ide-diff-stats .add")).toBeVisible();
-    await expect(page.locator(".ide-diff-stats .del")).toBeVisible();
-  });
-
-  test("timeline panel shows events with correct labels", async ({ page }) => {
-    await navigateToSessionView(page);
-
-    // Wait for events to settle (SSE stream delivers all at once, causing re-renders)
-    await page.waitForTimeout(1000);
-
-    // File_diff events trigger auto-select of the first file, which replaces
-    // the timeline with the diff panel. Click "Back to timeline" to reveal it.
-    await backToTimeline(page);
-
-    const middlePanel = page.locator('[aria-label="Timeline and diff panel"]');
-
-    // Should show the Timeline heading
-    await expect(middlePanel.getByText("Timeline")).toBeVisible({ timeout: 5_000 });
-
-    // Event count should match the number of events we sent
-    await expect(middlePanel.locator(".ide-panel-count")).toContainText(String(EVENTS.length));
-
-    // Should contain tool_call labels
-    await expect(middlePanel.getByText("read_file")).toBeVisible({ timeout: 5_000 });
-    await expect(middlePanel.getByText("run_tests")).toBeVisible({ timeout: 5_000 });
-
-    // Should contain commit label
-    await expect(middlePanel.getByText(/commit a1b2c3d/)).toBeVisible({ timeout: 5_000 });
-  });
-
-  test("clicking a file_diff entry in the timeline opens the diff", async ({ page }) => {
-    await navigateToSessionView(page);
-
-    // Go back to timeline first (auto-select hides it)
-    await backToTimeline(page);
-    // Wait for the timeline to be visible
-    await expect(page.locator(".ide-timeline")).toBeVisible({ timeout: 5_000 });
-
-    // Click on the file_diff timeline entry for auth.ts.
-    // Use force: true because the SSE stream causes re-renders that detach elements.
-    const diffEntry = page.locator(".ide-timeline-text.clickable").filter({ hasText: "auth.ts" }).first();
-    await expect(diffEntry).toBeVisible({ timeout: 5_000 });
-    await diffEntry.click({ force: true });
-
-    // Diff panel should show the file
-    await expect(page.locator(".ide-diff-path")).toContainText("auth.ts");
-  });
-
-  test("chat panel renders assistant_text messages", async ({ page }) => {
-    await navigateToSessionView(page);
-
-    const chatPanel = page.locator('[aria-label="Chat and activity panel"]');
-
+    const thread = page.locator(".ws-thread");
     // First assistant message
-    await expect(chatPanel.getByText("I'll start by examining the existing middleware stack")).toBeVisible();
+    await expect(thread.getByText("I'll start by examining the existing middleware stack")).toBeVisible();
     // Second assistant message
-    await expect(chatPanel.getByText("I've added JWT authentication middleware and all tests pass")).toBeVisible();
+    await expect(thread.getByText("I've added JWT authentication middleware and all tests pass")).toBeVisible();
   });
 
-  test("chat panel renders tool_call events with status badges", async ({ page }) => {
+  test("tool_call renders a collapsible row that expands to show output", async ({ page }) => {
     await navigateToSessionView(page);
 
-    const chatPanel = page.locator('[aria-label="Chat and activity panel"]');
+    // The auto-selected first file opens the diff overlay, which intercepts
+    // pointer events over the thread — dismiss it first.
+    await dismissDiffOverlay(page);
 
-    // Tool feed entries
-    await expect(chatPanel.getByText("read_file")).toBeVisible();
-    await expect(chatPanel.getByText("run_tests")).toBeVisible();
+    const thread = page.locator(".ws-thread");
 
-    // Both tools succeeded (exit code 0) — badge with "✓" and "ok" class
-    const okBadges = chatPanel.locator(".badge.ok");
-    await expect(okBadges.first()).toBeVisible();
+    // Both tool rows present.
+    await expect(thread.locator(".ws-tool-name").filter({ hasText: "read_file" })).toBeVisible();
+    await expect(thread.locator(".ws-tool-name").filter({ hasText: "run_tests" })).toBeVisible();
+
+    // Collapsed by default (data-expanded=false).
+    const readRow = thread.locator(".ws-tool").filter({ hasText: "read_file" });
+    await expect(readRow).toHaveAttribute("data-expanded", "false");
+    // No detail visible yet.
+    await expect(readRow.locator(".ws-tool-detail")).toHaveCount(0);
+
+    // Click the row header to expand — detail (summary) appears.
+    await readRow.locator(".ws-tool-row").click();
+    await expect(readRow.locator(".ws-tool-detail")).toBeVisible();
+    await expect(readRow.locator(".ws-tool-detail")).toContainText("Read src/middleware/index.ts");
+
+    // Click again collapses.
+    await readRow.locator(".ws-tool-row").click();
+    await expect(readRow.locator(".ws-tool-detail")).toHaveCount(0);
   });
 
-  test("chat panel renders commit events with SHA and message", async ({ page }) => {
+  test("file_diff appears as a diff card in the thread and in the Files rail", async ({ page }) => {
     await navigateToSessionView(page);
 
-    const chatPanel = page.locator('[aria-label="Chat and activity panel"]');
+    const thread = page.locator(".ws-thread");
+    // Diff cards in the chat thread.
+    await expect(thread.locator(".ws-diff-card").filter({ hasText: "auth.ts" })).toBeVisible();
+    await expect(thread.locator(".ws-diff-card").filter({ hasText: "index.ts" })).toBeVisible();
 
-    // Commit cell should be present with the SHA
-    const commitCell = chatPanel.locator(".cell.commit");
-    await expect(commitCell).toBeVisible();
-    await expect(commitCell).toContainText(/a1b2c3d/);
-    // Commit message
-    await expect(commitCell).toContainText("Add JWT authentication middleware");
+    // Files rail lists both changed files.
+    const rail = page.locator(".ws-rail");
+    await expect(rail.locator(".ws-file-item").filter({ hasText: "auth.ts" })).toBeVisible();
+    await expect(rail.locator(".ws-file-item").filter({ hasText: "index.ts" })).toBeVisible();
+    // File count in the panel head.
+    await expect(rail.locator(".ws-panel-count").first()).toHaveText("2");
   });
 
-  test("PR status bar appears with commit info and link", async ({ page }) => {
+  test("commit event renders a PR bar with SHA and link", async ({ page }) => {
     await navigateToSessionView(page);
 
-    const prStatus = page.locator(".ide-pr-status");
-    await expect(prStatus).toBeVisible();
-
-    // SHA
-    await expect(prStatus.getByText(/a1b2c3d/)).toBeVisible();
-    // Link to PR
-    const prLink = prStatus.locator('a[href*="github.com"]');
-    await expect(prLink).toBeVisible();
-    await expect(prLink).toHaveAttribute("href", "https://github.com/acme/widget-factory/pull/42");
-    // Commit count
-    await expect(prStatus.getByText(/1 commit/)).toBeVisible();
+    const commitBar = page.locator(".ws-commit");
+    await expect(commitBar).toBeVisible();
+    await expect(commitBar).toContainText(/a1b2c3d/);
+    await expect(commitBar).toContainText("Add JWT authentication middleware");
+    const link = commitBar.locator('a[href*="github.com"]');
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", "https://github.com/acme/widget-factory/pull/42");
   });
 
-  test("chat panel renders file_diff events with expandable details", async ({ page }) => {
+  test("composer send posts to /sessions/:id/reply and clears input", async ({ page }) => {
     await navigateToSessionView(page);
 
-    const chatPanel = page.locator('[aria-label="Chat and activity panel"]');
+    // Dismiss the auto-opened diff overlay so it doesn't intercept the send click.
+    await dismissDiffOverlay(page);
 
-    // file_diff events render as DiffViewer with a path label.
-    // Use .cell.diff to scope to the diff cells in chat.
-    const diffCells = chatPanel.locator(".cell.diff");
-    await expect(diffCells.first()).toBeVisible();
-    // Both file paths should appear somewhere in the chat panel diff cells
-    await expect(chatPanel.locator(".cell.diff").filter({ hasText: "auth.ts" })).toBeVisible();
-    await expect(chatPanel.locator(".cell.diff").filter({ hasText: "index.ts" })).toBeVisible();
-  });
+    let replyBody: unknown = null;
+    await page.route(`**/sessions/${MOCK_SESSION_ID}/reply`, (route) => {
+      replyBody = JSON.parse(route.request().postData() ?? "null");
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    });
 
-  test("composer input is present and enabled for active session", async ({ page }) => {
-    await navigateToSessionView(page);
+    const textarea = page.locator(".ws-textarea");
+    const sendBtn = page.locator('.ws-send[type="submit"]');
 
-    const composer = page.locator('[aria-label="Send a message"]');
-    await expect(composer).toBeVisible();
-
-    const input = composer.locator("input");
-    await expect(input).toBeEnabled();
-    await expect(input).toHaveAttribute("placeholder", "reply…");
-
-    const sendBtn = composer.locator('button[type="submit"]');
-    // Send button should be disabled when input is empty
+    // Send disabled when empty.
     await expect(sendBtn).toBeDisabled();
 
-    // Type a reply
-    await input.fill("Looks good, thanks!");
+    await textarea.fill("Ship it!");
     await expect(sendBtn).toBeEnabled();
-  });
-
-  test("sending a reply posts to /sessions/:id/reply and clears input", async ({ page }) => {
-    await navigateToSessionView(page);
-
-    const composer = page.locator('[aria-label="Send a message"]');
-    const input = composer.locator("input");
-    const sendBtn = composer.locator('button[type="submit"]');
-
-    await input.fill("Ship it!");
     await sendBtn.click();
 
-    // Input should be cleared after sending
-    await expect(input).toHaveValue("");
-
-    // The reply endpoint was already mocked; verify request was made
-    // by checking that no error appeared
-    await expect(page.locator(".ide-shell")).toBeVisible();
+    // Input cleared after sending.
+    await expect(textarea).toHaveValue("");
+    await expect.poll(() => replyBody).toEqual({ text: "Ship it!" });
   });
 
-  test("state banner updates from state_change events", async ({ page }) => {
+  test("state chip updates from state_change events and shows repo/model meta", async ({ page }) => {
     await navigateToSessionView(page);
 
     // The last state_change in EVENTS is "running" (seq 2)
-    await expect(page.locator(".ide-statebar")).toContainText("running");
-    // Repo label in state bar
-    await expect(page.locator(".ide-statebar .meta")).toContainText("acme/widget-factory");
-    await expect(page.locator(".ide-statebar .meta")).toContainText("feature/auth");
-    await expect(page.locator(".ide-statebar .meta")).toContainText("claude-sonnet");
+    await expect(page.locator(".ws-state-chip")).toHaveText("running");
+    // Statusline carries model + repo/branch.
+    const statusline = page.locator(".ws-statusline");
+    await expect(statusline).toContainText("claude-sonnet");
+    await expect(statusline).toContainText("acme/widget-factory");
+    await expect(statusline).toContainText("feature/auth");
   });
 });
 
-test.describe("SessionView — question & awaiting_user state", () => {
-  test.beforeEach(async ({ page }) => {
-    await mockApi(page, QUESTION_EVENTS);
-  });
-
+test.describe("SessionView — question & approval", () => {
   test("renders question event with quick-reply option chips", async ({ page }) => {
+    await mockApi(page, QUESTION_EVENTS);
     await navigateToSessionView(page);
 
-    const chatPanel = page.locator('[aria-label="Chat and activity panel"]');
+    const thread = page.locator(".ws-thread");
+    await expect(thread.getByText("Should I also add token refresh logic?")).toBeVisible();
 
-    // The question prompt should be visible
-    await expect(chatPanel.getByText("Should I also add token refresh logic?")).toBeVisible();
-
-    // Quick reply option chips
-    await expect(chatPanel.getByRole("button", { name: "Reply: Yes, add refresh" })).toBeVisible();
-    await expect(chatPanel.getByRole("button", { name: "Reply: No, keep it simple" })).toBeVisible();
-    await expect(chatPanel.getByRole("button", { name: "Let me decide later" })).toBeVisible();
+    // Quick reply option chips.
+    await expect(thread.getByRole("button", { name: "Reply: Yes, add refresh" })).toBeVisible();
+    await expect(thread.getByRole("button", { name: "Reply: No, keep it simple" })).toBeVisible();
+    await expect(thread.getByRole("button", { name: "Let me decide later" })).toBeVisible();
   });
 
   test("clicking a quick-reply chip calls the reply endpoint", async ({ page }) => {
+    await mockApi(page, QUESTION_EVENTS);
     await navigateToSessionView(page);
 
-    const chatPanel = page.locator('[aria-label="Chat and activity panel"]');
+    let replyText = "";
+    await page.route(`**/sessions/${MOCK_SESSION_ID}/reply`, (route) => {
+      replyText = JSON.parse(route.request().postData() ?? "{}").text ?? "";
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    });
 
-    // Click the "Yes, add refresh" option
-    const chip = chatPanel.getByRole("button", { name: "Reply: Yes, add refresh" });
+    const chip = page.locator(".ws-thread").getByRole("button", { name: "Reply: Yes, add refresh" });
     await chip.click();
 
-    // After clicking, the question cell should show as "answered"
-    await expect(chatPanel.locator(".cell.question.answered")).toBeVisible();
+    // After clicking, the question cell shows as "answered".
+    await expect(page.locator(".ws-question.answered")).toBeVisible();
+    await expect.poll(() => replyText).toBe("Yes, add refresh");
   });
 
-  test("shows awaiting_user steering bar when state is awaiting_user", async ({ page }) => {
+  test("approval question renders actionable Approve/Deny buttons", async ({ page }) => {
+    await mockApi(page, APPROVAL_EVENTS);
     await navigateToSessionView(page);
 
-    // The steer bar should be visible
-    await expect(page.locator('[aria-label="Awaiting your input"]')).toBeVisible();
-    await expect(page.locator(".ide-steer-bar")).toBeVisible();
+    const thread = page.locator(".ws-thread");
+    await expect(thread.getByText("Run this shell command?")).toBeVisible();
 
-    // The steer bar has finish and cancel buttons
-    await expect(page.locator(".ide-steer-bar").getByText("finish")).toBeVisible();
-    await expect(page.locator(".ide-steer-bar").getByText("cancel")).toBeVisible();
+    const approve = thread.getByRole("button", { name: "Approve" });
+    const deny = thread.getByRole("button", { name: "Deny" });
+    await expect(approve).toBeVisible();
+    await expect(deny).toBeVisible();
 
-    // State banner should show awaiting_user
-    await expect(page.locator(".ide-statebar")).toContainText("awaiting_user");
+    let replyText = "";
+    await page.route(`**/sessions/${MOCK_SESSION_ID}/reply`, (route) => {
+      replyText = JSON.parse(route.request().postData() ?? "{}").text ?? "";
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    });
 
-    // Composer placeholder should change
-    const input = page.locator('[aria-label="Send a message"] input');
-    await expect(input).toHaveAttribute("placeholder", "reply or steer…");
+    await approve.click();
+    await expect.poll(() => replyText).toBe("req-7:approve");
   });
 
-  test("composer input gets focused when session enters awaiting_user", async ({ page }) => {
+  test("shows awaiting_user state and focuses the composer", async ({ page }) => {
+    await mockApi(page, QUESTION_EVENTS);
     await navigateToSessionView(page);
 
-    // The input should be focused
-    const input = page.locator('[aria-label="Reply or steer the session"]');
-    await expect(input).toBeFocused();
+    // State chip shows awaiting_user.
+    await expect(page.locator(".ws-state-chip")).toHaveText("awaiting_user");
+
+    // Composer placeholder changes and input is focused.
+    const textarea = page.locator(".ws-textarea");
+    await expect(textarea).toHaveAttribute("placeholder", "reply or steer…");
+    await expect(textarea).toBeFocused();
+  });
+});
+
+test.describe("SessionView — todos & subagents (right rail)", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockApi(page, TODO_SUBAGENT_EVENTS);
+  });
+
+  test("todo event fills the Todos panel", async ({ page }) => {
+    await navigateToSessionView(page);
+
+    const rail = page.locator(".ws-rail");
+    const todosPanel = rail.locator(".ws-panel").filter({ hasText: "Todos" });
+
+    // Three todo items, one done.
+    await expect(todosPanel.locator(".ws-todo-item")).toHaveCount(3);
+    await expect(todosPanel.locator(".ws-todo-item.done")).toHaveCount(1);
+    await expect(todosPanel.locator(".ws-todo-text").filter({ hasText: "Add JWT auth" })).toBeVisible();
+    // Count badge.
+    await expect(todosPanel.locator(".ws-panel-count")).toHaveText("3");
+  });
+
+  test("subagent event appears in the Activity panel", async ({ page }) => {
+    await navigateToSessionView(page);
+
+    const rail = page.locator(".ws-rail");
+    const activityPanel = rail.locator(".ws-panel").filter({ hasText: "Activity" });
+
+    await expect(activityPanel.locator(".ws-subagent")).toBeVisible();
+    await expect(activityPanel.locator(".ws-subagent-goal")).toHaveText("Audit auth helpers");
+    await expect(activityPanel.locator(".ws-subagent-status")).toContainText("running");
+    await expect(activityPanel.locator(".ws-subagent-summary")).toContainText("scanning src/auth");
+
+    // Tool call count in the activity footer (read_file + run_tests = 2).
+    await expect(activityPanel.locator(".ws-activity-tools")).toContainText("2 tool calls");
+  });
+});
+
+test.describe("SessionView — diff overlay", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockApi(page);
+  });
+
+  test("clicking a file in the Files rail opens the diff overlay", async ({ page }) => {
+    await navigateToSessionView(page);
+
+    const rail = page.locator(".ws-rail");
+    // index.ts has both additions and deletions.
+    await rail.locator(".ws-file-item").filter({ hasText: "index.ts" }).click();
+
+    // Diff overlay appears with the file path.
+    const overlay = page.locator(".ws-diff-overlay");
+    await expect(overlay).toBeVisible();
+    await expect(overlay.locator(".ide-diff-path")).toContainText("index.ts");
+
+    // Diff stats (additions + deletions) visible.
+    await expect(overlay.locator(".ide-diff-stats")).toBeVisible();
+    await expect(overlay.locator(".ide-diff-stats .add")).toBeVisible();
+    await expect(overlay.locator(".ide-diff-stats .del")).toBeVisible();
+
+    // Added diff lines render.
+    await expect(overlay.locator(".ide-diff-line.add").first()).toBeVisible();
+  });
+
+  test("diff overlay back button closes it", async ({ page }) => {
+    await navigateToSessionView(page);
+
+    const rail = page.locator(".ws-rail");
+    await rail.locator(".ws-file-item").filter({ hasText: "auth.ts" }).click();
+    const overlay = page.locator(".ws-diff-overlay");
+    await expect(overlay).toBeVisible();
+
+    await overlay.locator('[aria-label="Back to timeline"]').click();
+    await expect(overlay).toHaveCount(0);
   });
 });
 
 test.describe("SessionView — empty states", () => {
-  test("shows waiting message when no events arrive", async ({ page }) => {
-    // Mock with empty event stream
+  test("shows welcome prompt when no events arrive", async ({ page }) => {
     await mockApi(page, []);
     await navigateToSessionView(page);
 
-    // Timeline should show "waiting for events…"
-    const middlePanel = page.locator('[aria-label="Timeline and diff panel"]');
-    await expect(middlePanel.getByText("waiting for events…")).toBeVisible();
+    // Empty thread renders the welcome card.
+    await expect(page.locator(".ws-welcome")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What should we build?" })).toBeVisible();
+    // Welcome prompt buttons send a reply.
+    await expect(page.getByRole("button", { name: /Start with:/ })).toHaveCount(3);
 
-    // Chat panel should also show "waiting for events…"
-    const chatPanel = page.locator('[aria-label="Chat and activity panel"]');
-    await expect(chatPanel.getByText("waiting for events…")).toBeVisible();
-
-    // File tree should show "No files changed yet"
-    const filesPanel = page.locator('[aria-label="Files panel"]');
-    await expect(filesPanel.getByText("No files changed yet")).toBeVisible();
+    // Files rail shows the empty row.
+    await expect(page.locator(".ws-rail")).toContainText("No files changed yet");
+    // Todos + Activity empty rows.
+    await expect(page.locator(".ws-rail")).toContainText("No todos yet");
+    await expect(page.locator(".ws-rail")).toContainText("No subagents active");
   });
 });
 
@@ -620,36 +642,35 @@ test.describe("SessionView — mobile tabs", () => {
     await mockApi(page);
   });
 
-  test("mobile tabs switch between Files, Diff, and Chat panels", async ({ page }) => {
+  test("mobile tabs switch between Chat, Files, and Activity", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("atelier:onboarded", "1"));
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
-    await expect(page.getByText("Add JWT authentication middleware")).toBeVisible({ timeout: 10_000 });
-    await page.getByText("Add JWT authentication middleware").click();
-    await expect(page.locator(".ide-shell")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Add JWT authentication middleware").first()).toBeVisible({ timeout: 10_000 });
+    await page.locator(".session-card").first().click();
+    await expect(page.locator(".ws")).toBeVisible({ timeout: 10_000 });
 
-    // Mobile tabs should be visible
-    await expect(page.locator('[role="tablist"]').first()).toBeVisible();
+    // Mobile tabs should be visible (.ws-mobile-tabs is itself the tablist).
+    await expect(page.locator('.ws-mobile-tabs[role="tablist"]')).toBeVisible();
 
-    // Default tab is "chat"
-    const filesTab = page.locator("#tab-files");
-    const diffTab = page.locator("#tab-diff");
-    const chatTab = page.locator("#tab-chat");
+    const chatTab = page.locator(".ws-mobile-tab").filter({ hasText: "Chat" });
+    const filesTab = page.locator(".ws-mobile-tab").filter({ hasText: "Files" });
+    const activityTab = page.locator(".ws-mobile-tab").filter({ hasText: "Activity" });
 
-    // Switch to Files tab
+    // Default tab is chat.
+    await expect(chatTab).toHaveClass(/active/);
+
+    // Switch to Files → center hidden, rail visible.
     await filesTab.click();
-    await expect(page.locator("#panel-files")).toBeVisible();
-    await expect(page.locator("#panel-files")).toHaveClass(/active/);
+    await expect(page.locator(".ws-rail")).toHaveClass(/mobile-active/);
 
-    // Switch to Diff tab
-    await diffTab.click();
-    await expect(page.locator("#panel-diff")).toBeVisible();
-    await expect(page.locator("#panel-diff")).toHaveClass(/active/);
+    // Switch to Activity → still rail.
+    await activityTab.click();
+    await expect(page.locator(".ws-rail")).toHaveClass(/mobile-active/);
 
-    // Switch to Chat tab
+    // Back to Chat → center visible.
     await chatTab.click();
-    await expect(page.locator("#panel-chat")).toBeVisible();
-    await expect(page.locator("#panel-chat")).toHaveClass(/active/);
+    await expect(page.locator(".ws-center")).toHaveClass(/mobile-active/);
   });
 });
 
@@ -661,58 +682,45 @@ test.describe("SessionView — accessibility", () => {
   test("workspace has correct ARIA roles and labels", async ({ page }) => {
     await navigateToSessionView(page);
 
-    // Wait for events to settle
-    await page.waitForTimeout(1000);
-
     // Main application landmark
     await expect(page.locator('[role="application"][aria-label="Session workspace"]')).toBeVisible();
 
     // Banner (topbar)
     await expect(page.locator('[role="banner"]')).toBeVisible();
 
-    // Tablist for mobile tabs (may be display:none on desktop, but should exist)
+    // Mobile tablist (may be display:none on desktop, but should exist).
     await expect(page.locator('[role="tablist"][aria-label="Workspace panels"]')).toHaveCount(1);
 
-    // File tree has role="tree"
-    await expect(page.locator('[role="tree"]')).toBeVisible();
+    // Chat thread has role="log".
+    await expect(page.locator('[role="log"][aria-label="Conversation"]')).toBeVisible();
 
-    // Chat messages have role="log"
-    await expect(page.locator('[role="log"][aria-label="Chat messages"]')).toBeVisible();
+    // Composer form has aria-label "Send a message".
+    await expect(page.locator('[role="search"][aria-label="Send a message"], form[aria-label="Send a message"]')).toHaveCount(1);
 
-    // Composer has role="search"
-    await expect(page.locator('[role="search"][aria-label="Send a message"]')).toBeVisible();
-
-    // Timeline has role="log" — only visible when no file is selected.
-    // Go back to timeline to reveal it.
-    await backToTimeline(page);
-    await expect(page.locator('[role="log"][aria-labelledby="timeline-heading"]')).toBeVisible({ timeout: 5_000 });
+    // Right rail is a labelled aside.
+    await expect(page.locator('aside[aria-label="Workspace side panel"]')).toBeVisible();
   });
 
-  test("file tree items have treeitem role with status labels", async ({ page }) => {
+  test("file items have aria-labels with status (added/modified)", async ({ page }) => {
     await navigateToSessionView(page);
 
-    // Tree items should have proper roles
-    const treeItems = page.locator('[role="treeitem"]');
-    await expect(treeItems.first()).toBeVisible();
-
-    // File items should have aria-labels with status (added/modified)
-    const authFile = page.locator('[role="treeitem"]').filter({ hasText: "auth.ts" });
-    await expect(authFile).toHaveAttribute("aria-label", /added/);
-
-    const indexFile = page.locator('[role="treeitem"]').filter({ hasText: "index.ts" });
-    await expect(indexFile).toHaveAttribute("aria-label", /modified/);
+    const rail = page.locator(".ws-rail");
+    // auth.ts is a new file (--- /dev/null) → added.
+    await expect(rail.locator(".ws-file-item").filter({ hasText: "auth.ts" })).toHaveAttribute("aria-label", /added/);
+    // index.ts has both + and - → modified.
+    await expect(rail.locator(".ws-file-item").filter({ hasText: "index.ts" })).toHaveAttribute("aria-label", /modified/);
   });
 
-  test("tool call cells have descriptive aria-labels", async ({ page }) => {
+  test("tool rows have descriptive aria-labels", async ({ page }) => {
     await navigateToSessionView(page);
 
-    const chatPanel = page.locator('[aria-label="Chat and activity panel"]');
+    const thread = page.locator(".ws-thread");
+    const readRow = thread.locator(".ws-tool").filter({ hasText: "read_file" });
+    await expect(readRow.locator(".ws-tool-row")).toHaveAttribute("aria-label", /read_file/);
+    await expect(readRow.locator(".ws-tool-row")).toHaveAttribute("aria-label", /ok/);
 
-    // Tool call cells should have aria-labels with tool name and status
-    const toolCells = chatPanel.locator('[role="listitem"][aria-label*="Tool:"]');
-    await expect(toolCells.first()).toBeVisible();
-    await expect(toolCells.filter({ hasText: "read_file" })).toHaveAttribute("aria-label", /read_file/);
-    await expect(toolCells.filter({ hasText: "run_tests" })).toHaveAttribute("aria-label", /succeeded/);
+    const testsRow = thread.locator(".ws-tool").filter({ hasText: "run_tests" });
+    await expect(testsRow.locator(".ws-tool-row")).toHaveAttribute("aria-label", /run_tests/);
   });
 });
 
@@ -730,11 +738,11 @@ test.describe("SessionView — error event", () => {
     await mockApi(page, errorEvents);
     await navigateToSessionView(page);
 
-    const chatPanel = page.locator('[aria-label="Chat and activity panel"]');
-    await expect(chatPanel.getByText("Failed to connect to git remote")).toBeVisible();
+    const thread = page.locator(".ws-thread");
+    await expect(thread.getByText("Failed to connect to git remote")).toBeVisible();
 
     // Error cell should have role="alert"
-    await expect(chatPanel.locator('[role="alert"]')).toBeVisible();
+    await expect(thread.locator('[role="alert"]')).toBeVisible();
   });
 });
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 export const EventType = z.enum([
   "assistant_text", "plan_update", "tool_call", "file_diff", "question",
   "test_run", "commit", "usage", "error", "state_change", "harness", "user_message",
+  "todo", "subagent",
 ]);
 
 export const Event = z.object({

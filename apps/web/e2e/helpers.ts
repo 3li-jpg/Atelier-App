@@ -1,13 +1,13 @@
 import type { Page, Route } from "@playwright/test";
 
 // ponytail: one shared mock installer so every spec gets the auth gate right.
-// Add view-specific fixtures (sessions, providers list) via the options.
+// Add view-specific fixtures (sessions, providers, account) via the options.
 // Skipped a full mock-server abstraction — page.route is already the stdlib here.
 
 export const AUTHED_USER = { login: "testuser@example.com" };
 
 export const AUTHED_STATUS = {
-  oauth: false,
+  oauth: true,
   authed: true,
   owner: true,
   user: AUTHED_USER,
@@ -20,6 +20,20 @@ export const GUEST_STATUS = {
   user: null,
 };
 
+// Default /account payload — no BYOC compute configured, Free plan.
+export const DEFAULT_ACCOUNT = {
+  user: {
+    id: "u-1",
+    login: "testuser@example.com",
+    name: "Test User",
+    avatar_url: null,
+    github_connected: true,
+  },
+  plan: { id: "free", name: "Free", byok: true, compute: "byoc" },
+  usage: { sessions: 3, billed_seconds: 7200 },
+  compute: { byoc_provider: null },
+};
+
 /** Mark the browser as onboarded so App.tsx skips the Onboarding view. */
 export async function markOnboarded(page: Page) {
   await page.addInitScript(() => {
@@ -28,7 +42,7 @@ export async function markOnboarded(page: Page) {
 }
 
 export type MockOptions = {
-  /** /auth/status payload. Defaults to the authed owner. */
+  /** /auth/status payload. Defaults to the authed owner (oauth connected). */
   auth?: object;
   /** /sessions GET body. Default: empty list. */
   sessions?: object;
@@ -36,6 +50,8 @@ export type MockOptions = {
   providers?: object;
   /** /repos GET body. Default: empty list. */
   repos?: object;
+  /** /account GET body. Default: DEFAULT_ACCOUNT. */
+  account?: object;
 };
 
 /**
@@ -47,6 +63,9 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
   await page.route("**/auth/status", (route: Route) =>
     route.fulfill(json(opts.auth ?? AUTHED_STATUS)),
   );
+  await page.route("**/auth/logout", (route: Route) =>
+    route.fulfill(json({ ok: true })),
+  );
   await page.route("**/sessions", (route: Route) => {
     if (route.request().method() === "GET") {
       route.fulfill(json(opts.sessions ?? []));
@@ -57,8 +76,24 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
   await page.route("**/providers", (route: Route) =>
     route.fulfill(json(opts.providers ?? [])),
   );
-  await page.route("**/repos**", (route: Route) =>
+  // PATCH/DELETE on a specific provider — record nothing by default, just 200.
+  await page.route("**/providers/*", (route: Route) => {
+    const m = route.request().method();
+    if (m === "PATCH" || m === "DELETE") route.fulfill(json({ ok: true }));
+    else route.fulfill(json(opts.providers ?? []));
+  });
+  await page.route("**/repos", (route: Route) =>
     route.fulfill(json(opts.repos ?? [])),
+  );
+  // Branch listing for a selected repo (Repos sheet).
+  await page.route("**/repos/*/*/branches", (route: Route) =>
+    route.fulfill(json([{ name: "main" }, { name: "develop" }])),
+  );
+  await page.route("**/account", (route: Route) =>
+    route.fulfill(json(opts.account ?? DEFAULT_ACCOUNT)),
+  );
+  await page.route("**/account/compute", (route: Route) =>
+    route.fulfill(json({ ok: true })),
   );
 }
 
