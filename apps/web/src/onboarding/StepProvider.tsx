@@ -12,12 +12,12 @@ export function StepProvider({ onDone, onBack }: {
   onDone: (providerId: string) => void;
   onBack: () => void;
 }) {
-  const [presetId, setPresetId] = useState<string>("openrouter");
+  const [presetId, setPresetId] = useState<string>("umans");
   const [form, setForm] = useState({
-    name: "OpenRouter",
-    base_url: "https://openrouter.ai/api/v1",
+    name: "Umans",
+    base_url: "https://api.code.umans.ai",
     dialect: "openai-chat" as ProviderCreate["dialect"],
-    model_id: "anthropic/claude-3.5-sonnet",
+    model_id: "umans-coder",
     api_key: "",
   });
   const [errors, setErrors] = useState<FieldErrors>({});

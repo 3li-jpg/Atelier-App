@@ -12,6 +12,18 @@ export type ProviderPreset = {
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
+    id: "umans",
+    label: "Umans",
+    description: "Frontier open-source coding models (GLM 5.2, Kimi K2.7-Code)",
+    build: (apiKey) => ({
+      name: "Umans",
+      base_url: "https://api.code.umans.ai",
+      dialect: "openai-chat",
+      models: [{ id: "umans-coder", role: "coder", tool_calls: true }],
+      api_key: apiKey,
+    }),
+  },
+  {
     id: "openrouter",
     label: "OpenRouter",
     description: "Access 100+ models via one API key",
