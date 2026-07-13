@@ -5,21 +5,26 @@ import { DIALECTS, validateProviderForm, type FieldErrors } from "../lib.ts";
 import { PROVIDER_PRESETS, type ProviderPreset } from "./presets.ts";
 import { hoverLift, tapScale } from "../motion.ts";
 
+type ModelEntry = { id: string; role: "coder" | "utility" };
+
 // Step 2: BYOK. User picks a preset (or custom), fills in API key, and can
-// test the key before saving. Mirrors the AddProvider form in Providers.tsx
-// but with preset cards for faster setup.
+// test the key before saving. Supports multiple models per provider —
+// add/remove model rows, each with an ID + role (coder/utility).
 export function StepProvider({ onDone, onBack }: {
   onDone: (providerId: string) => void;
   onBack: () => void;
 }) {
   const [presetId, setPresetId] = useState<string>("umans");
-  const [form, setForm] = useState({
-    name: "Umans",
-    base_url: "https://api.code.umans.ai",
-    dialect: "openai-chat" as ProviderCreate["dialect"],
-    model_id: "umans-coder",
-    api_key: "",
-  });
+  const [name, setName] = useState("Umans");
+  const [baseUrl, setBaseUrl] = useState("https://api.code.umans.ai");
+  const [dialect, setDialect] = useState<ProviderCreate["dialect"]>("openai-chat");
+  const [models, setModels] = useState<ModelEntry[]>([
+    { id: "umans-glm-5.2", role: "coder" },
+    { id: "umans-kimi-k2.7", role: "coder" },
+    { id: "umans-coder", role: "coder" },
+    { id: "umans-flash", role: "utility" },
+  ]);
+  const [apiKey, setApiKey] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ValidationResult | null>(null);
@@ -27,30 +32,44 @@ export function StepProvider({ onDone, onBack }: {
 
   const selectPreset = (p: ProviderPreset) => {
     setPresetId(p.id);
-    // Build a template from the preset (with empty key) to pre-fill fields.
     const tpl = p.build("");
-    setForm({
-      name: tpl.name,
-      base_url: tpl.base_url,
-      dialect: tpl.dialect,
-      model_id: tpl.models[0]?.id ?? "",
-      api_key: form.api_key, // preserve any key the user already typed
-    });
+    setName(tpl.name);
+    setBaseUrl(tpl.base_url);
+    setDialect(tpl.dialect);
+    setModels(tpl.models.map((m) => ({ id: m.id, role: m.role as "coder" | "utility" })));
     setErrors({});
     setResult(null);
     setErr(null);
   };
 
+  const updateModel = (idx: number, field: keyof ModelEntry, val: string) => {
+    setModels((prev) => prev.map((m, i) => i === idx ? { ...m, [field]: val } : m));
+  };
+  const addModel = () => setModels((prev) => [...prev, { id: "", role: "coder" }]);
+  const removeModel = (idx: number) => setModels((prev) => prev.filter((_, i) => i !== idx));
+
   const build = (): ProviderCreate => ({
-    name: form.name.trim(),
-    base_url: form.base_url.trim(),
-    dialect: form.dialect,
-    models: [{ id: form.model_id.trim(), role: "coder", tool_calls: true }],
-    api_key: form.api_key.trim(),
+    name: name.trim(),
+    base_url: baseUrl.trim(),
+    dialect,
+    models: models.filter((m) => m.id.trim()).map((m) => ({
+      id: m.id.trim(), role: m.role, tool_calls: true,
+    })),
+    api_key: apiKey.trim(),
   });
 
+  // For validation, use the first coder model
+  const firstModel = models.find((m) => m.id.trim()) ?? models[0];
+
   const run = async (fn: () => Promise<unknown>) => {
-    const e = validateProviderForm(form);
+    const formForValidation = {
+      name, base_url: baseUrl, dialect, model_id: firstModel?.id ?? "", api_key: apiKey,
+    };
+    const e = validateProviderForm(formForValidation);
+    // Also check all models have IDs
+    if (models.filter((m) => m.id.trim()).length === 0) {
+      e.model_id = "at least one model required";
+    }
     setErrors(e);
     if (Object.keys(e).length > 0) return;
     setBusy(true); setErr(null); setResult(null);
@@ -94,46 +113,63 @@ export function StepProvider({ onDone, onBack }: {
       <div className="form">
         {isCustom && (
           <label>Name
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="My Provider"
-            />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Provider" />
             {errors.name && <span className="field-err">{errors.name}</span>}
           </label>
         )}
         {isCustom && (
           <label>Base URL
-            <input
-              value={form.base_url}
-              onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-              placeholder="https://api.example.com/v1"
-            />
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.example.com/v1" />
             {errors.base_url && <span className="field-err">{errors.base_url}</span>}
           </label>
         )}
         {isCustom && (
           <label>Dialect
-            <select value={form.dialect} onChange={(e) => setForm({ ...form, dialect: e.target.value as ProviderCreate["dialect"] })}>
+            <select value={dialect} onChange={(e) => setDialect(e.target.value as ProviderCreate["dialect"])}>
               {DIALECTS.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </label>
         )}
-        {isCustom && (
-          <label>Model ID
-            <input
-              value={form.model_id}
-              onChange={(e) => setForm({ ...form, model_id: e.target.value })}
-              placeholder="model-name"
-            />
-            {errors.model_id && <span className="field-err">{errors.model_id}</span>}
-          </label>
-        )}
+
+        {/* Multiple models */}
+        <div className="onb-models-section">
+          <div className="onb-models-header">
+            <span>Models</span>
+            <motion.button type="button" className="ghost small" onClick={addModel}
+              variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+            >+ Add model</motion.button>
+          </div>
+          {errors.model_id && <span className="field-err">{errors.model_id}</span>}
+          {models.map((m, idx) => (
+            <div key={idx} className="onb-model-row">
+              <input
+                value={m.id}
+                onChange={(e) => updateModel(idx, "id", e.target.value)}
+                placeholder="model-id (e.g. umans-glm-5.2)"
+              />
+              <select
+                value={m.role}
+                onChange={(e) => updateModel(idx, "role", e.target.value)}
+              >
+                <option value="coder">coder</option>
+                <option value="utility">utility</option>
+              </select>
+              {models.length > 1 && (
+                <motion.button type="button" className="ghost small onb-model-remove"
+                  onClick={() => removeModel(idx)}
+                  variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+                  title="Remove model"
+                >✕</motion.button>
+              )}
+            </div>
+          ))}
+        </div>
+
         <label>API Key
           <input
             type="password"
-            value={form.api_key}
-            onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
             placeholder="sk-…"
             autoComplete="off"
           />
@@ -166,6 +202,15 @@ export function StepProvider({ onDone, onBack }: {
           {busy ? "…" : "Save & continue"}
         </motion.button>
       </div>
+
+      <style>{`
+        .onb-models-section { display: flex; flex-direction: column; gap: 0.4rem; }
+        .onb-models-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--muted); }
+        .onb-model-row { display: flex; gap: 0.4rem; align-items: center; }
+        .onb-model-row input { flex: 1; }
+        .onb-model-row select { width: auto; min-width: 5rem; }
+        .onb-model-remove { padding: 0.3rem 0.5rem; color: var(--bad); }
+      `}</style>
     </div>
   );
 }

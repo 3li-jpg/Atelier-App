@@ -7,6 +7,18 @@
       "runtimeArgs": ["run", "dev", "-w", "@atelier/web", "--", "--port", "5199", "--strictPort"],
       "port": 5199,
       "autoPort": false
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@atelier/api"],
+      "port": 3000
+    },
+    {
+      "name": "landing",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "@atelier/landing"],
+      "port": 3001
     }
   ]
 }

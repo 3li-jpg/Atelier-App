@@ -19,7 +19,12 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
       name: "Umans",
       base_url: "https://api.code.umans.ai",
       dialect: "openai-chat",
-      models: [{ id: "umans-coder", role: "coder", tool_calls: true }],
+      models: [
+        { id: "umans-glm-5.2", role: "coder", tool_calls: true },
+        { id: "umans-kimi-k2.7", role: "coder", tool_calls: true },
+        { id: "umans-coder", role: "coder", tool_calls: true },
+        { id: "umans-flash", role: "utility", tool_calls: true },
+      ],
       api_key: apiKey,
     }),
   },
