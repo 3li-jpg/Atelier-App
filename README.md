@@ -12,12 +12,6 @@ Atelier is an open-source, chat-first agentic coding platform. You connect a mod
 ## Architecture
 
 ```
-                         ┌──────────────┐
-                         │  landing     │  Next.js 15 — marketing + auth
-                         │  apps/landing│  (:3001)
-                         └──────┬───────┘
-                                │ GitHub OAuth / email
-                                ▼
 ┌──────────────┐        ┌──────────────────┐        ┌─────────────────────┐
 │  web PWA     │  SSE   │  control plane   │  HTTPS  │  sandbox providers  │
 │  apps/web    │◄──────►│  apps/api        │◄───────►│  packages/sandbox   │
@@ -36,7 +30,7 @@ Atelier is an open-source, chat-first agentic coding platform. You connect a mod
                         └──────────────────┘
 ```
 
-- **Landing** (`apps/landing`) — Next.js 15 marketing site and auth entry point. Runs on `:3001`. Hosts GitHub OAuth and email/password signup; on success it hands a session token to the PWA via URL hash.
+- **Landing** — the marketing site lives in its own private repo ([Atelier-Landing](https://github.com/3li-jpg/Atelier-Landing)); its CTAs link into this app. Sign-in/sign-up happens in the PWA itself.
 - **Web PWA** (`apps/web`) — Vite + React 18 single-page app: onboarding, session list, provider settings, and the chat workspace (timeline + replies rail). Dev server on `:5173` proxies API paths to `:3000` so the SPA is same-origin with the API in dev. In production the API serves the built bundle from one origin (`WEB_DIST`).
 - **Control plane** (`apps/api`) — Hono service on `:3000`. Session FSM orchestrator, store (SQLite via `node:sqlite`, or Postgres/Supabase when `DATABASE_URL` is set), AES-256-GCM secret encryption, SSE event fanout with cursor replay, and auth (session cookie, static bearer, or Supabase JWT). Route surface: `/auth/*`, `/providers`, `/sessions`, `/repos`, `/account`, plus `/internal/*` for the sandbox supervisor.
 - **Sandbox providers** (`packages/sandbox`) — one `SandboxProvider` interface, four implementations: Fly Machines, E2B, Daytona, and a local subprocess. `SANDBOX_PROVIDER` selects the default; per-user BYOC keys override it per session.
@@ -60,9 +54,6 @@ npm run dev
 
 # 4. PWA on :5173  (proxies /auth /sessions /providers /repos /account /internal to :3000)
 npm run dev:web
-
-# 5. Landing on :3001  (optional)
-npm run dev -w @atelier/landing
 ```
 
 Open `http://localhost:5173`. With no `AUTH_TOKEN` and no OAuth configured, the API runs open (owner-alpha mode); set `AUTH_TOKEN` for a single-user bearer gate, or configure GitHub OAuth for multi-user.
