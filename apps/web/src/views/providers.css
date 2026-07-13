@@ -1,5 +1,6 @@
-/* Providers view — scoped styles. All classes prefixed pv- to avoid
-   colliding with styles.css / @atelier/ui. Uses global CSS tokens. */
+/* Providers view — scoped styles. All classes prefixed pv-.
+   Glass surfaces use global tokens; tokens.css collapses glass to
+   --glass-solid under no-backdrop-filter / prefers-reduced-transparency. */
 
 .pv-shell {
   display: flex;
@@ -8,84 +9,161 @@
 }
 
 /* ---- Provider list ---- */
-.pv-list { list-style: none; margin: 0; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; }
-
-.pv-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.7rem 0.9rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.pv-row-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
-.pv-row-top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pv-base-url { color: var(--muted); font-size: 0.78rem; word-break: break-all; }
-.pv-models { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.2rem; }
-.pv-model-chip { font-size: 0.72rem; }
-
-/* ---- Loading skeletons ---- */
-.pv-skeletons { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem; }
-
-/* ---- Add-provider card ---- */
-.pv-add-card {
-  border: none;
-  background: transparent;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-}
-
-/* ---- Preset selector ---- */
-.pv-preset-grid {
+.pv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
-.pv-preset-card {
+
+.pv-card {
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 0.8rem 0.95rem;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.8rem;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  transition: border-color 0.15s, background 0.15s;
+  gap: 0.4rem;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
-.pv-preset-card:hover { border-color: var(--accent); }
+.pv-card:hover { border-color: color-mix(in srgb, var(--glass-border) 60%, #fff 8%); }
+
+.pv-row-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.pv-row-top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pv-base-url {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: -0.01em;
+}
+
+.pv-models { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+
+/* model chip = id + role tag + tool dot, one inline cluster */
+.pv-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.45rem;
+}
+.pv-model-id { font-family: var(--font-mono); }
+.pv-model-role { font-size: 0.64rem; padding: 0.05rem 0.3rem; border-radius: 999px; opacity: 0.85; }
+.pv-tool-dot {
+  width: 7px; height: 7px; border-radius: 999px; flex: none;
+  background: var(--ok);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--ok) 60%, transparent);
+}
+.pv-tool-dot.off { background: var(--muted); box-shadow: none; opacity: 0.6; }
+
+/* card actions row */
+.pv-card-actions { display: flex; justify-content: flex-end; gap: 0.3rem; margin-top: 0.15rem; }
+
+/* ---- Delete morph ---- */
+.pv-delete-zone { display: inline-flex; align-items: center; gap: 0.4rem; }
+.pv-delete-prompt {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-size: 0.78rem; color: var(--bad);
+  animation: pv-fade-in var(--duration-fast) var(--ease-out) both;
+}
+@keyframes pv-fade-in { from { opacity: 0; transform: translateY(-1px); } to { opacity: 1; transform: none; } }
+
+/* ---- Loading skeletons ---- */
+.pv-skeletons { display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* ---- Editor (shared Add + Edit) ---- */
+.pv-editor {
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.pv-editor.in-card { border: 1px solid var(--glass-accent-border); background: var(--glass-accent); }
+
+.pv-editor-title {
+  font-size: 0.82rem; font-weight: 600; color: var(--muted);
+  letter-spacing: 0.02em; text-transform: uppercase;
+}
+
+/* preset grid (radio group) */
+.pv-preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.4rem; }
+.pv-preset-card {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  background: var(--glass-thin);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 0.55rem 0.7rem;
+  cursor: pointer; text-align: left; font: inherit; color: inherit;
+  transition: transform var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.pv-preset-card:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--glass-border)); transform: translateY(-1px); }
+.pv-preset-card:active { transform: scale(0.98); }
 .pv-preset-card.selected {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  background: var(--glass-accent);
 }
-.pv-preset-label { font-weight: 550; font-size: 0.9rem; }
-.pv-preset-desc { font-size: 0.78rem; color: var(--muted); }
+.pv-preset-label { font-weight: 600; font-size: 0.88rem; }
+.pv-preset-desc { font-size: 0.74rem; color: var(--muted); }
 
-/* read-only fields for named presets */
-.pv-locked-hint { font-size: 0.72rem; color: var(--muted); margin-top: -0.3rem; }
-
-/* ---- Model rows ---- */
-.pv-models-section { display: flex; flex-direction: column; gap: 0.4rem; }
-.pv-models-header { display: flex; justify-content: space-between; align-items: center; }
-.pv-model-row { display: flex; gap: 0.4rem; align-items: center; }
-.pv-model-row .atelier-input { flex: 1; }
-.pv-model-row select.atelier-select { width: auto; min-width: 5.5rem; }
-
-/* ---- Validate result box ---- */
-.pv-result {
-  border: 1px solid;
-  border-radius: 8px;
-  padding: 0.5rem 0.7rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+/* ---- Row editors (headers + models) ---- */
+.pv-section-head { display: flex; justify-content: space-between; align-items: center; }
+.pv-section-label {
+  font-size: 0.72rem; font-weight: 600; color: var(--muted);
+  letter-spacing: 0.04em; text-transform: uppercase;
 }
-.pv-result.ok { border-color: var(--ok); color: var(--ok); }
-.pv-result.bad { border-color: var(--bad); color: var(--bad); }
-.pv-result .pv-result-meta { color: var(--muted); }
-.pv-result.bad .pv-result-fail { color: var(--bad); }
+.pv-rows { display: flex; flex-direction: column; gap: 0.35rem; }
+.pv-row { display: flex; gap: 0.35rem; align-items: center; }
+.pv-row .atelier-input { flex: 1; min-width: 0; }
+.pv-row select.atelier-select { width: auto; min-width: 5.5rem; flex: 0 0 auto; }
+
+/* tools toggle inside model row */
+.pv-tools-toggle {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.74rem; color: var(--muted);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 0.3rem 0.45rem;
+  background: transparent; cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.pv-tools-toggle:hover { border-color: var(--accent); }
+.pv-tools-toggle.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--glass-border)); }
+.pv-tools-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--muted); transition: background var(--duration-fast) var(--ease-out); }
+.pv-tools-toggle.on .pv-tools-dot { background: var(--ok); }
+
+.pv-key-hint { font-size: 0.72rem; color: var(--muted); margin-top: -0.3rem; }
+
+/* ---- Inline test result chips ---- */
+.pv-result { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.pv-result-chip { font-size: 0.72rem; }
+.pv-result-fail { font-size: 0.76rem; color: var(--bad); width: 100%; }
+
+.pv-editor-actions { display: flex; justify-content: flex-end; gap: 0.4rem; margin-top: 0.1rem; }
+
+/* ---- Empty hero ---- */
+.pv-hero {
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 1.4rem 1.2rem;
+  display: flex; flex-direction: column; gap: 0.8rem;
+  text-align: center;
+}
+.pv-hero h3 { margin: 0; font-size: 1.1rem; }
+.pv-hero p { margin: 0; color: var(--muted); font-size: 0.86rem; }

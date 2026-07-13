@@ -1,5 +1,6 @@
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
+import HowItWorks from "@/components/HowItWorks";
 import Features from "@/components/Features";
 import VioletBloom from "@/components/VioletBloom";
 import Pricing from "@/components/Pricing";
@@ -11,6 +12,7 @@ export default function Page() {
     <>
       <Navbar />
       <Hero />
+      <HowItWorks />
       <Features />
       <VioletBloom />
       <Pricing />

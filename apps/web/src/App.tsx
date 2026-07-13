@@ -1,8 +1,7 @@
 // ponytail: view-state navigation + auth gate (no router yet). Add history
 // routing + deep links when PWA web-push lands (handoff T7.6).
 import { lazy, Suspense, useEffect, useState } from "react";
-import { AnimatePresence, motion, MotionConfig } from "framer-motion";
-import { pageTransition } from "./motion.ts";
+import { MotionConfig } from "framer-motion";
 import { api, setAuthToken } from "./api.ts";
 import { AppShell, type ShellView } from "./components/AppShell.tsx";
 import { PageHeader } from "./components/PageHeader.tsx";
@@ -14,20 +13,20 @@ const SessionsList = lazy(() =>
 const SessionView = lazy(() =>
   import("./views/SessionView.tsx").then((m) => ({ default: m.SessionView })),
 );
-const NewTask = lazy(() =>
-  import("./views/NewTask.tsx").then((m) => ({ default: m.NewTask })),
-);
 const Providers = lazy(() =>
   import("./views/Providers.tsx").then((m) => ({ default: m.Providers })),
 );
+const Repos = lazy(() => import("./views/Repos.tsx").then((m) => ({ default: m.Repos })));
+const Settings = lazy(() => import("./views/Settings.tsx").then((m) => ({ default: m.Settings })));
 const Onboarding = lazy(() =>
   import("./onboarding/Onboarding.tsx").then((m) => ({ default: m.Onboarding })),
 );
 
 type View =
   | { kind: "list" }
-  | { kind: "new" }
+  | { kind: "repos" }
   | { kind: "providers" }
+  | { kind: "settings" }
   | { kind: "session"; id: string }
   | { kind: "onboarding" };
 
@@ -74,24 +73,18 @@ export function App() {
     setAuth("guest");
   }
 
+  // View switching uses plain keyed divs + the CSS .view-fade entrance.
+  // AnimatePresence mode="wait" holds the OLD view until a framer rAF tick
+  // confirms exit — in throttled tabs/webviews that tick can never come and
+  // the app strands on the previous view. CSS needs no such confirmation.
   if (view.kind === "session") {
     return (
       <MotionConfig reducedMotion="user">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key="session"
-            className="view-fade"
-            variants={pageTransition}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            style={{ height: "100%" }}
-          >
-            <Suspense fallback={null}>
-              <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />
-            </Suspense>
-          </motion.div>
-        </AnimatePresence>
+        <div key="session" className="view-fade" style={{ height: "100%" }}>
+          <Suspense fallback={null}>
+            <SessionView id={view.id} onBack={() => setView({ kind: "list" })} />
+          </Suspense>
+        </div>
       </MotionConfig>
     );
   }
@@ -99,18 +92,9 @@ export function App() {
   if (view.kind === "onboarding") {
     return (
       <MotionConfig reducedMotion="user">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key="onboarding"
-            className="view-fade"
-            variants={pageTransition}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            style={{ height: "100%" }}
-          >
-            <Suspense fallback={null}>
-              <Onboarding
+        <div key="onboarding" className="view-fade" style={{ height: "100%" }}>
+          <Suspense fallback={null}>
+            <Onboarding
                 onComplete={(sessionId) => {
                   try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
                   setView({ kind: "session", id: sessionId });
@@ -120,9 +104,8 @@ export function App() {
                   setView({ kind: "list" });
                 }}
               />
-            </Suspense>
-          </motion.div>
-        </AnimatePresence>
+          </Suspense>
+        </div>
       </MotionConfig>
     );
   }
@@ -155,9 +138,11 @@ export function App() {
     );
   }
 
-  // authed — session/onboarding are early-returned above, so view is list/new/providers.
+  // authed — session/onboarding are early-returned above, so view is list/repos/providers/settings.
   const shellView: ShellView =
-    view.kind === "list" || view.kind === "new" || view.kind === "providers" ? view : { kind: "list" };
+    view.kind === "list" || view.kind === "repos" || view.kind === "providers" || view.kind === "settings"
+      ? view
+      : { kind: "list" };
 
   return (
     <MotionConfig reducedMotion="user">
@@ -167,28 +152,32 @@ export function App() {
         user={user}
         onLogout={logout}
       >
-        {view.kind === "list" && <PageHeader title="Sessions" subtitle="Your coding sessions" />}
-        {view.kind === "new" && <PageHeader title="New Task" subtitle="Start a new coding session" />}
+        {view.kind === "list" && <PageHeader title="Workspaces" subtitle="Your coding sessions" />}
+        {view.kind === "repos" && <PageHeader title="Repos" subtitle="Import a repo to start a workspace" />}
         {view.kind === "providers" && <PageHeader title="Providers" subtitle="Model providers and API keys" />}
-        <AnimatePresence mode="wait">
-          <motion.div key={view.kind} className="view-fade" variants={pageTransition} initial="initial" animate="animate" exit="exit">
-            {view.kind === "list" && (
-              <Suspense fallback={null}>
-                <SessionsList onOpen={(id) => setView({ kind: "session", id })} />
-              </Suspense>
-            )}
-            {view.kind === "new" && (
-              <Suspense fallback={null}>
-                <NewTask onCreated={(id) => setView({ kind: "session", id })} />
-              </Suspense>
-            )}
-            {view.kind === "providers" && (
-              <Suspense fallback={null}>
-                <Providers />
-              </Suspense>
-            )}
-          </motion.div>
-        </AnimatePresence>
+        {view.kind === "settings" && <PageHeader title="Settings" subtitle="Account, plan, and compute" />}
+        <div key={view.kind} className="view-fade">
+          {view.kind === "list" && (
+            <Suspense fallback={null}>
+              <SessionsList onOpen={(id) => setView({ kind: "session", id })} />
+            </Suspense>
+          )}
+          {view.kind === "repos" && (
+            <Suspense fallback={null}>
+              <Repos onCreated={(id) => setView({ kind: "session", id })} />
+            </Suspense>
+          )}
+          {view.kind === "providers" && (
+            <Suspense fallback={null}>
+              <Providers />
+            </Suspense>
+          )}
+          {view.kind === "settings" && (
+            <Suspense fallback={null}>
+              <Settings onLogout={logout} />
+            </Suspense>
+          )}
+        </div>
       </AppShell>
     </MotionConfig>
   );

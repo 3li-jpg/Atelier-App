@@ -31,15 +31,26 @@ export default function Footer() {
                 color: "var(--color-steel)",
               }}
             >
-              Agentic coding from any browser. Bring your own key.
+              Open-source, chat-first agentic coding. Bring your own key,
+              bring your own compute.
             </span>
           </div>
 
           <div className="footer-right">
+            <span
+              style={{
+                fontFamily: "var(--font-whyte)",
+                fontSize: "13px",
+                color: "var(--color-steel)",
+              }}
+            >
+              Open source
+            </span>
             <a
-              href="https://github.com/"
+              href="https://github.com/3li-jpg/Atelier-App"
               target="_blank"
               rel="noopener noreferrer"
+              aria-label="Atelier on GitHub"
               className="nav-link"
               style={{
                 fontFamily: "var(--font-whyte)",

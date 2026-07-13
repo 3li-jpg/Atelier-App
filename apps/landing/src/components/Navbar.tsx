@@ -10,10 +10,10 @@ export default function Navbar() {
         position: "sticky",
         top: 0,
         zIndex: 100,
-        background: "rgba(51, 50, 72, 0.7)",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
-        borderBottom: "1px solid rgba(247, 249, 250, 0.1)",
+        background: "rgba(20, 20, 24, 0.45)",
+        backdropFilter: "blur(12px) saturate(1.4)",
+        WebkitBackdropFilter: "blur(12px) saturate(1.4)",
+        borderBottom: "1px solid rgba(247, 249, 250, 0.08)",
       }}
     >
       <div
@@ -49,7 +49,7 @@ export default function Navbar() {
             Pricing
           </a>
           <a
-            href="https://github.com/"
+            href="https://github.com/3li-jpg/Atelier-App"
             target="_blank"
             rel="noopener noreferrer"
             className="nav-link"

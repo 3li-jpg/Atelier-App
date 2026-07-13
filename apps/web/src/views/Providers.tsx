@@ -1,21 +1,32 @@
 import "./providers.css";
-import { useEffect, useState } from "react";
-import { api, type ProviderSummary, type ProviderCreate, type ValidationResult } from "../api.ts";
+import { useEffect, useRef, useState } from "react";
+import { api, type ProviderSummary, type ProviderCreate, type ProviderUpdate, type ValidationResult } from "../api.ts";
 import { DIALECTS, validateProviderForm, type FieldErrors } from "../lib.ts";
 import { Input, Select, Button, Card, Badge, Skeleton, useToast } from "@atelier/ui";
 import { StateMessage } from "../components/StateMessage.tsx";
 import { PROVIDER_PRESETS } from "../onboarding/presets.ts";
 import { humanizeApiError, humanizeToast } from "./humanize.ts";
 
-type ModelEntry = { id: string; role: "coder" | "utility" };
+type Role = "coder" | "utility";
+type ModelRow = { id: string; role: Role; tool_calls: boolean };
+type HeaderRow = { key: string; value: string };
 
-// T7.4: Providers screen — list, add, and validate (FR-1.3: cheap completion +
-// tool-call round-trip; shows latency + tool-call fidelity).
-// Supports multiple models per provider — add/remove model rows.
+// Show "start…end" for long URLs so the host + path tail stay readable.
+function truncateMiddle(s: string, max = 40): string {
+  if (s.length <= max) return s;
+  const keep = max - 1; // 1 char for ellipsis
+  const head = Math.ceil(keep * 0.62);
+  return `${s.slice(0, head)}…${s.slice(s.length - (keep - head))}`;
+}
+
+// Full provider lifecycle: glass card list, one editor for Add + Edit,
+// inline delete morph, inline test gated on a real key. ponytail: a single
+// ProviderEditor serves both modes — if Add/Edit diverge further, split then.
 export function Providers() {
   const [providers, setProviders] = useState<ProviderSummary[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = () => {
     setErr(null);
@@ -28,9 +39,10 @@ export function Providers() {
 
   const retry = () => setRetryCount((n) => n + 1);
 
+  const onSaved = () => { setEditingId(null); load(); };
+
   return (
     <div className="pv-shell">
-      <AddProvider onSaved={load} />
       {err ? (
         <StateMessage
           kind="error"
@@ -40,46 +52,140 @@ export function Providers() {
         />
       ) : providers === null ? (
         <div className="pv-skeletons">
-          <Skeleton height="4rem" radius="var(--radius)" />
-          <Skeleton height="4rem" radius="var(--radius)" />
+          <Skeleton height="4.5rem" radius="var(--radius-lg)" />
+          <Skeleton height="4.5rem" radius="var(--radius-lg)" />
         </div>
       ) : providers.length === 0 ? (
-        <StateMessage kind="empty" title="No providers configured" />
+        // Empty: hero + preset grid feed straight into the Add editor.
+        <EmptyHero onSaved={onSaved} />
       ) : (
-        <ul className="pv-list">
-          {providers.map((p) => (
-            <li key={p.id}>
-              <Card className="pv-card">
-                <div className="pv-row-top">
-                  <strong>{p.name}</strong>
-                  <Badge tone="accent">{p.dialect}</Badge>
-                </div>
-                <div className="pv-base-url">{p.base_url}</div>
-                <div className="pv-models">
-                  {p.models.map((m) => (
-                    <Badge
-                      key={m.id}
-                      tone={m.role === "coder" ? "accent" : "idle"}
-                      className="pv-model-chip"
-                    >
-                      {m.id}
-                    </Badge>
-                  ))}
-                </div>
-              </Card>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ProviderEditor mode="add" onSaved={onSaved} />
+          <ul className="pv-list">
+            {providers.map((p) => (
+              <li key={p.id}>
+                {editingId === p.id ? (
+                  <ProviderEditor mode="edit" provider={p} onSaved={onSaved} onCancel={() => setEditingId(null)} />
+                ) : (
+                  <ProviderCard
+                    provider={p}
+                    onEdit={() => setEditingId(p.id)}
+                    onDeleted={load}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   );
 }
 
-function AddProvider({ onSaved }: { onSaved: () => void }) {
+function ProviderCard({
+  provider: p, onEdit, onDeleted,
+}: {
+  provider: ProviderSummary;
+  onEdit: () => void;
+  onDeleted: () => void;
+}) {
   const toast = useToast();
-  // Apply the default preset on first render so Name/Base URL/Models are
-  // pre-filled (not blank) when the card shows as selected.
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearTimer = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+  useEffect(() => () => clearTimer(), []);
+
+  const askDelete = () => {
+    setConfirming(true);
+    clearTimer();
+    timer.current = setTimeout(() => setConfirming(false), 5000);
+  };
+  const cancelDelete = () => { setConfirming(false); clearTimer(); };
+
+  const confirmDelete = async () => {
+    clearTimer();
+    setDeleting(true);
+    try {
+      await api.deleteProvider(p.id);
+      toast.push("Provider removed", "success");
+      onDeleted();
+    } catch (e) {
+      toast.push(humanizeToast(e), "error");
+      setDeleting(false);
+      setConfirming(false);
+    }
+  };
+
+  return (
+    <Card className="pv-card">
+      <div className="pv-row-top">
+        <strong>{p.name}</strong>
+        <Badge tone="accent">{p.dialect}</Badge>
+      </div>
+      <div className="pv-base-url" title={p.base_url}>{truncateMiddle(p.base_url)}</div>
+      <div className="pv-models">
+        {p.models.map((m) => (
+          <Badge key={m.id} tone="default" className="pv-model-chip">
+            <span className="pv-model-id">{m.id}</span>
+            <Badge tone={m.role === "coder" ? "accent" : "idle"} className="pv-model-role">{m.role}</Badge>
+            <span
+              className={`pv-tool-dot${m.tool_calls === false ? " off" : ""}`}
+              title={m.tool_calls === false ? "tools off" : "tools on"}
+              aria-label={m.tool_calls === false ? "tools off" : "tools on"}
+            />
+          </Badge>
+        ))}
+      </div>
+      <div className="pv-card-actions">
+        <Button variant="ghost" size="sm" onClick={onEdit}>Edit</Button>
+        <Button variant="ghost" size="sm" onClick={onEdit} title="Testing needs the key — opens Edit">
+          Test
+        </Button>
+        {confirming ? (
+          <span className="pv-delete-prompt">
+            Delete provider?
+            <Button variant="danger" size="sm" onClick={confirmDelete} disabled={deleting} loading={deleting}>Confirm</Button>
+            <Button variant="ghost" size="sm" onClick={cancelDelete}>Keep</Button>
+          </span>
+        ) : (
+          <Button variant="ghost" size="sm" onClick={askDelete}>Delete</Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ONE editor for Add and Edit. mode + provider decide behavior; everything
+// else is shared form state.
+function ProviderEditor({
+  mode, provider, onSaved, onCancel,
+}: {
+  mode: "add" | "edit";
+  provider?: ProviderSummary;
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
+  const toast = useToast();
+  const isEdit = mode === "edit";
+
   const initial = (() => {
+    if (isEdit && provider) {
+      return {
+        presetId: "custom",
+        name: provider.name,
+        baseUrl: provider.base_url,
+        dialect: provider.dialect,
+        models: provider.models.map((m) => ({
+          id: m.id,
+          role: (m.role === "utility" ? "utility" : "coder") as Role,
+          tool_calls: m.tool_calls !== false,
+        })),
+        headers: [] as HeaderRow[],
+        apiKey: "",
+      };
+    }
     const p = PROVIDER_PRESETS.find((x) => x.id === "umans") ?? PROVIDER_PRESETS[0];
     const b = p.build("");
     return {
@@ -87,211 +193,334 @@ function AddProvider({ onSaved }: { onSaved: () => void }) {
       name: b.name,
       baseUrl: b.base_url,
       dialect: b.dialect,
-      models: b.models.map((m) => ({ id: m.id, role: m.role as "coder" | "utility" })),
+      models: b.models.map((m) => ({ id: m.id, role: m.role as Role, tool_calls: m.tool_calls !== false })),
+      headers: [] as HeaderRow[],
+      apiKey: "",
     };
   })();
-  const [presetId, setPresetId] = useState<string>(initial.presetId);
+
+  const [presetId, setPresetId] = useState(initial.presetId);
   const [name, setName] = useState(initial.name);
   const [baseUrl, setBaseUrl] = useState(initial.baseUrl);
   const [dialect, setDialect] = useState<string>(initial.dialect);
-  const [models, setModels] = useState<ModelEntry[]>(initial.models);
-  const [apiKey, setApiKey] = useState("");
+  const [models, setModels] = useState<ModelRow[]>(initial.models);
+  const [headers, setHeaders] = useState<HeaderRow[]>(initial.headers);
+  const [apiKey, setApiKey] = useState(initial.apiKey);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ValidationResult | null>(null);
   const [failText, setFailText] = useState<string | null>(null);
-
-  const isCustom = presetId === "custom";
+  const keyRef = useRef<HTMLInputElement>(null);
 
   const applyPreset = (id: string) => {
     const preset = PROVIDER_PRESETS.find((p) => p.id === id);
     if (!preset) return;
     setPresetId(id);
-    const built = preset.build("");
-    setName(built.name);
-    setBaseUrl(built.base_url);
-    setDialect(built.dialect);
-    setModels(built.models.map((m) => ({ id: m.id, role: m.role as "coder" | "utility" })));
-    setErrors({});
-    setResult(null);
-    setFailText(null);
-  };
-
-  const updateModel = (idx: number, field: keyof ModelEntry, val: string) => {
-    setModels((prev) => prev.map((m, i) => i === idx ? { ...m, [field]: val } : m));
-  };
-  const addModel = () => setModels((prev) => [...prev, { id: "", role: "coder" }]);
-  const removeModel = (idx: number) => setModels((prev) => prev.filter((_, i) => i !== idx));
-
-  const firstModel = models.find((m) => m.id.trim()) ?? models[0];
-
-  const build = (): ProviderCreate => ({
-    name: name.trim(),
-    base_url: baseUrl.trim(),
-    dialect: dialect as ProviderCreate["dialect"],
-    models: models.filter((m) => m.id.trim()).map((m) => ({
-      id: m.id.trim(), role: m.role, tool_calls: true,
-    })),
-    api_key: apiKey.trim(),
-  });
-
-  const run = async (fn: () => Promise<unknown>, onError: (e: unknown) => void) => {
-    const formForValidation = {
-      name, base_url: baseUrl, dialect, model_id: firstModel?.id ?? "", api_key: apiKey,
-    };
-    const e = validateProviderForm(formForValidation);
-    if (models.filter((m) => m.id.trim()).length === 0) {
-      e.model_id = "at least one model required";
-    }
-    setErrors(e);
-    if (Object.keys(e).length > 0) return;
-    setBusy(true); setResult(null); setFailText(null);
-    try { await fn(); }
-    catch (e2) {
-      onError(e2);
-    }
-    finally { setBusy(false); }
-  };
-
-  const validate = () => run(async () => {
-    const res = await api.validateProvider(build());
-    setResult(res);
-    if (res.ok) {
-      toast.push("Key works", "success");
-    } else {
-      // Failure-text rule: cap result.error to 120 chars; fallback message when empty.
-      const raw = typeof res.error === "string" && res.error.length > 0 ? res.error : "";
-      setFailText(raw ? raw.slice(0, 120) : "Key unusable — check the key and base URL.");
-    }
-  }, (e2) => toast.push(humanizeToast(e2), "error"));
-  const save = () => run(async () => {
-    await api.createProvider(build());
-    // Reset to the default preset so the form is ready for another add.
-    const p = PROVIDER_PRESETS.find((x) => x.id === "umans") ?? PROVIDER_PRESETS[0];
-    const b = p.build("");
-    setPresetId(p.id);
+    const b = preset.build("");
     setName(b.name);
     setBaseUrl(b.base_url);
     setDialect(b.dialect);
-    setModels(b.models.map((m) => ({ id: m.id, role: m.role as "coder" | "utility" })));
-    setApiKey("");
+    setModels(b.models.map((m) => ({ id: m.id, role: m.role as Role, tool_calls: m.tool_calls !== false })));
     setErrors({}); setResult(null); setFailText(null);
-    toast.push("Provider saved", "success");
-    onSaved();
-  }, (e2) => toast.push(humanizeToast(e2), "error"));
+  };
+
+  const updateModel = (idx: number, patch: Partial<ModelRow>) =>
+    setModels((prev) => prev.map((m, i) => (i === idx ? { ...m, ...patch } : m)));
+  const addModel = () => setModels((prev) => [...prev, { id: "", role: "coder", tool_calls: true }]);
+  const removeModel = (idx: number) => setModels((prev) => prev.filter((_, i) => i !== idx));
+
+  const updateHeader = (idx: number, patch: Partial<HeaderRow>) =>
+    setHeaders((prev) => prev.map((h, i) => (i === idx ? { ...h, ...patch } : h)));
+  const addHeader = () => setHeaders((prev) => [...prev, { key: "", value: "" }]);
+  const removeHeader = (idx: number) => setHeaders((prev) => prev.filter((_, i) => i !== idx));
+
+  const keyEmpty = !apiKey.trim();
+
+  const firstModel = models.find((m) => m.id.trim()) ?? models[0];
+
+  const cleanModels = () =>
+    models.filter((m) => m.id.trim()).map((m) => ({ id: m.id.trim(), role: m.role, tool_calls: m.tool_calls }));
+
+  const headerObj = (): Record<string, string> | undefined => {
+    const obj: Record<string, string> = {};
+    for (const h of headers) {
+      const k = h.key.trim();
+      if (k) obj[k] = h.value;
+    }
+    // ponytail: omit when empty so EDIT never wipes stored headers
+    // (listProviders doesn't return them, so we can't show existing).
+    return Object.keys(obj).length > 0 ? obj : undefined;
+  };
+
+  const build = (): ProviderCreate => {
+    const cfg: ProviderCreate = {
+      name: name.trim(),
+      base_url: baseUrl.trim(),
+      dialect: dialect as ProviderCreate["dialect"],
+      models: cleanModels(),
+      api_key: apiKey.trim(),
+    };
+    const h = headerObj();
+    if (h) cfg.headers = h;
+    return cfg;
+  };
+
+  const validateFields = (): { form: FieldErrors; modelCount: number } => {
+    const form = validateProviderForm({
+      name, base_url: baseUrl, dialect,
+      model_id: firstModel?.id ?? "", api_key: apiKey,
+    });
+    // In edit mode an empty key is legal (leave stored key untouched) — but
+    // Test still requires one. For Save, drop the api_key error in edit mode.
+    if (isEdit && form.api_key === "required") delete form.api_key;
+    const modelCount = models.filter((m) => m.id.trim()).length;
+    if (modelCount === 0) form.model_id = "at least one model required";
+    return { form, modelCount };
+  };
+
+  const test = async () => {
+    const { form } = validateFields();
+    // Test always needs a real key (server uses it).
+    if (keyEmpty) form.api_key = "enter the key to test";
+    setErrors(form);
+    if (Object.keys(form).length > 0) return;
+    setBusy(true); setResult(null); setFailText(null);
+    try {
+      const res = await api.validateProvider(build());
+      setResult(res);
+      if (!res.ok) {
+        const raw = typeof res.error === "string" && res.error.length > 0 ? res.error : "";
+        setFailText(raw ? raw.slice(0, 120) : "Key unusable — check the key and base URL.");
+      }
+    } catch (e) {
+      toast.push(humanizeToast(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const save = async () => {
+    const { form } = validateFields();
+    setErrors(form);
+    if (Object.keys(form).length > 0) return;
+    setBusy(true);
+    try {
+      if (isEdit && provider) {
+        const patch: ProviderUpdate = {
+          name: name.trim(),
+          base_url: baseUrl.trim(),
+          dialect: dialect as ProviderUpdate["dialect"],
+          models: cleanModels(),
+        };
+        if (!keyEmpty) patch.api_key = apiKey.trim();
+        const h = headerObj();
+        if (h) patch.headers = h;
+        await api.updateProvider(provider.id, patch);
+        toast.push("Provider updated", "success");
+      } else {
+        await api.createProvider(build());
+        toast.push("Provider saved", "success");
+      }
+      onSaved();
+    } catch (e) {
+      toast.push(humanizeToast(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancel = () => { onCancel?.(); };
+
+  // Escape cancels edit / resets add to the default preset.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancel();
+    }
+  };
+
+  const title = isEdit ? "Edit provider" : "Add a provider";
 
   return (
-    <Card className="pv-add-card">
-      <div className="pv-preset-grid" role="radiogroup" aria-label="Provider preset">
-        {PROVIDER_PRESETS.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            role="radio"
-            aria-checked={presetId === p.id}
-            className={`pv-preset-card${presetId === p.id ? " selected" : ""}`}
-            onClick={() => applyPreset(p.id)}
-          >
-            <span className="pv-preset-label">{p.label}</span>
-            <span className="pv-preset-desc">{p.description}</span>
-          </button>
-        ))}
-      </div>
+    <div className={`pv-editor${isEdit ? " in-card" : ""}`} onKeyDown={onKeyDown}>
+      <div className="pv-editor-title">{title}</div>
 
-      {isCustom ? (
-        <>
-          <Input
-            label="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="My OpenRouter"
-            error={errors.name}
-          />
-          <Input
-            label="Base URL"
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder="https://openrouter.ai/api/v1"
-            error={errors.base_url}
-          />
-          <Select
-            label="Dialect"
-            value={dialect}
-            onChange={(e) => setDialect(e.target.value)}
-            error={errors.dialect}
-          >
-            {DIALECTS.map((d) => <option key={d} value={d}>{d}</option>)}
-          </Select>
-        </>
-      ) : (
-        <>
-          <Input label="Name" value={name} readOnly onChange={() => {}} />
-          <Input label="Base URL" value={baseUrl} readOnly onChange={() => {}} />
-          <Select label="Dialect" value={dialect} onChange={() => {}}>
-            {DIALECTS.map((d) => <option key={d} value={d}>{d}</option>)}
-          </Select>
-          <div className="pv-locked-hint">Preset fields are fixed. Models and API key are editable.</div>
-        </>
+      {!isEdit && (
+        <div className="pv-preset-grid" role="radiogroup" aria-label="Provider preset">
+          {PROVIDER_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              role="radio"
+              aria-checked={presetId === p.id}
+              className={`pv-preset-card${presetId === p.id ? " selected" : ""}`}
+              onClick={() => applyPreset(p.id)}
+            >
+              <span className="pv-preset-label">{p.label}</span>
+              <span className="pv-preset-desc">{p.description}</span>
+            </button>
+          ))}
+        </div>
       )}
 
-      {/* Multiple models */}
-      <div className="pv-models-section">
-        <div className="pv-models-header">
-          <span className="atelier-input-label">Models</span>
+      <Input
+        label="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="My OpenRouter"
+        error={errors.name}
+      />
+      <Input
+        label="Base URL"
+        value={baseUrl}
+        onChange={(e) => setBaseUrl(e.target.value)}
+        placeholder="https://openrouter.ai/api/v1"
+        error={errors.base_url}
+      />
+      <Select
+        label="Dialect"
+        value={dialect}
+        onChange={(e) => setDialect(e.target.value)}
+        error={errors.dialect}
+      >
+        {DIALECTS.map((d) => <option key={d} value={d}>{d}</option>)}
+      </Select>
+
+      {/* Headers editor — empty by default; omitted from PATCH when no rows. */}
+      <div>
+        <div className="pv-section-head">
+          <span className="pv-section-label">Headers</span>
+          <Button variant="ghost" size="sm" onClick={addHeader}>+ Add header</Button>
+        </div>
+        <div className="pv-rows">
+          {headers.map((h, idx) => (
+            <div key={idx} className="pv-row">
+              <input
+                className="atelier-input"
+                value={h.key}
+                onChange={(e) => updateHeader(idx, { key: e.target.value })}
+                placeholder="Header name"
+                aria-label="Header name"
+              />
+              <input
+                className="atelier-input"
+                value={h.value}
+                onChange={(e) => updateHeader(idx, { value: e.target.value })}
+                placeholder="value"
+                aria-label="Header value"
+              />
+              <Button
+                variant="ghost" size="sm"
+                onClick={() => removeHeader(idx)}
+                aria-label="Remove header"
+                title="Remove header"
+              >✕</Button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Models editor — at least one required. */}
+      <div>
+        <div className="pv-section-head">
+          <span className="pv-section-label">Models</span>
           <Button variant="ghost" size="sm" onClick={addModel}>+ Add model</Button>
         </div>
         {errors.model_id && <span className="atelier-input-error">{errors.model_id}</span>}
-        {models.map((m, idx) => (
-          <div key={idx} className="pv-model-row">
-            <input
-              className="atelier-input"
-              value={m.id}
-              onChange={(e) => updateModel(idx, "id", e.target.value)}
-              placeholder="model-id (e.g. umans-glm-5.2)"
-            />
-            <select
-              className="atelier-input atelier-select"
-              value={m.role}
-              onChange={(e) => updateModel(idx, "role", e.target.value)}
-            >
-              <option value="coder">coder</option>
-              <option value="utility">utility</option>
-            </select>
-            {models.length > 1 && (
-              <Button variant="ghost" size="sm" onClick={() => removeModel(idx)} title="Remove model">✕</Button>
-            )}
-          </div>
-        ))}
+        <div className="pv-rows">
+          {models.map((m, idx) => (
+            <div key={idx} className="pv-row">
+              <input
+                className="atelier-input"
+                value={m.id}
+                onChange={(e) => updateModel(idx, { id: e.target.value })}
+                placeholder="model-id (e.g. umans-glm-5.2)"
+                aria-label="Model id"
+              />
+              <select
+                className="atelier-input atelier-select"
+                value={m.role}
+                onChange={(e) => updateModel(idx, { role: e.target.value as Role })}
+                aria-label="Model role"
+              >
+                <option value="coder">coder</option>
+                <option value="utility">utility</option>
+              </select>
+              <button
+                type="button"
+                className={`pv-tools-toggle${m.tool_calls ? " on" : ""}`}
+                onClick={() => updateModel(idx, { tool_calls: !m.tool_calls })}
+                aria-pressed={m.tool_calls}
+                aria-label="Toggle tools"
+                title={m.tool_calls ? "tools on" : "tools off"}
+              >
+                <span className="pv-tools-dot" />
+                tools
+              </button>
+              {models.length > 1 && (
+                <Button
+                  variant="ghost" size="sm"
+                  onClick={() => removeModel(idx)}
+                  aria-label="Remove model"
+                  title="Remove model"
+                >✕</Button>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       <Input
+        ref={keyRef}
         label="API key"
         type="password"
         value={apiKey}
         onChange={(e) => setApiKey(e.target.value)}
-        placeholder="sk-…"
+        placeholder={isEdit ? "unchanged — enter to replace" : "sk-…"}
         error={errors.api_key}
       />
+      {isEdit && keyEmpty && <div className="pv-key-hint">enter the key to test</div>}
 
       {result && (
-        <div className={`pv-result ${result.ok ? "ok" : "bad"}`}>
-          {result.ok ? (
-            <>
-              <div>✓ Key works</div>
-              <div className="pv-result-meta muted small">
-                latency {result.latency_ms}ms · completion {result.completion ? "ok" : "fail"} · tool calls {result.tool_calls ? "ok" : "fail"}
-              </div>
-            </>
-          ) : (
-            <div className="pv-result-fail">{failText}</div>
-          )}
+        <div className="pv-result">
+          <Badge tone="default" className="pv-result-chip">{result.latency_ms}ms</Badge>
+          <Badge tone={result.completion ? "ok" : "bad"} className="pv-result-chip">
+            completion {result.completion ? "ok" : "fail"}
+          </Badge>
+          <Badge tone={result.tool_calls ? "ok" : "bad"} className="pv-result-chip">
+            tools {result.tool_calls ? "ok" : "fail"}
+          </Badge>
+          {!result.ok && failText && <div className="pv-result-fail">{failText}</div>}
         </div>
       )}
 
-      <div className="form-actions">
-        <Button onClick={validate} disabled={busy} loading={busy && !result}>Test key</Button>
-        <Button variant="primary" onClick={save} disabled={busy} loading={busy}>{busy ? "…" : "Save"}</Button>
+      <div className="pv-editor-actions">
+        {isEdit && (
+          <Button variant="ghost" onClick={cancel} disabled={busy}>Cancel</Button>
+        )}
+        <Button
+          variant="ghost"
+          onClick={test}
+          disabled={busy || keyEmpty}
+          loading={busy && !result}
+          title={keyEmpty ? "enter the key to test" : "Test this configuration"}
+        >
+          Test
+        </Button>
+        <Button variant="primary" onClick={save} disabled={busy} loading={busy}>
+          {isEdit ? "Save" : "Add provider"}
+        </Button>
       </div>
-    </Card>
+    </div>
+  );
+}
+
+function EmptyHero({ onSaved }: { onSaved: () => void }) {
+  return (
+    <div className="pv-hero">
+      <h3>Connect your first model</h3>
+      <p>Pick a preset below, paste your API key, and you're running. Edit any field you like.</p>
+      <ProviderEditor mode="add" onSaved={onSaved} />
+    </div>
   );
 }

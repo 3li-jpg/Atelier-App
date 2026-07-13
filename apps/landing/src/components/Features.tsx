@@ -3,19 +3,19 @@
 const features: { label: string; body: string }[] = [
   {
     label: "Bring your own key",
-    body: "Connect any OpenAI-compatible endpoint. Your API key, your model, your bill. We never see it.",
+    body: "Plug in any OpenAI- or Anthropic-compatible endpoint. Your API key, your model, your bill — we never see it.",
   },
   {
-    label: "Isolated sandboxes",
-    body: "Every session runs in a fresh Firecracker microVM or Daytona sandbox. No shared state, no leaks.",
+    label: "Bring your own compute",
+    body: "The free plan runs on your own E2B or Daytona credits. We never mark up compute — paid plans add Atelier-hosted compute if you prefer.",
   },
   {
-    label: "Live workspace",
-    body: "Watch the agent edit files, run tests, and commit in real time. Approve or steer inline.",
+    label: "Live chat workspace",
+    body: "Streamed edits, terminal output, todos, and subagents that split off the heavy work. Watch every change and steer inline.",
   },
   {
     label: "Ship PRs",
-    body: "Agents commit to a branch and push. Review the diff, merge, done.",
+    body: "Agents branch, commit, and push. Review the diff, request changes, or merge — straight into a pull request.",
   },
 ];
 

@@ -99,8 +99,10 @@ export default function Hero() {
               marginTop: "32px",
             }}
           >
-            Agentic coding from any browser. Bring your own model key. Agents run
-            in isolated sandboxes, edit your repos, and ship PRs.
+            Chat with an agent on your repos from any device. Bring your own
+            model key — free if you bring your own compute. Agents edit code,
+            run tests, and ship PRs from isolated cloud sandboxes (E2B or
+            Daytona).
           </p>
         </div>
 
@@ -140,7 +142,7 @@ export default function Hero() {
               letterSpacing: "0.02em",
             }}
           >
-            ORIGIN: GITHUB → DESTINATION: PRODUCTION
+            ORIGIN: GITHUB → DESTINATION: WORKSPACE
           </div>
 
           {/* Barcode */}
@@ -168,7 +170,7 @@ export default function Hero() {
               marginBottom: "32px",
             }}
           >
-            Deploys in seconds
+            Open a workspace in seconds
           </h3>
 
           {/* Buttons */}

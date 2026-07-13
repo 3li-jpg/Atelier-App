@@ -49,8 +49,8 @@ export function SessionsList({ onOpen }: { onOpen: (id: string) => void }) {
     return (
       <StateMessage
         kind="empty"
-        title="No sessions yet"
-        description="Open the New tab and describe what you want built."
+        title="No workspaces yet"
+        description="Import a repo from the Repos tab to start your first workspace."
       />
     );
   }

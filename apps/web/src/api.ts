@@ -40,7 +40,19 @@ export type SessionDetail = SessionSummary & {
 };
 export type ProviderSummary = {
   id: string; name: string; base_url: string; dialect: string;
-  models: { id: string; role: string }[]; created_at: string;
+  // tool_calls is stored in the models JSON; optional for back-compat with old rows.
+  models: { id: string; role: string; tool_calls?: boolean }[]; created_at: string;
+};
+
+// Partial provider update for PATCH /providers/:id. Every field optional;
+// api_key omitted = leave the stored key untouched (never send an empty one).
+export type ProviderUpdate = {
+  name?: string;
+  base_url?: string;
+  dialect?: ProviderCreate["dialect"];
+  models?: { id: string; role: "coder" | "utility"; context?: number; tool_calls?: boolean }[];
+  headers?: Record<string, string>;
+  api_key?: string;
 };
 
 export type ProviderCreate = {
@@ -66,9 +78,10 @@ export type CreateSessionReq = {
   branch?: string;
   provider_id: string;
   model_id: string;
-  task: string;
+  task?: string; // optional now — blank task = chat workspace
   permission_mode?: "auto" | "review" | "plan";
   budgets?: { max_wall_clock_s?: number; max_turns?: number };
+  toolsets?: string[]; // optional; values from TOOLSETS enum in @atelier/schema
 };
 
 export type RepoSummary = {
@@ -78,6 +91,17 @@ export type RepoSummary = {
 export type BranchSummary = { name: string };
 
 export type { Event };
+
+// ponytail: mirrors the literal GET /account return shape (apps/api/src/index.ts).
+// If that handler changes, update these fields to match.
+export type Account = {
+  user: { id: string; login: string; name: string | null; avatar_url: string | null; github_connected: boolean };
+  plan: { id: string; name: string; byok: boolean; compute: string };
+  usage: { sessions: number; billed_seconds: number };
+  compute: { byoc_provider: string | null };
+};
+
+export type ComputeProvider = "e2b" | "daytona";
 
 export const api = {
   listSessions: () => req<SessionSummary[]>("/sessions"),
@@ -96,6 +120,10 @@ export const api = {
   listProviders: () => req<ProviderSummary[]>("/providers"),
   createProvider: (cfg: ProviderCreate) =>
     req<{ id: string }>("/providers", { method: "POST", body: JSON.stringify(cfg) }),
+  updateProvider: (id: string, patch: ProviderUpdate) =>
+    req<{ ok: boolean }>(`/providers/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteProvider: (id: string) =>
+    req<{ ok: boolean }>(`/providers/${encodeURIComponent(id)}`, { method: "DELETE" }),
   validateProvider: (cfg: ProviderCreate) =>
     req<ValidationResult>("/providers/validate", { method: "POST", body: JSON.stringify(cfg) }),
   getAuthStatus: () =>
@@ -114,4 +142,8 @@ export const api = {
   listRepos: () => req<RepoSummary[]>("/repos"),
   listBranches: (owner: string, repo: string) =>
     req<BranchSummary[]>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`),
+  getAccount: () => req<Account>("/account"),
+  setCompute: (provider: ComputeProvider, api_key: string) =>
+    req<{ ok: boolean }>("/account/compute", { method: "PUT", body: JSON.stringify({ provider, api_key }) }),
+  clearCompute: () => req<{ ok: boolean }>("/account/compute", { method: "DELETE" }),
 };

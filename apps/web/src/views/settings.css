@@ -1,0 +1,158 @@
+/* Settings view — scoped styles. All classes prefixed st-.
+   Glass surfaces use global tokens; collapsed to solid under
+   no-backdrop-filter / prefers-reduced-transparency. */
+
+.st-wrap {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.st-section {
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.st-section-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.st-account-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.st-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
+.st-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent-fg);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.st-account-login {
+  font-weight: 500;
+}
+
+.st-chip {
+  font-size: 0.72rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.st-chip.ok {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+.st-chip.bad {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+
+.st-chip.muted {
+  color: var(--muted);
+}
+
+.st-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.st-stat-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.st-stat {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem;
+}
+
+.st-stat-value {
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.st-stat-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.st-error {
+  color: var(--bad);
+  font-size: 0.82rem;
+}
+
+.st-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.st-form-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.st-form-row > * {
+  flex: 1 1 160px;
+}
+
+/* GLASS FALLBACK (MANDATORY) */
+@supports not (backdrop-filter: blur(1px)) {
+  .st-section { background: #141418; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .st-section {
+    background: #141418;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .st-section,
+  .st-stat {
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+}

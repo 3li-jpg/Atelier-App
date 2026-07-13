@@ -2,15 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type SessionDetail } from "../api.ts";
 import { useEventStream } from "../useEventStream.ts";
 import { useLiveRegion } from "../useLiveRegion.ts";
-import { EventCell } from "../components/EventCell.tsx";
-import { FileTree, type FileEntry } from "../components/FileTree.tsx";
+import { type FileEntry } from "../components/FileTree.tsx";
 import { DiffPanel } from "../components/DiffPanel.tsx";
 import { stateTone, TERMINAL_STATES } from "../lib.ts";
 import { humanizeToast } from "./humanize.ts";
 import { useToast } from "@atelier/ui";
+import { ChatThread } from "./workspace/ChatThread.tsx";
+import { Composer } from "./workspace/Composer.tsx";
+import { RightRail } from "./workspace/RightRail.tsx";
 import "./session-view.css";
+import "./workspace/workspace.css";
 
-type MobileTab = "files" | "diff" | "chat";
+type MobileTab = "chat" | "files" | "activity";
 
 export function SessionView({ id, onBack }: { id: string; onBack: () => void }) {
   const toast = useToast();
@@ -21,9 +24,8 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
   const [cancelling, setCancelling] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+  const [menuOpen, setMenuOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-  const composerInputRef = useRef<HTMLInputElement>(null);
   const announce = useLiveRegion("polite");
   const announceAlert = useLiveRegion("assertive");
 
@@ -35,7 +37,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [events.length]);
 
-  // Screen reader announcements for key streaming events
+  // Screen reader announcements for key streaming events (unchanged from prior).
   const lastEventCount = useRef(0);
   useEffect(() => {
     if (events.length <= lastEventCount.current) return;
@@ -87,9 +89,6 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
     }
   }, [events, announce, announceAlert, toast]);
 
-  // Focus the composer when session enters awaiting_user
-  const wasAwaiting = useRef(false);
-
   const send = async (text: string) => {
     const body = text.trim();
     if (!body || sending) return;
@@ -114,14 +113,6 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
   const terminal = TERMINAL_STATES.has(state);
   const awaitingUser = state === "awaiting_user";
 
-  // Focus the composer when session enters awaiting_user
-  useEffect(() => {
-    if (awaitingUser && !wasAwaiting.current) {
-      composerInputRef.current?.focus();
-    }
-    wasAwaiting.current = awaitingUser;
-  }, [awaitingUser]);
-
   const cancel = async () => {
     if (cancelling || terminal) return;
     setCancelling(true);
@@ -130,8 +121,18 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
       toast.push("Session cancelled", "info");
     } catch (e) {
       toast.push(humanizeToast(e), "error");
+    } finally {
+      setCancelling(false);
+      setMenuOpen(false);
     }
-    finally { setCancelling(false); }
+  };
+
+  const finish = () => {
+    setMenuOpen(false);
+    api.finishSession(id).then(
+      () => toast.push("Finishing session…", "info"),
+      (e) => toast.push(humanizeToast(e), "error"),
+    );
   };
 
   // ── Build file map from file_diff events ──
@@ -154,9 +155,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
     return map;
   }, [events]);
 
-  // ── Auto-select first file when files arrive ──
-  // Only auto-select on the first batch; once the user explicitly goes back
-  // to the timeline (selectedFile = null via onBack), don't re-auto-select.
+  // ── Auto-select first file when files arrive (first batch only) ──
   const autoSelectedRef = useRef(false);
   useEffect(() => {
     if (!selectedFile && fileMap.size > 0 && !autoSelectedRef.current) {
@@ -166,73 +165,6 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
   }, [fileMap, selectedFile]);
 
   const selectedEntry = selectedFile ? fileMap.get(selectedFile) ?? null : null;
-
-  // ── Timeline items for the middle panel ──
-  const timelineItems = useMemo(() => {
-    return events.map((e, idx) => {
-      const p = (e.payload ?? {}) as Record<string, unknown>;
-      let label: string = e.type;
-      let dotClass = "";
-      let clickable = false;
-      let filePath: string | null = null;
-
-      switch (e.type) {
-        case "assistant_text":
-          label = String(p.text ?? "").slice(0, 80);
-          dotClass = "accent";
-          break;
-        case "tool_call":
-          label = String(p.tool ?? p.name ?? "tool");
-          dotClass = p.status === "running" ? "warn" : (typeof (p.exit_code ?? p.exitcode) === "number" && Number(p.exit_code ?? p.exitcode) === 0) ? "ok" : "bad";
-          break;
-        case "file_diff": {
-          const files = (Array.isArray(p.files) ? p.files : []) as { path?: string }[];
-          filePath = String(p.path ?? p.file ?? files[0]?.path ?? "");
-          label = filePath || "diff";
-          dotClass = "accent";
-          clickable = !!filePath;
-          break;
-        }
-        case "commit":
-          label = `commit ${String(p.sha ?? "").slice(0, 7)}`;
-          dotClass = "ok";
-          break;
-        case "question":
-          label = String(p.prompt ?? p.message ?? "question");
-          dotClass = "warn";
-          break;
-        case "state_change":
-          label = String(p.state ?? "state");
-          dotClass = stateTone(label);
-          break;
-        case "error":
-          label = String(p.message ?? "error");
-          dotClass = "bad";
-          break;
-        case "user_message":
-          label = String(p.text ?? "user");
-          dotClass = "";
-          break;
-        default:
-          label = e.type;
-      }
-      return { e, idx, label, dotClass, clickable, filePath };
-    });
-  }, [events]);
-
-  // ── PR status from commit events ──
-  const prInfo = useMemo(() => {
-    const commits = events.filter((e) => e.type === "commit");
-    if (commits.length === 0) return null;
-    const last = commits[commits.length - 1];
-    const p = (last.payload ?? {}) as Record<string, unknown>;
-    return {
-      sha: String(p.sha ?? "").slice(0, 7),
-      message: String(p.message ?? ""),
-      url: typeof p.url === "string" ? p.url : null,
-      count: commits.length,
-    };
-  }, [events]);
 
   // ── Streaming feel: detect if last event is recent ──
   const isStreaming = useMemo(() => {
@@ -254,332 +186,147 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
     return null;
   }, [events, terminal]);
 
-  const repoLabel = session
-    ? `${session.repo_url.replace(/\.git$/, "").replace(/^https:\/\/github\.com\//, "")} · ${session.branch} · ${session.model_id}`
+  const repoFullName = session
+    ? session.repo_url.replace(/\.git$/, "").replace(/^https:\/\/github\.com\//, "")
     : "";
+  const repoBranch = session ? `${repoFullName} · ${session.branch}` : "";
+  const modelId = session?.model_id ?? "";
+  const repoName = repoFullName.split("/").pop() || repoFullName;
 
-  const tabIds: Record<MobileTab, string> = {
-    files: "tab-files",
-    diff: "tab-diff",
-    chat: "tab-chat",
-  };
-  const panelIds: Record<MobileTab, string> = {
-    files: "panel-files",
-    diff: "panel-diff",
-    chat: "panel-chat",
-  };
+  const placeholder = terminal
+    ? "session ended"
+    : awaitingUser
+      ? "reply or steer…"
+      : events.length === 0
+        ? "What should we build?"
+        : "reply…";
 
   return (
-    <div className="ide-shell" role="application" aria-label="Session workspace">
-      {/* ── Topbar ── */}
-      <header className="ide-topbar" role="banner">
-        <button
-          className="ghost"
-          onClick={onBack}
-          aria-label="Back to sessions list"
-        >
+    <div className="ws view-fade" role="application" aria-label="Session workspace">
+      {/* ── Top bar ── */}
+      <header className="ws-topbar" role="banner">
+        <button className="ws-back" onClick={onBack} aria-label="Back to sessions list">
           ← back
         </button>
-        <h1 className="ellipsis" aria-label={`Session: ${session?.task ?? id.slice(0, 8)}`}>
+        <h1 className="ws-title ellipsis" aria-label={`Session: ${session?.task ?? id.slice(0, 8)}`}>
           {session?.task ?? id.slice(0, 8)}
         </h1>
         {!terminal && (
           <span
-            className={`live-dot ${live ? "" : "off"}`}
+            className={`ws-live-dot ${live ? "" : "off"}`}
             title={live ? "live" : "reconnecting"}
             role="status"
             aria-label={live ? "Stream live" : "Stream reconnecting"}
           />
         )}
         {!terminal && (
-          <button
-            className="ghost"
-            title="finish: commit, push & shut down"
-            onClick={() => api.finishSession(id).then(
-              () => toast.push("Finishing session…", "info"),
-              (e) => toast.push(humanizeToast(e), "error"),
+          <div className="ws-overflow">
+            <button
+              className="ws-back"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-label="Session actions menu"
+              aria-expanded={menuOpen}
+            >
+              ⋯
+            </button>
+            {menuOpen && (
+              <>
+                <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => setMenuOpen(false)} aria-hidden="true" />
+                <div className="ws-overflow-menu" role="menu">
+                  <button className="ws-overflow-item" onClick={finish} role="menuitem" aria-label="Finish session: commit, push and shut down">
+                    finish session
+                  </button>
+                  <button
+                    className="ws-overflow-item danger"
+                    onClick={cancel}
+                    disabled={cancelling}
+                    role="menuitem"
+                    aria-label="Cancel session"
+                  >
+                    {cancelling ? "cancelling…" : "cancel session"}
+                  </button>
+                </div>
+              </>
             )}
-            aria-label="Finish session: commit, push and shut down"
-          >
-            finish
-          </button>
-        )}
-        {!terminal && (
-          <button
-            className="ghost"
-            onClick={cancel}
-            disabled={cancelling}
-            title="cancel session"
-            aria-label="Cancel session"
-          >
-            {cancelling ? "…" : "✕"}
-          </button>
+          </div>
         )}
       </header>
 
-      {/* ── State banner ── */}
-      <div
-        className={`ide-statebar tone-${stateTone(state)}`}
-        role="status"
-        aria-label={`Session state: ${state}${session ? `, ${repoLabel}` : ""}`}
-      >
-        <span>{state}</span>
-        {session && <span className="muted small meta">{repoLabel}</span>}
-      </div>
-
-      {/* ── Mobile tabs ── */}
-      <div className="ide-mobile-tabs" role="tablist" aria-label="Workspace panels">
-        <button
-          className={`ide-mobile-tab ${mobileTab === "files" ? "active" : ""}`}
-          onClick={() => setMobileTab("files")}
-          role="tab"
-          id={tabIds.files}
-          aria-selected={mobileTab === "files"}
-          aria-controls={panelIds.files}
-          tabIndex={mobileTab === "files" ? 0 : -1}
-        >Files</button>
-        <button
-          className={`ide-mobile-tab ${mobileTab === "diff" ? "active" : ""}`}
-          onClick={() => setMobileTab("diff")}
-          role="tab"
-          id={tabIds.diff}
-          aria-selected={mobileTab === "diff"}
-          aria-controls={panelIds.diff}
-          tabIndex={mobileTab === "diff" ? 0 : -1}
-        >Diff</button>
-        <button
-          className={`ide-mobile-tab ${mobileTab === "chat" ? "active" : ""}`}
-          onClick={() => setMobileTab("chat")}
-          role="tab"
-          id={tabIds.chat}
-          aria-selected={mobileTab === "chat"}
-          aria-controls={panelIds.chat}
-          tabIndex={mobileTab === "chat" ? 0 : -1}
-        >Chat</button>
-      </div>
-
-      {/* ── Three-panel layout ── */}
-      <div className="ide-panels">
-        {/* ── Left: File tree ── */}
-        <div
-          className={`ide-panel ide-files ${mobileTab === "files" ? "active" : ""}`}
-          role="region"
-          aria-label="Files panel"
-          id={panelIds.files}
-          aria-labelledby={tabIds.files}
-        >
-          <FileTree
-            files={fileMap}
-            selected={selectedFile}
-            onSelect={(p) => { setSelectedFile(p); setMobileTab("diff"); }}
-          />
-        </div>
-
-        {/* ── Middle: Diff / Timeline ── */}
-        <div
-          className={`ide-panel ide-middle ${mobileTab === "diff" ? "active" : ""}`}
-          role="region"
-          aria-label="Timeline and diff panel"
-          id={panelIds.diff}
-          aria-labelledby={tabIds.diff}
-        >
-          {selectedEntry ? (
-            <DiffPanel
-              path={selectedEntry.path}
-              content={selectedEntry.content}
-              onBack={() => setSelectedFile(null)}
-            />
-          ) : (
-            <>
-              <div className="ide-panel-header" id="timeline-heading">
-                Timeline
-                <span className="ide-panel-count" aria-label={`${events.length} events`}>{events.length}</span>
-              </div>
-              <div
-                className="ide-timeline"
-                ref={chatScrollRef}
-                role="log"
-                aria-labelledby="timeline-heading"
-                aria-live="polite"
-                aria-relevant="additions"
-              >
-                {events.length === 0 && (
-                  <p className="muted" role="status" style={{ padding: "0.5rem" }}>waiting for events…</p>
-                )}
-                {timelineItems.map(({ e, idx, label, dotClass, clickable, filePath }) => (
-                  <div key={idx} className="ide-timeline-item ide-fade-in" role="listitem">
-                    <div className="ide-timeline-marker" aria-hidden="true">
-                      <span className={`ide-timeline-dot ${dotClass}`} />
-                      <span className="ide-timeline-line" />
-                    </div>
-                    <div className="ide-timeline-content">
-                      <span
-                        className={`ide-timeline-text ${clickable ? "clickable" : ""}`}
-                        onClick={() => {
-                          if (filePath) {
-                            setSelectedFile(filePath);
-                            setMobileTab("diff");
-                          }
-                        }}
-                        role={clickable ? "button" : undefined}
-                        tabIndex={clickable ? 0 : undefined}
-                        aria-label={
-                          clickable
-                            ? `View diff for ${filePath}`
-                            : label
-                        }
-                        onKeyDown={(ev) => {
-                          if (clickable && (ev.key === "Enter" || ev.key === " ")) {
-                            ev.preventDefault();
-                            if (filePath) {
-                              setSelectedFile(filePath);
-                              setMobileTab("diff");
-                            }
-                          }
-                        }}
-                      >
-                        {label}
-                      </span>
-                      <span className="muted small" aria-label={`at ${new Date(e.ts).toLocaleTimeString()}`}>
-                        {new Date(e.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* ── Right: Chat + tools ── */}
-        <div
-          className={`ide-panel ide-chat ${mobileTab === "chat" ? "active" : ""}`}
-          role="region"
-          aria-label="Chat and activity panel"
-          id={panelIds.chat}
-          aria-labelledby={tabIds.chat}
-        >
-          {/* Progress bar when streaming */}
-          {isStreaming && (
-            <div
-              className="ide-progress"
-              role="progressbar"
-              aria-label="Session activity in progress"
-              aria-valuenow={undefined}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <div className="ide-progress-bar" aria-hidden="true" />
-            </div>
-          )}
-
-          {/* Chat messages */}
-          <div
-            className="ide-chat-messages"
-            role="log"
-            aria-label="Chat messages"
-            aria-live="polite"
-            aria-relevant="additions"
-          >
-            {events.length === 0 && <p className="muted" role="status">waiting for events…</p>}
-            {events.map((e, idx) => (
-              <div key={idx} className="ide-fade-in" role="listitem">
-                {pendingQuestion?.seq === e.seq && e.type === "question" ? (
-                  <div className="ide-approval" role="alert">
-                    <EventCell event={e} onReply={(t) => send(t)} />
-                  </div>
-                ) : (
-                  <EventCell event={e} onReply={(t) => send(t)} />
-                )}
-              </div>
-            ))}
-            {isStreaming && (
-              <div
-                className="ide-typing"
-                role="status"
-                aria-label="Assistant is typing"
-              >
-                <span className="ide-typing-dot" aria-hidden="true" />
-                <span className="ide-typing-dot" aria-hidden="true" />
-                <span className="ide-typing-dot" aria-hidden="true" />
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
-
-          {/* Inline steering bar when awaiting user */}
-          {awaitingUser && !terminal && (
-            <div className="ide-steer-bar" role="alert" aria-label="Awaiting your input">
-              <span className="muted">⚠ Awaiting your input</span>
-              <div className="ide-steer-actions" role="group" aria-label="Session actions">
-                <button
-                  className="ghost"
-                  onClick={() => api.finishSession(id).then(
-                    () => toast.push("Finishing session…", "info"),
-                    (e) => toast.push(humanizeToast(e), "error"),
-                  )}
-                  aria-label="Finish session"
-                >finish</button>
-                <button
-                  className="ghost"
-                  onClick={cancel}
-                  disabled={cancelling}
-                  aria-label="Cancel session"
-                >
-                  {cancelling ? "…" : "cancel"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* PR status */}
-          {prInfo && (
-            <div
-              className="ide-pr-status"
-              role="status"
-              aria-label={`Pull request: ${prInfo.sha}, ${prInfo.message}, ${prInfo.count} commit${prInfo.count > 1 ? "s" : ""}`}
-            >
-              <span className="badge ok" aria-hidden="true">PR</span>
-              <span className="mono">{prInfo.sha}</span>
-              <span className="ellipsis" style={{ flex: 1 }}>{prInfo.message}</span>
-              {prInfo.url && (
-                <a
-                  href={prInfo.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`View pull request ${prInfo.sha} on GitHub (opens in new tab)`}
-                >view →</a>
-              )}
-              <span className="muted small" aria-label={`${prInfo.count} commits`}>
-                {prInfo.count} commit{prInfo.count > 1 ? "s" : ""}
-              </span>
-            </div>
-          )}
-
-          {/* Composer */}
-          <form
-            className={`ide-composer ${awaitingUser ? "awaiting" : ""}`}
-            onSubmit={(e) => { e.preventDefault(); send(reply); }}
-            role="search"
-            aria-label="Send a message"
-          >
-            <input
-              ref={composerInputRef}
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              placeholder={terminal ? "session ended" : awaitingUser ? "reply or steer…" : "reply…"}
-              disabled={terminal}
-              aria-label={terminal ? "Session ended" : awaitingUser ? "Reply or steer the session" : "Reply to the session"}
-              aria-disabled={terminal}
-            />
+      {/* ── Mobile segmented control ── */}
+      <div className="ws-mobile-tabs" role="tablist" aria-label="Workspace panels">
+        <div className="ws-mobile-seg">
+          {(["chat", "files", "activity"] as const).map((t) => (
             <button
-              type="submit"
-              disabled={terminal || sending || !reply.trim()}
-              aria-label="Send message"
-            >send</button>
-          </form>
+              key={t}
+              className={`ws-mobile-tab ${mobileTab === t ? "active" : ""}`}
+              onClick={() => setMobileTab(t)}
+              role="tab"
+              aria-selected={mobileTab === t}
+            >
+              {t === "chat" ? "Chat" : t === "files" ? "Files" : "Activity"}
+            </button>
+          ))}
         </div>
       </div>
+
+      {/* ── Body: center + right rail ── */}
+      <div className="ws-body">
+        <div
+          className={`ws-center ${mobileTab === "chat" ? "mobile-active" : ""}`}
+          role="region"
+          aria-label="Conversation"
+        >
+          <ChatThread
+            events={events}
+            isStreaming={isStreaming}
+            pendingQuestionSeq={pendingQuestion?.seq}
+            repoName={repoName}
+            onReply={(t) => send(t)}
+            onOpenFile={(p) => { setSelectedFile(p); }}
+            selectedFile={selectedFile}
+          />
+
+          <Composer
+            value={reply}
+            onChange={setReply}
+            onSend={() => send(reply)}
+            sending={sending}
+            disabled={terminal}
+            awaiting={awaitingUser}
+            stateLabel={state}
+            stateTone={stateTone(state)}
+            modelId={modelId}
+            repoBranch={repoBranch}
+            placeholder={placeholder}
+          />
+
+          {/* Center-stage diff overlay — inside .ws-center so it covers just
+              the chat column on desktop and the full screen on mobile. */}
+          {selectedEntry && (
+            <div
+              className="ws-diff-overlay"
+              role="dialog"
+              aria-label={`Diff for ${selectedEntry.path}`}
+            >
+              <DiffPanel
+                path={selectedEntry.path}
+                content={selectedEntry.content}
+                onBack={() => setSelectedFile(null)}
+              />
+            </div>
+          )}
+        </div>
+
+        <RightRail
+          files={fileMap}
+          events={events}
+          selectedFile={selectedFile}
+          onSelectFile={(p) => { setSelectedFile(p); setMobileTab("chat"); }}
+          mobileActive={mobileTab === "files" || mobileTab === "activity"}
+        />
+      </div>
+
+      <div ref={bottomRef} aria-hidden="true" />
     </div>
   );
 }

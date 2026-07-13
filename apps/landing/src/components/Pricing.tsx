@@ -5,15 +5,25 @@ type Tier = {
   description: string;
   cta: string;
   featured?: boolean;
+  note?: string | null;
 };
 
 const tiers: Tier[] = [
+  {
+    name: "Free",
+    price: "$0",
+    spec: "BYOK + BYOC",
+    description: "Your model key, your compute credits, all features.",
+    cta: "Start free",
+    note: null,
+  },
   {
     name: "Plus",
     price: "$6",
     spec: "20 hrs · 1 vCPU · 2 GB",
     description: "For tinkerers and solo builders.",
     cta: "Choose Plus",
+    note: "Hosted compute included",
   },
   {
     name: "Pro",
@@ -22,6 +32,7 @@ const tiers: Tier[] = [
     description: "For daily drivers who ship.",
     cta: "Choose Pro",
     featured: true,
+    note: "Hosted compute included",
   },
   {
     name: "Max",
@@ -29,6 +40,7 @@ const tiers: Tier[] = [
     spec: "140 hrs · 2 vCPU · 4 GB",
     description: "For teams that never stop.",
     cta: "Choose Max",
+    note: "Hosted compute included",
   },
 ];
 
@@ -103,6 +115,20 @@ export default function Pricing() {
               >
                 {tier.description}
               </p>
+
+              {tier.note ? (
+                <p
+                  className="mono-label"
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--color-lavender-mist)",
+                    marginTop: "var(--spacing-8)",
+                    marginBottom: "var(--spacing-16)",
+                  }}
+                >
+                  {tier.note}
+                </p>
+              ) : null}
 
               <a
                 href="#join"
