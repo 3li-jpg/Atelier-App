@@ -1,5 +1,5 @@
 import { canTransition, type SessionState } from "@atelier/schema";
-import { E2BProvider, DaytonaProvider } from "@atelier/sandbox";
+import { E2BProvider, DaytonaProvider, LocalSandboxProvider } from "@atelier/sandbox";
 import type { SandboxProvider } from "@atelier/sandbox";
 import type { AnyStore } from "./pg-store.ts";
 import { decryptKey, sealConfig, type SealedConfig } from "./secrets.ts";
@@ -8,11 +8,12 @@ const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "registry.fly.io/atelier-sandbo
 const PUBLIC_URL = process.env.PUBLIC_URL ?? "http://localhost:3000";
 
 // Infer the provider name for routing destroy/resume/stop. SandboxProvider has
-// no name field, so check the instance. ponytail: Fly/Local/fake fall back to
-// "fly" — matches the existing hardcoded `provider: "fly"` literals.
+// no name field, so check the instance/constructor. Unknown (incl. test fakes)
+// falls back to "fly" — matches the existing hardcoded `provider: "fly"` literals.
 function sandboxProviderName(s: SandboxProvider): string {
   if (s instanceof E2BProvider) return "e2b";
   if (s instanceof DaytonaProvider) return "daytona";
+  if (s instanceof LocalSandboxProvider) return "local";
   return "fly";
 }
 

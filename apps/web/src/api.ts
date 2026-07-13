@@ -113,6 +113,8 @@ export const api = {
     req<{ ok: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
   finishSession: (id: string) =>
     req<{ ok: boolean }>(`/sessions/${encodeURIComponent(id)}/finish`, { method: "POST" }),
+  deleteSession: (id: string) =>
+    req<{ ok: boolean }>(`/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
   reply: (id: string, text: string) =>
     req<{ ok: boolean }>(`/sessions/${encodeURIComponent(id)}/reply`, {
       method: "POST",

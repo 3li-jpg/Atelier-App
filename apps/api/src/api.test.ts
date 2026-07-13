@@ -748,3 +748,88 @@ test("toolsets validation rejects unknown toolset", async () => {
   await new Promise((r) => setTimeout(r, 20));
   assert.deepEqual(JSON.parse(store.getSession(id).toolsets), ["terminal", "code_execution", "delegation"]);
 });
+
+test("DELETE /sessions/:id removes a terminal session and its events", async () => {
+  const { store, app } = setup();
+  const create = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "P", base_url: "https://api.p.io/v1", dialect: "openai-chat", api_key: "sk-x", models: [{ id: "m", role: "coder" }] }),
+  });
+  const { id: providerId } = await create.json();
+
+  const res = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo_url: "https://github.com/you/t", provider_id: providerId, model_id: "m", task: "x" }),
+  });
+  const { id: sessionId } = await res.json();
+  await new Promise((r) => setTimeout(r, 20));
+
+  store.setSessionState(sessionId, "provisioning", "m-1");
+  for (const st of ["cloning", "setup", "running"]) store.setSessionState(sessionId, st as any);
+  store.setSessionState(sessionId, "completed");
+  store.appendEvent(sessionId, { ts: new Date().toISOString(), type: "assistant_text", payload: { text: "done" } });
+  store.appendEvent(sessionId, { ts: new Date().toISOString(), type: "assistant_text", payload: { text: "bye" } });
+
+  const del = await app.request(`/sessions/${sessionId}`, { method: "DELETE" });
+  assert.equal(del.status, 200);
+  assert.deepEqual(await del.json(), { ok: true });
+  assert.equal(store.getSession(sessionId), null);
+  assert.equal(store.eventsAfter(sessionId, 0).length, 0);
+});
+
+test("DELETE /sessions/:id returns 409 for an active session", async () => {
+  const { store, app } = setup();
+  const create = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "P", base_url: "https://api.p.io/v1", dialect: "openai-chat", api_key: "sk-x", models: [{ id: "m", role: "coder" }] }),
+  });
+  const { id: providerId } = await create.json();
+
+  const res = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo_url: "https://github.com/you/t", provider_id: providerId, model_id: "m", task: "x" }),
+  });
+  const { id: sessionId } = await res.json();
+  await new Promise((r) => setTimeout(r, 20));
+
+  store.setSessionState(sessionId, "provisioning", "m-1");
+  store.setSessionState(sessionId, "running");
+
+  const del = await app.request(`/sessions/${sessionId}`, { method: "DELETE" });
+  assert.equal(del.status, 409);
+  assert.equal((await del.json()).error, "session is active");
+  assert.ok(store.getSession(sessionId) !== null);
+});
+
+test("DELETE /sessions/:id returns 404 for another user session", async (t) => {
+  process.env.SESSION_SECRET = "test-session-secret";
+  t.after(() => { delete process.env.SESSION_SECRET; });
+  const { store, app } = setup();
+  const alice = store.upsertUser(101, "alice", null, null);
+  const bob = store.upsertUser(102, "bob", null, null);
+  const aliceCookie = `atelier_session=${signSession(alice)}`;
+  const bobCookie = `atelier_session=${signSession(bob)}`;
+
+  const ap = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: aliceCookie },
+    body: JSON.stringify({ name: "A", base_url: "https://a.io/v1", dialect: "openai-chat", api_key: "sk-a", models: [{ id: "m", role: "coder" }] }),
+  });
+  const { id: providerId } = await ap.json();
+
+  const as = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: aliceCookie },
+    body: JSON.stringify({ repo_url: "https://github.com/a/b", provider_id: providerId, model_id: "m", task: "do it" }),
+  });
+  const { id: aliceSession } = await as.json();
+  await new Promise((r) => setTimeout(r, 20));
+
+  // bob can't see — let alone delete — alice's session
+  assert.equal((await app.request(`/sessions/${aliceSession}`, { method: "DELETE", headers: { Cookie: bobCookie } })).status, 404);
+
+  // alice can delete her own terminal session
+  store.setSessionState(aliceSession, "completed");
+  const del = await app.request(`/sessions/${aliceSession}`, { method: "DELETE", headers: { Cookie: aliceCookie } });
+  assert.equal(del.status, 200);
+  assert.deepEqual(await del.json(), { ok: true });
+  assert.equal(store.getSession(aliceSession), null);
+});

@@ -218,6 +218,47 @@ test.describe("Workspaces (SessionsList)", () => {
     await expect(page.getByText("No workspaces yet")).toBeVisible();
     await expect(page.getByText(/Import a repo from the Repos tab/)).toBeVisible();
   });
+
+  test("terminal card delete confirm removes the workspace", async ({ page }) => {
+    await markOnboarded(page);
+    // One completed (terminal) session + one running session.
+    await mockApi(page, {
+      sessions: [
+        { id: "sess-done", repo_url: "https://github.com/acme/widget", model_id: "m", task: "finished work", state: "completed", started_at: "2026-07-12T10:00:00Z", ended_at: "2026-07-12T10:30:00Z", branch: "main" },
+        { id: "sess-run", repo_url: "https://github.com/acme/widget", model_id: "m", task: "in flight", state: "running", started_at: "2026-07-12T11:00:00Z", ended_at: null, branch: "main" },
+      ],
+    });
+    // Capture the DELETE on the terminal session.
+    let deletedId = "";
+    await page.route("**/sessions/*", (route) => {
+      if (route.request().method() === "DELETE") {
+        deletedId = route.request().url().split("/").pop() ?? "";
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+      } else {
+        route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+      }
+    });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/");
+    await expect(page.locator(".shell-sidebar")).toBeVisible({ timeout: 10_000 });
+
+    // The completed card has a Delete affordance; the running one does not.
+    const doneCard = page.locator(".session-list li").filter({ hasText: "finished work" });
+    await expect(doneCard.getByRole("button", { name: "Delete workspace" })).toBeAttached();
+    const runCard = page.locator(".session-list li").filter({ hasText: "in flight" });
+    await expect(runCard.getByRole("button", { name: "Delete workspace" })).toHaveCount(0);
+
+    // Click Delete → confirm prompt appears. (force: opacity:0 hover-gated.)
+    await doneCard.getByRole("button", { name: "Delete workspace" }).click({ force: true });
+    await expect(doneCard.getByRole("button", { name: "Confirm" })).toBeVisible();
+
+    // Confirm → DELETE fires, card removed.
+    await doneCard.getByRole("button", { name: "Confirm" }).click();
+    await expect.poll(() => deletedId).toBe("sess-done");
+    await expect(page.locator(".session-list li").filter({ hasText: "finished work" })).toHaveCount(0);
+    // The running card is still there.
+    await expect(runCard).toBeVisible();
+  });
 });
 
 test.describe("Repos view", () => {

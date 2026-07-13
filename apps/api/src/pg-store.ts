@@ -219,4 +219,10 @@ export class PgStore {
     const rows = await this.sql`select seq,type,payload,ts from events where session_id = ${sessionId} and seq > ${cursor} order by seq`;
     return rows.map((r: any) => ({ session_id: sessionId, seq: r.seq, type: r.type, payload: JSON.parse(r.payload), ts: r.ts }));
   }
+
+  // No FK cascade declared on events — delete both explicitly (mirrors sqlite Store).
+  async deleteSession(id: string): Promise<void> {
+    await this.sql`delete from events where session_id = ${id}`;
+    await this.sql`delete from sessions where id = ${id}`;
+  }
 }

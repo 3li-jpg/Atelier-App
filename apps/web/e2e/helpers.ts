@@ -73,6 +73,13 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
       route.fulfill(json({ id: "sess-new", state: "queued" }));
     }
   });
+  // DELETE on a specific session (delete-workspace flow). 200 by default.
+  // Non-DELETE (e.g. GET /sessions/:id detail) is left unmocked so tests that
+  // rely on per-session route overrides or network pass-through aren't shadowed.
+  await page.route("**/sessions/*", (route: Route) => {
+    if (route.request().method() === "DELETE") route.fulfill(json({ ok: true }));
+    else route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "not found" }) });
+  });
   await page.route("**/providers", (route: Route) =>
     route.fulfill(json(opts.providers ?? [])),
   );

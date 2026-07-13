@@ -88,3 +88,38 @@
     animation: none;
   }
 }
+
+.session-card-wrap { position: relative; }
+.session-delete-btn {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  z-index: 2;
+  padding: 0.25rem;
+  line-height: 0;
+  color: var(--muted);
+  opacity: 1;
+}
+.session-delete-btn:hover { color: var(--bad); }
+.session-delete-prompt {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.2rem 0.3rem;
+  font-size: 0.75rem;
+  animation: session-fade-in var(--duration-fast) var(--ease-out) both;
+}
+@keyframes session-fade-in { from { opacity: 0; transform: translateY(-1px); } to { opacity: 1; transform: none; } }
+/* Hide delete affordance on hover-capable pointers until the card is hovered/focused; always visible on touch. */
+@media (hover: hover) {
+  .session-card-wrap .session-delete-btn { opacity: 0; }
+  .session-card-wrap:hover .session-delete-btn,
+  .session-card-wrap:focus-within .session-delete-btn { opacity: 1; }
+}

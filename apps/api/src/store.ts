@@ -206,4 +206,12 @@ export class Store {
     return this.db.prepare("select seq,type,payload,ts from events where session_id = ? and seq > ? order by seq").all(sessionId, cursor)
       .map((r: any) => ({ session_id: sessionId, seq: r.seq, type: r.type, payload: JSON.parse(r.payload), ts: r.ts }));
   }
+
+  // sqlite has no FK cascade on events — delete them explicitly before the row.
+  // ponytail: two statements, no transaction; a crash between them leaves orphan
+  // event rows only, which are unreachable (queries key on session existence).
+  deleteSession(id: string): void {
+    this.db.prepare("delete from events where session_id = ?").run(id);
+    this.db.prepare("delete from sessions where id = ?").run(id);
+  }
 }

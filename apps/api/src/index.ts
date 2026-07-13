@@ -346,6 +346,20 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     return c.json({ ok: true });
   });
 
+  // Delete a terminal workspace (row + events). Active sessions must be
+  // finished/cancelled first — never hard-deleted out from under a running sandbox.
+  app.delete("/sessions/:id", async (c) => {
+    const s = await store.getSession(c.req.param("id"));
+    if (!s) return c.json({ error: "not found" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
+    if (!["completed", "failed", "cancelled"].includes(s.state)) {
+      return c.json({ error: "session is active" }, 409);
+    }
+    await store.deleteSession(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
   // User answers a `question` event: record it and wake the machine if hibernated.
   // (Supervisor-side delivery of the message to the harness is handoff T7.2.)
   app.post("/sessions/:id/reply", async (c) => {
