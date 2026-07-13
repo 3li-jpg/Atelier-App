@@ -24,6 +24,10 @@ export class LocalSandboxProvider implements SandboxProvider {
       SKIP_FIREWALL: "1",
       RUNNER_BIN: RUNNER_DIR,
       WORKSPACE: workspace,
+      // Isolate HOME inside the workspace: the supervisor writes hermes
+      // config (config.yaml with the LLM key) under $HOME/.hermes — pointing
+      // that at the operator's real home would clobber their own hermes setup.
+      HOME: workspace,
       PATH: `${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
     };
     const child = spawn("bash", [`${RUNNER_DIR}/supervisor.sh`], {

@@ -104,7 +104,7 @@ done
 cat > "$HERMES_CFG/config.yaml" <<EOF
 model:
   default: $LLM_MODEL
-  provider: openai
+  provider: custom
   base_url: $LLM_BASE_URL
   api_key: $LLM_API_KEY
 platform_toolsets:

@@ -5,19 +5,23 @@ import react from "@vitejs/plugin-react";
 // zero backend change. SPA routes use non-colliding prefixes (/s/:id, /p, /n)
 // so browser navigations never shadow API paths. In prod the Hono app serves
 // the built bundle from the same origin (handoff T6).
+// ATELIER_API overrides the proxy target (e.g. a second API instance running
+// SANDBOX=local on another port) without touching this file.
+const API = process.env.ATELIER_API ?? "http://localhost:3000";
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
-      "/auth": "http://localhost:3000",
-      "/health": "http://localhost:3000",
-      "/sessions": "http://localhost:3000",
-      "/account": "http://localhost:3000",
-      "/providers": "http://localhost:3000",
-      "/repos": "http://localhost:3000",
-      "/internal": "http://localhost:3000",
-      "/webhooks": "http://localhost:3000",
+      "/auth": API,
+      "/health": API,
+      "/sessions": API,
+      "/account": API,
+      "/providers": API,
+      "/repos": API,
+      "/internal": API,
+      "/webhooks": API,
     },
   },
   build: {

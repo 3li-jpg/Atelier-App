@@ -9,6 +9,13 @@
       "autoPort": false
     },
     {
+      "name": "web-local-sandbox",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["ATELIER_API=http://localhost:3100", "npm", "run", "dev", "-w", "@atelier/web", "--", "--port", "5199", "--strictPort"],
+      "port": 5199,
+      "autoPort": false
+    },
+    {
       "name": "api",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "-w", "@atelier/api"],
