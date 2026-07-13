@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import TransitionOverlay from "@/components/TransitionOverlay";
 
 const DASHBOARD_URL =
-  process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:5173";
+  process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:5199";
 
 export default function SignupForm() {
   const [email, setEmail] = useState("");
@@ -99,11 +98,8 @@ export default function SignupForm() {
       <div className="container">
         <div className="section-stamp">J O I N</div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-          viewport={{ once: true }}
+        <div
+          className="reveal"
           style={{
             maxWidth: 480,
             margin: "24px auto 0",
@@ -241,7 +237,7 @@ export default function SignupForm() {
               Log in
             </a>
           </p>
-        </motion.div>
+        </div>
       </div>
     </section>
   );

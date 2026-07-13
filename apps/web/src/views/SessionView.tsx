@@ -6,6 +6,7 @@ import { EventCell } from "../components/EventCell.tsx";
 import { FileTree, type FileEntry } from "../components/FileTree.tsx";
 import { DiffPanel } from "../components/DiffPanel.tsx";
 import { stateTone, TERMINAL_STATES } from "../lib.ts";
+import { humanizeToast } from "./humanize.ts";
 import { useToast } from "@atelier/ui";
 import "./session-view.css";
 
@@ -58,7 +59,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
         case "error": {
           const msg = String(p.message ?? "");
           announceAlert(`Error: ${msg}`);
-          if (msg) toast.push(msg.slice(0, 100), "error");
+          if (msg) toast.push(msg.slice(0, 120), "error");
           break;
         }
         case "state_change": {
@@ -98,7 +99,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
       setReply("");
       announce("Message sent");
     } catch (e) {
-      toast.push(`Failed to send: ${String(e).slice(0, 60)}`, "error");
+      toast.push(humanizeToast(e), "error");
     } finally {
       setSending(false);
     }
@@ -128,7 +129,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
       await api.cancelSession(id);
       toast.push("Session cancelled", "info");
     } catch (e) {
-      toast.push(`Cancel failed: ${String(e).slice(0, 60)}`, "error");
+      toast.push(humanizeToast(e), "error");
     }
     finally { setCancelling(false); }
   };
@@ -296,7 +297,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
             title="finish: commit, push & shut down"
             onClick={() => api.finishSession(id).then(
               () => toast.push("Finishing session…", "info"),
-              (e) => toast.push(`Finish failed: ${String(e).slice(0, 60)}`, "error"),
+              (e) => toast.push(humanizeToast(e), "error"),
             )}
             aria-label="Finish session: commit, push and shut down"
           >
@@ -515,7 +516,7 @@ export function SessionView({ id, onBack }: { id: string; onBack: () => void }) 
                   className="ghost"
                   onClick={() => api.finishSession(id).then(
                     () => toast.push("Finishing session…", "info"),
-                    (e) => toast.push(`Finish failed: ${String(e).slice(0, 60)}`, "error"),
+                    (e) => toast.push(humanizeToast(e), "error"),
                   )}
                   aria-label="Finish session"
                 >finish</button>

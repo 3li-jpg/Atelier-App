@@ -1,0 +1,90 @@
+/* SessionsList dashboard — all layout lives here. Mobile-first (375px). */
+
+.sessions-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* The whole card is a ghost Button; override its default look so it reads as a
+   card (left-aligned, column, padded, bordered) rather than an inline button. */
+.session-list .session-card,
+.session-list .session-card.atelier-btn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  justify-content: flex-start;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.session-list .session-card:hover {
+  background: var(--panel-2);
+  border-color: var(--accent);
+}
+
+.session-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.session-time {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.session-repo {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-task {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.session-model {
+  font-size: 0.75rem;
+}
+
+/* Soft violet box-shadow pulse for live states. */
+@keyframes session-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+}
+
+.session-card.pulse {
+  animation: session-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-card.pulse {
+    animation: none;
+  }
+}

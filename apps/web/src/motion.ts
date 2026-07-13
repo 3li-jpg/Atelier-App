@@ -15,61 +15,34 @@ export const DURATION_NORMAL = 0.3;
 export const DURATION_SLOW = 0.45;
 
 // ── Page transition (view switching in App.tsx) ────────────────
-// Fade + slight upward slide on enter; reverse on exit.
+// IMPORTANT: JS-driven entrances must never gate visibility — if rAF stalls
+// (throttled tabs, embedded webviews), content stuck at opacity 0 is a blank
+// app. Entrance polish lives in CSS (.view-fade in styles.css), which always
+// reaches its end state. These variants keep the API but render visible.
 export const pageTransition: Variants = {
-  initial: { opacity: 0, y: 8 },
-  animate: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: DURATION_NORMAL, ease: EASE_OUT },
-  },
-  exit: {
-    opacity: 0,
-    y: -8,
-    transition: { duration: DURATION_FAST, ease: EASE_IN_OUT },
-  },
+  initial: { opacity: 1, y: 0 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 1, y: 0 },
 };
 
 // ── Step transition (onboarding step changes) ─────────────────
-// Slide horizontally based on direction (forward = +1, back = -1).
-// The `custom` prop receives the direction.
+// Same rule as pageTransition: never hide content behind a JS animation.
 export const stepTransition: Variants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? 40 : -40,
-    opacity: 0,
-  }),
-  center: {
-    x: 0,
-    opacity: 1,
-    transition: { duration: DURATION_NORMAL, ease: EASE_OUT },
-  },
-  exit: (direction: number) => ({
-    x: direction > 0 ? -40 : 40,
-    opacity: 0,
-    transition: { duration: DURATION_FAST, ease: EASE_IN_OUT },
-  }),
+  enter: { x: 0, opacity: 1 },
+  center: { x: 0, opacity: 1 },
+  exit: { x: 0, opacity: 1 },
 };
 
 // ── List item stagger ──────────────────────────────────────────
-// Parent container drives the stagger; children fade + slide up.
+// Neutered for the same reason; use CSS .view-fade on containers instead.
 export const staggerContainer: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.04,
-      delayChildren: 0.02,
-    },
-  },
+  hidden: { opacity: 1 },
+  visible: { opacity: 1 },
 };
 
 export const staggerItem: Variants = {
-  hidden: { opacity: 0, y: 6 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: DURATION_FAST, ease: EASE_OUT },
-  },
+  hidden: { opacity: 1, y: 0 },
+  visible: { opacity: 1, y: 0 },
 };
 
 // ── Hover micro-interactions ──────────────────────────────────
@@ -91,15 +64,11 @@ export const tapScale: Variants = {
 };
 
 // ── Fade-in for streaming events ───────────────────────────────
-// Replaces the CSS `.ide-fade-in` keyframe with a JS-driven version
-// so we get consistent easing and can chain with stagger.
+// Neutered (see pageTransition note): streamed events must never be
+// invisible because an entrance animation didn't run.
 export const fadeIn: Variants = {
-  hidden: { opacity: 0, y: 4 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: DURATION_FAST, ease: EASE_OUT },
-  },
+  hidden: { opacity: 1, y: 0 },
+  visible: { opacity: 1, y: 0 },
 };
 
 // ── Progress dot pulse (onboarding step indicator) ─────────────

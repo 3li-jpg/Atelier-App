@@ -1,8 +1,11 @@
+import "./providers.css";
 import { useEffect, useState } from "react";
 import { api, type ProviderSummary, type ProviderCreate, type ValidationResult } from "../api.ts";
 import { DIALECTS, validateProviderForm, type FieldErrors } from "../lib.ts";
 import { Input, Select, Button, Card, Badge, Skeleton, useToast } from "@atelier/ui";
 import { StateMessage } from "../components/StateMessage.tsx";
+import { PROVIDER_PRESETS } from "../onboarding/presets.ts";
+import { humanizeApiError, humanizeToast } from "./humanize.ts";
 
 type ModelEntry = { id: string; role: "coder" | "utility" };
 
@@ -10,7 +13,6 @@ type ModelEntry = { id: string; role: "coder" | "utility" };
 // tool-call round-trip; shows latency + tool-call fidelity).
 // Supports multiple models per provider — add/remove model rows.
 export function Providers() {
-  const toast = useToast();
   const [providers, setProviders] = useState<ProviderSummary[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -19,9 +21,7 @@ export function Providers() {
     setErr(null);
     api.listProviders().then(setProviders).catch((e) => {
       setProviders([]);
-      const msg = String(e).replace(/^Error:\s*/, "");
-      setErr(msg);
-      toast.push("Failed to load providers", "error");
+      setErr(humanizeApiError(e).message);
     });
   };
   useEffect(load, [retryCount]);
@@ -29,7 +29,7 @@ export function Providers() {
   const retry = () => setRetryCount((n) => n + 1);
 
   return (
-    <>
+    <div className="pv-shell">
       <AddProvider onSaved={load} />
       {err ? (
         <StateMessage
@@ -39,29 +39,31 @@ export function Providers() {
           action={<Button variant="ghost" size="sm" onClick={retry}>Retry</Button>}
         />
       ) : providers === null ? (
-        <div className="padded" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <div className="pv-skeletons">
           <Skeleton height="4rem" radius="var(--radius)" />
           <Skeleton height="4rem" radius="var(--radius)" />
         </div>
       ) : providers.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          title="No providers configured"
-          description="Add your first model provider above to start running agentic coding sessions."
-        />
+        <StateMessage kind="empty" title="No providers configured" />
       ) : (
-        <ul className="session-list padded">
+        <ul className="pv-list">
           {providers.map((p) => (
             <li key={p.id}>
-              <Card className="provider-card">
-                <div className="row-top">
+              <Card className="pv-card">
+                <div className="pv-row-top">
                   <strong>{p.name}</strong>
                   <Badge tone="accent">{p.dialect}</Badge>
                 </div>
-                <div className="muted small">{p.base_url}</div>
-                <div className="provider-models">
+                <div className="pv-base-url">{p.base_url}</div>
+                <div className="pv-models">
                   {p.models.map((m) => (
-                    <Badge key={m.id} tone={m.role === "coder" ? "accent" : "idle"}>{m.id}</Badge>
+                    <Badge
+                      key={m.id}
+                      tone={m.role === "coder" ? "accent" : "idle"}
+                      className="pv-model-chip"
+                    >
+                      {m.id}
+                    </Badge>
                   ))}
                 </div>
               </Card>
@@ -69,25 +71,51 @@ export function Providers() {
           ))}
         </ul>
       )}
-
-      <style>{`
-        .provider-models { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
-      `}</style>
-    </>
+    </div>
   );
 }
 
 function AddProvider({ onSaved }: { onSaved: () => void }) {
   const toast = useToast();
-  const [name, setName] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [dialect, setDialect] = useState("openai-chat");
-  const [models, setModels] = useState<ModelEntry[]>([{ id: "", role: "coder" }]);
+  // Apply the default preset on first render so Name/Base URL/Models are
+  // pre-filled (not blank) when the card shows as selected.
+  const initial = (() => {
+    const p = PROVIDER_PRESETS.find((x) => x.id === "umans") ?? PROVIDER_PRESETS[0];
+    const b = p.build("");
+    return {
+      presetId: p.id,
+      name: b.name,
+      baseUrl: b.base_url,
+      dialect: b.dialect,
+      models: b.models.map((m) => ({ id: m.id, role: m.role as "coder" | "utility" })),
+    };
+  })();
+  const [presetId, setPresetId] = useState<string>(initial.presetId);
+  const [name, setName] = useState(initial.name);
+  const [baseUrl, setBaseUrl] = useState(initial.baseUrl);
+  const [dialect, setDialect] = useState<string>(initial.dialect);
+  const [models, setModels] = useState<ModelEntry[]>(initial.models);
   const [apiKey, setApiKey] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ValidationResult | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [failText, setFailText] = useState<string | null>(null);
+
+  const isCustom = presetId === "custom";
+
+  const applyPreset = (id: string) => {
+    const preset = PROVIDER_PRESETS.find((p) => p.id === id);
+    if (!preset) return;
+    setPresetId(id);
+    const built = preset.build("");
+    setName(built.name);
+    setBaseUrl(built.base_url);
+    setDialect(built.dialect);
+    setModels(built.models.map((m) => ({ id: m.id, role: m.role as "coder" | "utility" })));
+    setErrors({});
+    setResult(null);
+    setFailText(null);
+  };
 
   const updateModel = (idx: number, field: keyof ModelEntry, val: string) => {
     setModels((prev) => prev.map((m, i) => i === idx ? { ...m, [field]: val } : m));
@@ -107,7 +135,7 @@ function AddProvider({ onSaved }: { onSaved: () => void }) {
     api_key: apiKey.trim(),
   });
 
-  const run = async (fn: () => Promise<unknown>) => {
+  const run = async (fn: () => Promise<unknown>, onError: (e: unknown) => void) => {
     const formForValidation = {
       name, base_url: baseUrl, dialect, model_id: firstModel?.id ?? "", api_key: apiKey,
     };
@@ -117,12 +145,10 @@ function AddProvider({ onSaved }: { onSaved: () => void }) {
     }
     setErrors(e);
     if (Object.keys(e).length > 0) return;
-    setBusy(true); setErr(null); setResult(null);
+    setBusy(true); setResult(null); setFailText(null);
     try { await fn(); }
     catch (e2) {
-      const msg = String(e2);
-      setErr(msg);
-      toast.push("Provider operation failed", "error");
+      onError(e2);
     }
     finally { setBusy(false); }
   };
@@ -130,49 +156,93 @@ function AddProvider({ onSaved }: { onSaved: () => void }) {
   const validate = () => run(async () => {
     const res = await api.validateProvider(build());
     setResult(res);
-    toast.push(res.ok ? "Provider validated ✓" : "Provider unusable", res.ok ? "success" : "error");
-  });
+    if (res.ok) {
+      toast.push("Key works", "success");
+    } else {
+      // Failure-text rule: cap result.error to 120 chars; fallback message when empty.
+      const raw = typeof res.error === "string" && res.error.length > 0 ? res.error : "";
+      setFailText(raw ? raw.slice(0, 120) : "Key unusable — check the key and base URL.");
+    }
+  }, (e2) => toast.push(humanizeToast(e2), "error"));
   const save = () => run(async () => {
     await api.createProvider(build());
-    setName(""); setBaseUrl(""); setDialect("openai-chat");
-    setModels([{ id: "", role: "coder" }]); setApiKey("");
+    // Reset to the default preset so the form is ready for another add.
+    const p = PROVIDER_PRESETS.find((x) => x.id === "umans") ?? PROVIDER_PRESETS[0];
+    const b = p.build("");
+    setPresetId(p.id);
+    setName(b.name);
+    setBaseUrl(b.base_url);
+    setDialect(b.dialect);
+    setModels(b.models.map((m) => ({ id: m.id, role: m.role as "coder" | "utility" })));
+    setApiKey("");
+    setErrors({}); setResult(null); setFailText(null);
     toast.push("Provider saved", "success");
     onSaved();
-  });
+  }, (e2) => toast.push(humanizeToast(e2), "error"));
 
   return (
-    <Card className="padded" style={{ border: "none", background: "transparent", padding: "1rem", display: "flex", flexDirection: "column", gap: "0.7rem" }}>
-      <Input
-        label="Name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="My OpenRouter"
-        error={errors.name}
-      />
-      <Input
-        label="Base URL"
-        value={baseUrl}
-        onChange={(e) => setBaseUrl(e.target.value)}
-        placeholder="https://openrouter.ai/api/v1"
-        error={errors.base_url}
-      />
-      <Select
-        label="Dialect"
-        value={dialect}
-        onChange={(e) => setDialect(e.target.value)}
-      >
-        {DIALECTS.map((d) => <option key={d} value={d}>{d}</option>)}
-      </Select>
+    <Card className="pv-add-card">
+      <div className="pv-preset-grid" role="radiogroup" aria-label="Provider preset">
+        {PROVIDER_PRESETS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="radio"
+            aria-checked={presetId === p.id}
+            className={`pv-preset-card${presetId === p.id ? " selected" : ""}`}
+            onClick={() => applyPreset(p.id)}
+          >
+            <span className="pv-preset-label">{p.label}</span>
+            <span className="pv-preset-desc">{p.description}</span>
+          </button>
+        ))}
+      </div>
+
+      {isCustom ? (
+        <>
+          <Input
+            label="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="My OpenRouter"
+            error={errors.name}
+          />
+          <Input
+            label="Base URL"
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="https://openrouter.ai/api/v1"
+            error={errors.base_url}
+          />
+          <Select
+            label="Dialect"
+            value={dialect}
+            onChange={(e) => setDialect(e.target.value)}
+            error={errors.dialect}
+          >
+            {DIALECTS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </Select>
+        </>
+      ) : (
+        <>
+          <Input label="Name" value={name} readOnly onChange={() => {}} />
+          <Input label="Base URL" value={baseUrl} readOnly onChange={() => {}} />
+          <Select label="Dialect" value={dialect} onChange={() => {}}>
+            {DIALECTS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </Select>
+          <div className="pv-locked-hint">Preset fields are fixed. Models and API key are editable.</div>
+        </>
+      )}
 
       {/* Multiple models */}
-      <div className="provider-models-section">
-        <div className="provider-models-header">
+      <div className="pv-models-section">
+        <div className="pv-models-header">
           <span className="atelier-input-label">Models</span>
           <Button variant="ghost" size="sm" onClick={addModel}>+ Add model</Button>
         </div>
         {errors.model_id && <span className="atelier-input-error">{errors.model_id}</span>}
         {models.map((m, idx) => (
-          <div key={idx} className="provider-model-row">
+          <div key={idx} className="pv-model-row">
             <input
               className="atelier-input"
               value={m.id}
@@ -202,28 +272,26 @@ function AddProvider({ onSaved }: { onSaved: () => void }) {
         placeholder="sk-…"
         error={errors.api_key}
       />
-      {err && <div className="error">{err}</div>}
+
       {result && (
-        <div className={`validate-result ${result.ok ? "ok" : "bad"}`}>
-          <div>{result.ok ? "✓ usable for agentic coding" : "✗ unusable"}</div>
-          <div className="muted small">
-            latency {result.latency_ms}ms · completion {result.completion ? "ok" : "fail"} · tool calls {result.tool_calls ? "ok" : "fail"}
-          </div>
-          {result.error && <div className="muted small">{result.error}</div>}
+        <div className={`pv-result ${result.ok ? "ok" : "bad"}`}>
+          {result.ok ? (
+            <>
+              <div>✓ Key works</div>
+              <div className="pv-result-meta muted small">
+                latency {result.latency_ms}ms · completion {result.completion ? "ok" : "fail"} · tool calls {result.tool_calls ? "ok" : "fail"}
+              </div>
+            </>
+          ) : (
+            <div className="pv-result-fail">{failText}</div>
+          )}
         </div>
       )}
+
       <div className="form-actions">
-        <Button onClick={validate} disabled={busy} loading={busy && !result}>Validate</Button>
+        <Button onClick={validate} disabled={busy} loading={busy && !result}>Test key</Button>
         <Button variant="primary" onClick={save} disabled={busy} loading={busy}>{busy ? "…" : "Save"}</Button>
       </div>
-
-      <style>{`
-        .provider-models-section { display: flex; flex-direction: column; gap: 0.4rem; }
-        .provider-models-header { display: flex; justify-content: space-between; align-items: center; }
-        .provider-model-row { display: flex; gap: 0.4rem; align-items: center; }
-        .provider-model-row input { flex: 1; }
-        .provider-model-row select { width: auto; min-width: 5rem; }
-      `}</style>
     </Card>
   );
 }

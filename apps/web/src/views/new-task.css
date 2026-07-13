@@ -1,0 +1,63 @@
+/* Layout for the NewTask form. Mobile-first: readable at 375px. */
+.new-task {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+/* Permission mode hint — one muted line. */
+.new-task-hint {
+  margin: -0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+/* Example-prompt chips row. Wraps on narrow screens. */
+.new-task-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.new-task-chip {
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.new-task-chip:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel-2));
+}
+
+.new-task-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Inline error line above the submit button. */
+.new-task-error {
+  color: var(--bad);
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+@media (min-width: 600px) {
+  .new-task {
+    padding: 1.25rem;
+  }
+}

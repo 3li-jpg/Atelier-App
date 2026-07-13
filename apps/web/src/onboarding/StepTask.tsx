@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { api, type ProviderSummary, type CreateSessionReq } from "../api.ts";
 import type { FieldErrors } from "../lib.ts";
 import { hoverLift, tapScale } from "../motion.ts";
+import { humanizeApiError } from "../views/humanize.ts";
 
 const EXAMPLE_PROMPTS = [
   "Fix the failing tests in src/auth.ts and explain what was wrong.",
@@ -28,14 +29,16 @@ export function StepTask({ providerId, repoUrl, branch, onDone, onBack }: {
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Load providers to find the selected one and its models.
-  useState(() => {
+  // Load providers to find the selected one and its models. Pick the first
+  // model only if the user hasn't already chosen one.
+  useEffect(() => {
     api.listProviders().then((ps) => {
       setProviders(ps);
       const found = ps.find((p) => p.id === providerId);
-      if (found?.models[0]) setModelId(found.models[0].id);
+      if (!modelId && found?.models[0]) setModelId(found.models[0].id);
     }).catch(() => {});
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerId]);
 
   const selected = providers.find((p) => p.id === providerId) ?? null;
 
@@ -62,7 +65,7 @@ export function StepTask({ providerId, repoUrl, branch, onDone, onBack }: {
       const res = await api.createSession(req);
       onDone(res.id);
     } catch (e2) {
-      setErr(String(e2));
+      setErr(humanizeApiError(e2).message);
     } finally {
       setSubmitting(false);
     }

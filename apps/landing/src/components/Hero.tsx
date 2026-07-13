@@ -1,10 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
-
-const DASHBOARD_URL =
-  process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:5173";
 
 export default function Hero() {
   const signInWithGitHub = async () => {
@@ -19,7 +15,7 @@ export default function Hero() {
   return (
     <section
       style={{
-        minHeight: "100vh",
+        minHeight: "92vh",
         display: "flex",
         alignItems: "center",
         background: "var(--color-near-black)",
@@ -40,11 +36,8 @@ export default function Hero() {
         {/* ============ LEFT COLUMN ============ */}
         <div>
           {/* Line 1 — "Your code," */}
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0, ease: [0.16, 1, 0.3, 1] }}
-            className="hero-display"
+          <h1
+            className="hero-display reveal reveal-1"
             style={{
               fontFamily: "var(--font-grandslang)",
               fontStyle: "italic",
@@ -57,14 +50,11 @@ export default function Hero() {
             }}
           >
             Your code,
-          </motion.h1>
+          </h1>
 
           {/* Line 2 — "in any browser" */}
-          <motion.h2
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-            className="hero-heading"
+          <h2
+            className="hero-heading reveal reveal-2"
             style={{
               fontFamily: "var(--font-whyte)",
               fontWeight: 400,
@@ -76,14 +66,11 @@ export default function Hero() {
             }}
           >
             in any browser
-          </motion.h2>
+          </h2>
 
           {/* Line 3 — "with AI agents" */}
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="hero-display"
+          <h1
+            className="hero-display reveal reveal-3"
             style={{
               fontFamily: "var(--font-grandslang)",
               fontStyle: "italic",
@@ -96,13 +83,11 @@ export default function Hero() {
             }}
           >
             with AI agents
-          </motion.h1>
+          </h1>
 
           {/* Subhead */}
-          <motion.p
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.45, ease: [0.16, 1, 0.3, 1] }}
+          <p
+            className="reveal reveal-4"
             style={{
               fontFamily: "var(--font-whyte)",
               fontWeight: 300,
@@ -116,18 +101,19 @@ export default function Hero() {
           >
             Agentic coding from any browser. Bring your own model key. Agents run
             in isolated sandboxes, edit your repos, and ship PRs.
-          </motion.p>
+          </p>
         </div>
 
         {/* ============ RIGHT COLUMN — BOARDING PASS CARD ============ */}
-        <motion.div
-          initial={{ opacity: 0, y: 40, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.8, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        <div
+          className="reveal reveal-5 boarding-card"
           style={{
             borderRadius: "19.2px",
-            background: "rgba(237, 195, 196, 0.03)",
-            border: "1px solid rgba(247, 249, 250, 0.2)",
+            background:
+              "linear-gradient(180deg, rgba(175, 80, 255, 0.10), rgba(175, 80, 255, 0.04))",
+            border: "1px solid rgba(175, 80, 255, 0.28)",
+            boxShadow:
+              "0 0 80px -20px rgba(175, 80, 255, 0.35), inset 0 1px 0 rgba(247, 249, 250, 0.08)",
             padding: "40px",
           }}
         >
@@ -138,7 +124,7 @@ export default function Hero() {
               fontSize: "12px",
               textTransform: "uppercase",
               letterSpacing: "0.07em",
-              color: "var(--color-steel)",
+              color: "var(--color-lavender-mist)",
             }}
           >
             BOARDING PASS
@@ -164,6 +150,7 @@ export default function Hero() {
               width: "100%",
               marginTop: "24px",
               marginBottom: "24px",
+              opacity: 0.55,
               background:
                 "repeating-linear-gradient(90deg, #f7f9fa 0 2px, transparent 2px 4px, #f7f9fa 4px 7px, transparent 7px 8px, #f7f9fa 8px 11px, transparent 11px 13px, #f7f9fa 13px 17px, transparent 17px 19px, #f7f9fa 19px 21px, transparent 21px 24px, #f7f9fa 24px 27px, transparent 27px 29px, #f7f9fa 29px 32px, transparent 32px 34px, #f7f9fa 34px 38px, transparent 38px 40px)",
             }}
@@ -201,7 +188,7 @@ export default function Hero() {
               Continue with Email
             </a>
           </div>
-        </motion.div>
+        </div>
       </div>
 
       <style>{`
@@ -219,6 +206,20 @@ export default function Hero() {
           .hero-heading {
             font-size: 36px !important;
             letter-spacing: -0.36px !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .hero-display {
+            font-size: 40px !important;
+            letter-spacing: -1px !important;
+          }
+          .hero-heading {
+            font-size: 30px !important;
+            letter-spacing: -0.3px !important;
+          }
+          .boarding-card {
+            padding: 28px !important;
           }
         }
       `}</style>

@@ -10,6 +10,15 @@
   flex-direction: column;
 }
 
+/* Desktop: center the card vertically + horizontally and don't stretch.
+   Mobile stays top-aligned and scrollable if tall. */
+@media (min-width: 640px) {
+  .onboarding {
+    justify-content: center;
+    padding: 1.5rem 1rem;
+  }
+}
+
 /* ---- Progress indicator ---- */
 .onb-progress {
   display: flex;
@@ -43,10 +52,13 @@
 
 /* ---- Step container ---- */
 .onb-step {
-  flex: 1;
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   padding: 0.5rem 1rem 1rem;
+  max-width: 420px;
+  width: 100%;
+  margin: 0 auto;
   animation: onb-fade-in 0.3s var(--ease-out, ease);
 }
 @keyframes onb-fade-in {
@@ -218,7 +230,7 @@
 .onb-nav {
   display: flex;
   gap: 0.5rem;
-  margin-top: auto;
+  margin-top: 1rem;
   padding-top: 1rem;
 }
 .onb-nav button { flex: 1; }

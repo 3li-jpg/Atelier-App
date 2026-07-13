@@ -1,8 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
-import type { Variants } from "framer-motion";
-
 const features: { label: string; body: string }[] = [
   {
     label: "Bring your own key",
@@ -22,15 +19,6 @@ const features: { label: string; body: string }[] = [
   },
 ];
 
-const rowVariants: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.6, delay: i * 0.1, ease: [0.16, 1, 0.3, 1] },
-  }),
-};
-
 export default function Features() {
   return (
     <section id="features" className="section">
@@ -40,33 +28,29 @@ export default function Features() {
         <div>
           {features.map((feature, i) => (
             <div key={feature.label}>
-              <motion.div
-                className="feature-row"
+              <div
+                className={`feature-row reveal reveal-${(i % 3) + 1}`}
                 style={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  justifyContent: "space-between",
-                  gap: "var(--spacing-40)",
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr)",
+                  gap: "var(--spacing-12)",
                   padding: "var(--spacing-32) 0",
                 }}
-                variants={rowVariants}
-                initial="hidden"
-                whileInView="visible"
-                custom={i}
-                viewport={{ once: true, margin: "-50px" }}
               >
-                <a
-                  href="#"
+                <h3
                   style={{
-                    fontFamily: "var(--font-whyte)",
-                    fontSize: "14px",
-                    color: "var(--color-signal-violet)",
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
+                    fontFamily: "var(--font-grandslang)",
+                    fontStyle: "italic",
+                    fontWeight: 400,
+                    fontSize: "32px",
+                    lineHeight: 1.15,
+                    letterSpacing: "-0.32px",
+                    color: "var(--color-almost-white)",
+                    margin: 0,
                   }}
                 >
-                  Learn More →
-                </a>
+                  {feature.label}
+                </h3>
                 <p
                   style={{
                     fontFamily: "var(--font-whyte)",
@@ -74,12 +58,13 @@ export default function Features() {
                     fontWeight: 400,
                     lineHeight: "var(--leading-body)",
                     color: "var(--color-soft-white)",
-                    textAlign: "right",
+                    maxWidth: "640px",
+                    margin: 0,
                   }}
                 >
                   {feature.body}
                 </p>
-              </motion.div>
+              </div>
               <hr className="hairline" />
             </div>
           ))}
@@ -90,9 +75,9 @@ export default function Features() {
         @media (max-width: 768px) {
           .feature-row {
             padding: var(--spacing-24) 0 !important;
-            flex-direction: column !important;
-            align-items: flex-start !important;
-            gap: var(--spacing-12) !important;
+          }
+          .feature-row h3 {
+            font-size: 26px !important;
           }
         }
       `}</style>

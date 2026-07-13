@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { api, setAuthToken } from "../api.ts";
 import { validateAuthForm, type FieldErrors } from "../lib.ts";
 import { tapScale } from "../motion.ts";
+import { humanizeApiError } from "../views/humanize.ts";
 
 type AuthStatus = {
   oauth: boolean;
@@ -32,7 +33,7 @@ export function StepAuth({ status, onDone }: {
       <div className="onb-step">
         <h2 className="onb-step-title">You're signed in</h2>
         <p className="onb-step-sub">
-          Logged in as {status.user?.login ?? "owner"}. Continue to set up your model provider.
+          Signed in as {status.user?.login ?? "owner"}. Continue to connect your model.
         </p>
         <div className="onb-nav">
           <motion.button className="primary" onClick={onDone}
@@ -57,7 +58,7 @@ export function StepAuth({ status, onDone }: {
       if (res.session_token) setAuthToken(res.session_token);
       onDone();
     } catch (e2) {
-      setErr(String(e2).replace(/^Error:\s*/, ""));
+      setErr(humanizeApiError(e2).message);
     } finally {
       setBusy(false);
     }

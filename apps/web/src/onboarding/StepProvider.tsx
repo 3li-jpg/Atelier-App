@@ -4,6 +4,7 @@ import { api, type ProviderCreate, type ValidationResult } from "../api.ts";
 import { DIALECTS, validateProviderForm, type FieldErrors } from "../lib.ts";
 import { PROVIDER_PRESETS, type ProviderPreset } from "./presets.ts";
 import { hoverLift, tapScale } from "../motion.ts";
+import { humanizeApiError } from "../views/humanize.ts";
 
 type ModelEntry = { id: string; role: "coder" | "utility" };
 
@@ -74,7 +75,7 @@ export function StepProvider({ onDone, onBack }: {
     if (Object.keys(e).length > 0) return;
     setBusy(true); setErr(null); setResult(null);
     try { await fn(); }
-    catch (e2) { setErr(String(e2)); }
+    catch (e2) { setErr(humanizeApiError(e2).message); }
     finally { setBusy(false); }
   };
 

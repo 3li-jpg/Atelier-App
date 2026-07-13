@@ -1,21 +1,13 @@
-"use client";
-
-import { motion } from "framer-motion";
-
 export default function VioletBloom() {
   return (
     <section className="section" style={{ paddingTop: 0 }}>
       <div className="container">
-        <motion.div
-          className="card card-violet-bloom"
+        <div
+          className="card card-violet-bloom reveal reveal-1"
           style={{
             padding: "var(--spacing-40)",
             textAlign: "left",
           }}
-          initial={{ opacity: 0, scale: 0.9 }}
-          whileInView={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-          viewport={{ once: true }}
         >
           <h2
             style={{
@@ -54,7 +46,7 @@ export default function VioletBloom() {
           >
             Get started →
           </a>
-        </motion.div>
+        </div>
       </div>
     </section>
   );

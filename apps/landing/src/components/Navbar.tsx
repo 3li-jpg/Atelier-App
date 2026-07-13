@@ -1,23 +1,11 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { supabase } from "@/lib/supabase";
+const DASHBOARD_URL =
+  process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:5199";
 
 export default function Navbar() {
-  const signInWithGitHub = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "github",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-  };
-
   return (
-    <motion.nav
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: "easeOut" }}
+    <nav
       style={{
         position: "sticky",
         top: 0,
@@ -60,20 +48,25 @@ export default function Navbar() {
           <a href="#pricing" className="nav-link">
             Pricing
           </a>
-          <a href="#" className="nav-link">
+          <a
+            href="https://github.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-link"
+          >
             Docs
           </a>
         </div>
 
         {/* Right — Action Buttons */}
         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          <button
-            onClick={signInWithGitHub}
+          <a
+            href={DASHBOARD_URL}
             className="btn-filled"
-            style={{ padding: "10px 20px", cursor: "pointer", background: "none", border: "none" }}
+            style={{ padding: "10px 20px" }}
           >
             Log In
-          </button>
+          </a>
           <a
             href="#join"
             className="btn-pill btn-pill-violet"
@@ -120,6 +113,6 @@ export default function Navbar() {
           }
         }
       `}</style>
-    </motion.nav>
+    </nav>
   );
 }

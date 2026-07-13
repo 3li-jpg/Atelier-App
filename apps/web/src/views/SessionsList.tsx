@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, type SessionSummary } from "../api.ts";
-import { formatRelTime, stateTone } from "../lib.ts";
-import { Button, Badge, Card, Skeleton } from "@atelier/ui";
+import { formatRelTime } from "../lib.ts";
+import { Button, Badge, Skeleton } from "@atelier/ui";
+import type { BadgeTone } from "@atelier/ui";
 import { StateMessage } from "../components/StateMessage.tsx";
+import { humanizeApiError } from "./humanize.ts";
+import "./sessions-list.css";
 
 export function SessionsList({ onOpen }: { onOpen: (id: string) => void }) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
@@ -11,57 +14,109 @@ export function SessionsList({ onOpen }: { onOpen: (id: string) => void }) {
 
   const load = () => {
     setErr(null);
-    api.listSessions().then(setSessions).catch((e) => { setSessions([]); setErr(String(e).replace(/^Error:\s*/, "")); });
+    api
+      .listSessions()
+      .then(setSessions)
+      .catch((e: unknown) => {
+        setSessions([]);
+        setErr(humanizeApiError(e).message);
+      });
   };
   useEffect(load, [retryCount]);
 
   const retry = () => setRetryCount((n) => n + 1);
 
+  if (err) {
+    return (
+      <StateMessage
+        kind="error"
+        title="Couldn't load sessions"
+        description={err}
+        action={<Button variant="ghost" size="sm" onClick={retry}>Retry</Button>}
+      />
+    );
+  }
+  if (sessions === null) {
+    return (
+      <div className="sessions-loading">
+        <Skeleton height="5rem" radius="var(--radius)" />
+        <Skeleton height="5rem" radius="var(--radius)" />
+        <Skeleton height="5rem" radius="var(--radius)" />
+      </div>
+    );
+  }
+  if (sessions.length === 0) {
+    return (
+      <StateMessage
+        kind="empty"
+        title="No sessions yet"
+        description="Open the New tab and describe what you want built."
+      />
+    );
+  }
+
   return (
-    <>
-      {err ? (
-        <StateMessage
-          kind="error"
-          title="Couldn't load sessions"
-          description={err}
-          action={<Button variant="ghost" size="sm" onClick={retry}>Retry</Button>}
-        />
-      ) : sessions === null ? (
-        <div className="padded" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <Skeleton height="5rem" radius="var(--radius)" />
-          <Skeleton height="5rem" radius="var(--radius)" />
-          <Skeleton height="5rem" radius="var(--radius)" />
-        </div>
-      ) : sessions.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          title="No sessions yet"
-          description="Head to the New tab to start your first agentic coding session."
-        />
-      ) : (
-        <ul className="session-list">
-          {sessions.map((s) => (
-            <li key={s.id}>
-              <Card variant="default" className="session-row" style={{ padding: 0 }}>
-                <Button
-                  variant="ghost"
-                  onClick={() => onOpen(s.id)}
-                  style={{ width: "100%", textAlign: "left", justifyContent: "flex-start", flexDirection: "column", alignItems: "stretch", gap: "0.25rem", border: "none", borderRadius: "var(--radius)", padding: "0.7rem 0.9rem" }}
-                >
-                  <div className="row-top">
-                    <Badge tone={stateTone(s.state)}>{s.state}</Badge>
-                    <span className="muted small">{formatRelTime(s.started_at)}</span>
-                  </div>
-                  <div className="row-task">{s.task}</div>
-                  <div className="muted small">
-                    {s.repo_url.replace(/\.git$/, "").replace(/^https:\/\/github\.com\//, "")} · {s.branch} · {s.model_id}
-                  </div>
-                </Button>
-              </Card>
-            </li>
-          ))}
-        </ul>
-      )}
-    </>
+    <ul className="session-list">
+      {sessions.map((s) => {
+        const { tone, pulse } = statusBadge(s.state);
+        return (
+          <li key={s.id}>
+            <Button
+              variant="ghost"
+              onClick={() => onOpen(s.id)}
+              className={`session-card${pulse ? " pulse" : ""}`}
+            >
+              <span className="session-top">
+                <Badge tone={tone}>{s.state}</Badge>
+                <span className="session-time muted small">{formatRelTime(s.started_at)}</span>
+              </span>
+              <span className="session-repo muted small">{repoLabel(s.repo_url)}</span>
+              <span className="session-task">{s.task}</span>
+              <span className="session-model muted small">{s.model_id}</span>
+            </Button>
+          </li>
+        );
+      })}
+    </ul>
   );
+}
+
+// Explicit status table — stateTone() mis-maps some of these (e.g. cancelled,
+// queued). Pulse only for live states.
+function statusBadge(state: string): { tone: BadgeTone; pulse: boolean } {
+  switch (state) {
+    case "running":
+    case "starting":
+    case "queued":
+    case "active":
+    case "spawning":
+      return { tone: "accent", pulse: true };
+    case "completed":
+    case "done":
+      return { tone: "ok", pulse: false };
+    case "failed":
+    case "error":
+      return { tone: "bad", pulse: false };
+    case "cancelled":
+      return { tone: "idle", pulse: false };
+    case "awaiting_user":
+    case "hibernated":
+      return { tone: "warn", pulse: false };
+    default:
+      return { tone: "default", pulse: false };
+  }
+}
+
+// Strip trailing .git and leading github.com host; non-github URLs fall back
+// to the pathname so something useful always shows.
+function repoLabel(repo_url: string): string {
+  let s = repo_url.trim().replace(/\.git$/, "");
+  const gh = s.replace(/^https?:\/\/github\.com\//, "");
+  if (gh !== s) return gh;
+  try {
+    const u = new URL(s);
+    return u.pathname.replace(/^\//, "") || u.host;
+  } catch {
+    return s;
+  }
 }

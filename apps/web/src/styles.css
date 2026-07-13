@@ -301,3 +301,163 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .boot-done #atelier-boot {
   pointer-events: none;
 }
+
+/* ============================================================
+   APP SHELL + AUTH GATE
+   Desktop: fixed left sidebar; Mobile (<900px): top header + bottom
+   tab bar. Plus the auth-gate / boot-check classes used by App.tsx.
+   ============================================================ */
+
+.app-shell { display: flex; height: 100%; }
+
+/* ---- Desktop sidebar ---- */
+.shell-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 1rem 0.75rem;
+}
+.shell-wordmark { font-weight: 500; font-size: 1.05rem; padding: 0.25rem 0.4rem 0.9rem; }
+.shell-nav { display: flex; flex-direction: column; gap: 0.15rem; }
+.shell-nav-item {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+}
+.shell-nav-item.active {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--border);
+}
+.shell-nav-item:not(.active):hover { color: var(--text); }
+.shell-nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+.shell-user {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* ---- Main content ---- */
+.shell-content { flex: 1; overflow-y: auto; min-width: 0; }
+
+/* ---- Page header ---- */
+.page-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+.page-header h2 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.page-header .subtitle { margin: 0.2rem 0 0; font-size: 0.8rem; color: var(--muted); }
+
+/* ---- Mobile-only chrome (hidden on desktop) ---- */
+.shell-mobile-header,
+.shell-tabbar { display: none; }
+
+/* ---- Auth gate + boot check ---- */
+.auth-gate { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+.auth-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.auth-card h2 { margin: 0; font-size: 1.15rem; }
+.auth-card .form { gap: 0.7rem; }
+.auth-card .form-actions { margin-top: 0.2rem; }
+.auth-tabs { display: flex; gap: 0.25rem; background: var(--panel-2); border-radius: 8px; padding: 0.2rem; }
+.auth-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 0.4rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+.auth-tab.active { background: var(--bg); color: var(--text); }
+.auth-error { color: var(--bad); font-size: 0.78rem; min-height: 1rem; }
+.boot-check {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  color: var(--muted);
+}
+.boot-check .wordmark { font-size: 1.4rem; color: var(--text); font-weight: 500; }
+.boot-check svg { width: 28px; height: 28px; color: var(--accent); animation: atelier-spin 0.7s linear infinite; }
+@keyframes atelier-spin { to { transform: rotate(360deg); } }
+
+/* ---- Mobile layout (<900px) ---- */
+@media (max-width: 899px) {
+  .app-shell { flex-direction: column; }
+  .shell-sidebar { display: none; }
+  .shell-mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .shell-mobile-header .shell-wordmark { font-size: 1rem; padding: 0; }
+  .shell-tabbar {
+    display: flex;
+    position: sticky;
+    bottom: 0;
+    background: color-mix(in oklab, var(--panel) 90%, transparent);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--border);
+    padding: 0.4rem;
+    padding-bottom: calc(0.4rem + env(safe-area-inset-bottom));
+  }
+  .shell-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 0.68rem;
+    padding: 0.35rem 0.2rem;
+    cursor: pointer;
+  }
+  .shell-tab.active { color: var(--accent); }
+  .shell-tab svg { width: 20px; height: 20px; }
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .boot-check svg { animation-duration: 1.5s; }
+}
+
+/* ---- View entrance (CSS-only: always reaches end state) ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .view-fade { animation: view-fade 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+  @keyframes view-fade {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}

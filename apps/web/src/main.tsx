@@ -58,7 +58,13 @@ function Root() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<Root />);
+// Reuse the root across Vite HMR re-evaluations of this module — calling
+// createRoot twice on the same container is a React error in dev.
+const container = document.getElementById("root")! as HTMLElement & {
+  _reactRoot?: ReturnType<typeof createRoot>;
+};
+const root = (container._reactRoot ??= createRoot(container));
+root.render(<Root />);
 
 // ponytail: SW registered in prod only (it breaks Vite HMR in dev). Verify the
 // install + offline shell with `npm run build && npm run preview` (handoff T7.6).

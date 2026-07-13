@@ -1,8 +1,3 @@
-"use client";
-
-import { motion } from "framer-motion";
-import type { Variants } from "framer-motion";
-
 type Tier = {
   name: string;
   price: string;
@@ -37,15 +32,6 @@ const tiers: Tier[] = [
   },
 ];
 
-const cardVariants: Variants = {
-  hidden: { opacity: 0, y: 30 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.6, delay: i * 0.15, ease: [0.16, 1, 0.3, 1] },
-  }),
-};
-
 export default function Pricing() {
   return (
     <section id="pricing" className="section">
@@ -54,20 +40,15 @@ export default function Pricing() {
 
         <div className="pricing-grid">
           {tiers.map((tier, i) => (
-            <motion.div
+            <div
               key={tier.name}
-              className="card card-translucent"
+              className={`card card-translucent reveal reveal-${i + 1}`}
               style={{
                 border: tier.featured
                   ? "1px solid var(--color-signal-violet)"
                   : "1px solid rgba(247,249,250,0.15)",
                 padding: "var(--spacing-40)",
               }}
-              variants={cardVariants}
-              initial="hidden"
-              whileInView="visible"
-              custom={i}
-              viewport={{ once: true, margin: "-50px" }}
             >
               <h3
                 style={{
@@ -139,7 +120,7 @@ export default function Pricing() {
                   {tier.cta}
                 </a>
               )}
-            </motion.div>
+            </div>
           ))}
         </div>
       </div>

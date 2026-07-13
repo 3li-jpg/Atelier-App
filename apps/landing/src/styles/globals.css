@@ -84,7 +84,7 @@
 
   /* Layout */
   --page-max-width: 1200px;
-  --section-gap: 120px;
+  --section-gap: 80px;
   --card-padding: 40px;
   --element-gap: 16px;
 
@@ -369,3 +369,42 @@ input { font-family: inherit; }
     animation-duration: 1.5s;
   }
 }
+
+/* ============================================================
+   REVEAL — CSS-only entrance, pure progressive enhancement.
+   Content renders fully visible by default. Animation runs only
+   when motion is allowed, so the page is readable without JS.
+   ============================================================ */
+
+.reveal {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    animation: atelier-reveal 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .reveal-1 { animation-delay: 0s; }
+  .reveal-2 { animation-delay: 0.12s; }
+  .reveal-3 { animation-delay: 0.24s; }
+  .reveal-4 { animation-delay: 0.36s; }
+  .reveal-5 { animation-delay: 0.48s; }
+
+  @keyframes atelier-reveal {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 0 var(--spacing-16);
+  }
+}
+

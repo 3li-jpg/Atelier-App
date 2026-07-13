@@ -1,0 +1,91 @@
+/* Providers view — scoped styles. All classes prefixed pv- to avoid
+   colliding with styles.css / @atelier/ui. Uses global CSS tokens. */
+
+.pv-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* ---- Provider list ---- */
+.pv-list { list-style: none; margin: 0; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; }
+
+.pv-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.pv-row-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.pv-row-top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-base-url { color: var(--muted); font-size: 0.78rem; word-break: break-all; }
+.pv-models { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.2rem; }
+.pv-model-chip { font-size: 0.72rem; }
+
+/* ---- Loading skeletons ---- */
+.pv-skeletons { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem; }
+
+/* ---- Add-provider card ---- */
+.pv-add-card {
+  border: none;
+  background: transparent;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+/* ---- Preset selector ---- */
+.pv-preset-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.pv-preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pv-preset-card:hover { border-color: var(--accent); }
+.pv-preset-card.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+}
+.pv-preset-label { font-weight: 550; font-size: 0.9rem; }
+.pv-preset-desc { font-size: 0.78rem; color: var(--muted); }
+
+/* read-only fields for named presets */
+.pv-locked-hint { font-size: 0.72rem; color: var(--muted); margin-top: -0.3rem; }
+
+/* ---- Model rows ---- */
+.pv-models-section { display: flex; flex-direction: column; gap: 0.4rem; }
+.pv-models-header { display: flex; justify-content: space-between; align-items: center; }
+.pv-model-row { display: flex; gap: 0.4rem; align-items: center; }
+.pv-model-row .atelier-input { flex: 1; }
+.pv-model-row select.atelier-select { width: auto; min-width: 5.5rem; }
+
+/* ---- Validate result box ---- */
+.pv-result {
+  border: 1px solid;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.pv-result.ok { border-color: var(--ok); color: var(--ok); }
+.pv-result.bad { border-color: var(--bad); color: var(--bad); }
+.pv-result .pv-result-meta { color: var(--muted); }
+.pv-result.bad .pv-result-fail { color: var(--bad); }
