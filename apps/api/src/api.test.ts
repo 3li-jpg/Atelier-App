@@ -561,3 +561,190 @@ test("reply to a terminal session is rejected (audit M5)", async () => {
   });
   assert.equal(res.status, 409);
 });
+
+test("PATCH /providers/:id updates fields and re-encrypts the api_key", async () => {
+  const { store, app } = setup();
+  const create = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Orig", base_url: "https://api.orig.io/v1", dialect: "openai-chat",
+      api_key: "sk-original-12345",
+      models: [{ id: "m1", role: "coder" }],
+    }),
+  });
+  assert.equal(create.status, 201);
+  const { id: providerId } = await create.json();
+
+  const patch = await app.request(`/providers/${providerId}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Renamed", base_url: "https://api.new.io/v1", api_key: "sk-rotated-99999",
+      models: [{ id: "m2", role: "coder", tool_calls: true }],
+    }),
+  });
+  assert.equal(patch.status, 200);
+  assert.deepEqual(await patch.json(), { ok: true });
+
+  const row = store.getProvider(providerId);
+  assert.equal(row.name, "Renamed");
+  assert.equal(row.base_url, "https://api.new.io/v1");
+  assert.ok(Array.isArray(row.models));
+  assert.equal(row.models[0].id, "m2");
+
+  // re-encryption: stored ciphertext now decrypts to the rotated key, not the original
+  assert.equal(decryptKey(row.key_ciphertext), "sk-rotated-99999");
+  assert.notEqual(decryptKey(row.key_ciphertext), "sk-original-12345");
+});
+
+test("PATCH /providers/:id returns 404 for another user's provider", async (t) => {
+  process.env.SESSION_SECRET = "test-session-secret";
+  t.after(() => { delete process.env.SESSION_SECRET; });
+  const { store, app } = setup();
+  const alice = store.upsertUser(101, "alice", null, null);
+  const bob = store.upsertUser(102, "bob", null, null);
+  const aliceCookie = `atelier_session=${signSession(alice)}`;
+  const bobCookie = `atelier_session=${signSession(bob)}`;
+
+  const ap = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: aliceCookie },
+    body: JSON.stringify({ name: "A", base_url: "https://a.io/v1", dialect: "openai-chat", api_key: "sk-a", models: [{ id: "m", role: "coder" }] }),
+  });
+  assert.equal(ap.status, 201);
+  const { id: providerId } = await ap.json();
+
+  assert.equal((await app.request(`/providers/${providerId}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json", Cookie: bobCookie },
+    body: JSON.stringify({ name: "hacked" }),
+  })).status, 404);
+
+  assert.equal((await app.request(`/providers/${providerId}`, {
+    method: "DELETE", headers: { Cookie: bobCookie },
+  })).status, 404);
+
+  assert.equal((await app.request(`/providers/${providerId}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json", Cookie: aliceCookie },
+    body: JSON.stringify({ name: "ok" }),
+  })).status, 200);
+});
+
+test("DELETE /providers/:id removes the provider", async () => {
+  const { store, app } = setup();
+  const create = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Todelete", base_url: "https://api.t.io/v1", dialect: "openai-chat", api_key: "sk-x", models: [{ id: "m", role: "coder" }] }),
+  });
+  const { id: providerId } = await create.json();
+
+  const del = await app.request(`/providers/${providerId}`, { method: "DELETE" });
+  assert.equal(del.status, 200);
+  assert.deepEqual(await del.json(), { ok: true });
+  assert.equal(store.getProvider(providerId), null);
+});
+
+test("GET /account returns the expected shape", async (t) => {
+  process.env.SESSION_SECRET = "test-session-secret";
+  t.after(() => { delete process.env.SESSION_SECRET; });
+  const { store, app } = setup();
+  const alice = store.upsertUser(201, "alice", "Alice A", null);
+  const cookie = `atelier_session=${signSession(alice)}`;
+
+  const res = await app.request("/account", { headers: { Cookie: cookie } });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.user.id, alice);
+  assert.equal(body.user.login, "alice");
+  assert.equal(body.user.name, "Alice A");
+  assert.equal(body.user.avatar_url, null);
+  assert.equal(body.user.github_connected, false);
+  assert.deepEqual(body.plan, { id: "free", name: "Free", byok: true, compute: "byoc" });
+  assert.deepEqual(body.compute, { byoc_provider: null });
+  assert.equal(body.usage.sessions, 0);
+  assert.equal(body.usage.billed_seconds, 0);
+
+  assert.equal((await app.request("/account")).status, 401);
+});
+
+test("PUT/DELETE /account/compute stores and clears compute creds", async (t) => {
+  process.env.SESSION_SECRET = "test-session-secret";
+  t.after(() => { delete process.env.SESSION_SECRET; });
+  const { store, app } = setup();
+  const alice = store.upsertUser(202, "alice", null, null);
+  const cookie = `atelier_session=${signSession(alice)}`;
+
+  let res = await app.request("/account/compute", {
+    method: "PUT", headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ provider: "e2b", api_key: "e2b-secret-123" }),
+  });
+  assert.equal(res.status, 200);
+
+  const body = await (await app.request("/account", { headers: { Cookie: cookie } })).json();
+  assert.equal(body.compute.byoc_provider, "e2b");
+  assert.equal("api_key" in body, false);
+  assert.equal("compute_key" in body, false);
+  assert.equal("compute_key_ciphertext" in body, false);
+
+  assert.deepEqual(store.getComputeKey(alice), { provider: "e2b", key: "e2b-secret-123" });
+
+  assert.equal((await app.request("/account/compute", {
+    method: "PUT", headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ provider: "unsupported", api_key: "k" }),
+  })).status, 400);
+  assert.equal((await app.request("/account/compute", {
+    method: "PUT", headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ provider: "e2b" }),
+  })).status, 400);
+
+  res = await app.request("/account/compute", { method: "DELETE", headers: { Cookie: cookie } });
+  assert.equal(res.status, 200);
+  const after = await (await app.request("/account", { headers: { Cookie: cookie } })).json();
+  assert.equal(after.compute.byoc_provider, null);
+  assert.equal(store.getComputeKey(alice), null);
+});
+
+test("taskless session create works (chat workspace)", async () => {
+  const { store, app } = setup();
+  const ap = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "P", base_url: "https://api.p.io/v1", dialect: "openai-chat", api_key: "sk-p", models: [{ id: "m", role: "coder" }] }),
+  });
+  const { id: providerId } = await ap.json();
+
+  let res = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo_url: "https://github.com/you/chat", provider_id: providerId, model_id: "m" }),
+  });
+  assert.equal(res.status, 201);
+  const { id: sessionId } = await res.json();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(store.getSession(sessionId).task, "");
+
+  res = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo_url: "https://github.com/you/chat2", provider_id: providerId, model_id: "m", task: "" }),
+  });
+  assert.equal(res.status, 201);
+});
+
+test("toolsets validation rejects unknown toolset", async () => {
+  const { store, app } = setup();
+  const ap = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "P", base_url: "https://api.p.io/v1", dialect: "openai-chat", api_key: "sk-p", models: [{ id: "m", role: "coder" }] }),
+  });
+  const { id: providerId } = await ap.json();
+
+  const bad = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo_url: "https://github.com/you/t", provider_id: providerId, model_id: "m", task: "x", toolsets: ["terminal", "bogus"] }),
+  });
+  assert.equal(bad.status, 400);
+
+  const good = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo_url: "https://github.com/you/t", provider_id: providerId, model_id: "m", task: "x", toolsets: ["terminal", "code_execution", "delegation"] }),
+  });
+  assert.equal(good.status, 201);
+  const { id } = await good.json();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(JSON.parse(store.getSession(id).toolsets), ["terminal", "code_execution", "delegation"]);
+});

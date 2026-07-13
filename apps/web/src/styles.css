@@ -85,9 +85,11 @@ body {
 .validate-result.bad { border-color: var(--bad); color: var(--bad); }
 
 .provider-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
   padding: 0.7rem 0.9rem;
   display: flex;
   flex-direction: column;
@@ -102,9 +104,10 @@ body {
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  background: color-mix(in oklab, var(--bg) 90%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
+  border-bottom: 1px solid var(--glass-border);
 }
 .topbar h1 { font-size: 1rem; margin: 0; flex: 1; }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -112,15 +115,21 @@ body {
 button {
   font: inherit;
   color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
   padding: 0.4rem 0.7rem;
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              transform var(--duration-press) var(--ease-out);
 }
+button:active:not(:disabled) { transform: scale(0.98); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18); }
 
 .muted { color: var(--muted); }
 .small { font-size: 0.78rem; }
@@ -132,9 +141,11 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .session-row {
   width: 100%;
   text-align: left;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
   padding: 0.7rem 0.9rem;
   display: flex;
   flex-direction: column;
@@ -239,9 +250,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   display: flex;
   gap: 0.4rem;
   padding: 0.6rem;
-  background: color-mix(in oklab, var(--bg) 92%, transparent);
-  backdrop-filter: blur(8px);
-  border-top: 1px solid var(--border);
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
+  border-top: 1px solid var(--glass-border);
 }
 .composer input {
   flex: 1;
@@ -316,11 +328,13 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
-  border-right: 1px solid var(--border);
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
+  border-right: 1px solid var(--glass-border);
   padding: 1rem 0.75rem;
 }
-.shell-wordmark { font-weight: 500; font-size: 1.05rem; padding: 0.25rem 0.4rem 0.9rem; }
+.shell-wordmark { font-weight: 500; font-size: 1.05rem; letter-spacing: -0.01em; padding: 0.25rem 0.4rem 0.9rem; }
 .shell-nav { display: flex; flex-direction: column; gap: 0.15rem; }
 .shell-nav-item {
   width: 100%;
@@ -329,24 +343,30 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.6rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: transparent;
   border: 1px solid transparent;
   color: var(--muted);
   cursor: pointer;
   font: inherit;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
 }
 .shell-nav-item.active {
-  background: var(--panel-2);
+  background: var(--glass-accent);
+  border-color: var(--glass-accent-border);
   color: var(--text);
-  border-color: var(--border);
 }
-.shell-nav-item:not(.active):hover { color: var(--text); }
+.shell-nav-item:not(.active):hover {
+  color: var(--text);
+  background: var(--glass-thin);
+}
 .shell-nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
 .shell-user {
   margin-top: auto;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--glass-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -356,9 +376,22 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 /* ---- Main content ---- */
 .shell-content { flex: 1; overflow-y: auto; min-width: 0; }
 
-/* ---- Page header ---- */
-.page-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
-.page-header h2 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+/* ---- Page header ----
+   Sticky glass band with a scroll-edge fade instead of a hard border:
+   the bottom mask dissolves content scrolling under it. Display tracking
+   on the h2 per the brief (≥28px → −0.02em; applied at all sizes for calm). */
+.page-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 1rem 1.25rem;
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 10px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 10px), transparent 100%);
+}
+.page-header h2 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; }
 .page-header .subtitle { margin: 0.2rem 0 0; font-size: 0.8rem; color: var(--muted); }
 
 /* ---- Mobile-only chrome (hidden on desktop) ---- */
@@ -370,30 +403,34 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .auth-card {
   width: 100%;
   max-width: 340px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: var(--glass-thick);
+  backdrop-filter: var(--glass-thick-blur);
+  -webkit-backdrop-filter: var(--glass-thick-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06),
+              0 16px 48px -16px rgba(0, 0, 0, 0.7);
 }
 .auth-card h2 { margin: 0; font-size: 1.15rem; }
 .auth-card .form { gap: 0.7rem; }
 .auth-card .form-actions { margin-top: 0.2rem; }
-.auth-tabs { display: flex; gap: 0.25rem; background: var(--panel-2); border-radius: 8px; padding: 0.2rem; }
+.auth-tabs { display: flex; gap: 0.25rem; background: var(--glass-thin); backdrop-filter: var(--glass-thin-blur); -webkit-backdrop-filter: var(--glass-thin-blur); border-radius: var(--radius-md); padding: 0.2rem; }
 .auth-tab {
   flex: 1;
   background: transparent;
   border: none;
   color: var(--muted);
   padding: 0.4rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font: inherit;
   font-size: 0.85rem;
 }
-.auth-tab.active { background: var(--bg); color: var(--text); }
+.auth-tab.active { background: var(--bg); color: var(--text); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
 .auth-error { color: var(--bad); font-size: 0.78rem; min-height: 1rem; }
 .boot-check {
   min-height: 100%;
@@ -417,17 +454,23 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     align-items: center;
     justify-content: space-between;
     padding: 0.6rem 1rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--panel);
+    border-bottom: 1px solid var(--glass-border);
+    background: var(--glass-thin);
+    backdrop-filter: var(--glass-thin-blur);
+    -webkit-backdrop-filter: var(--glass-thin-blur);
   }
   .shell-mobile-header .shell-wordmark { font-size: 1rem; padding: 0; }
+  /* Floating glass tab bar: blur over scrolled content, a top mask fade
+     replaces the hard top border so content dissolves under it. */
   .shell-tabbar {
     display: flex;
     position: sticky;
     bottom: 0;
-    background: color-mix(in oklab, var(--panel) 90%, transparent);
-    backdrop-filter: blur(8px);
-    border-top: 1px solid var(--border);
+    background: var(--glass-thin);
+    backdrop-filter: var(--glass-thin-blur);
+    -webkit-backdrop-filter: var(--glass-thin-blur);
+    -webkit-mask-image: linear-gradient(to top, #000 0%, #000 calc(100% - 8px), transparent 100%);
+    mask-image: linear-gradient(to top, #000 0%, #000 calc(100% - 8px), transparent 100%);
     padding: 0.4rem;
     padding-bottom: calc(0.4rem + env(safe-area-inset-bottom));
   }
@@ -442,9 +485,15 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     color: var(--muted);
     font-size: 0.68rem;
     padding: 0.35rem 0.2rem;
+    border-radius: var(--radius-lg);
     cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-out),
+                background var(--duration-fast) var(--ease-out);
   }
-  .shell-tab.active { color: var(--accent); }
+  .shell-tab.active {
+    color: var(--accent);
+    background: var(--glass-accent);
+  }
   .shell-tab svg { width: 20px; height: 20px; }
 }
 
@@ -525,4 +574,41 @@ button:focus-visible,
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ============================================================
+   STATE MESSAGE — glass overrides
+   states.css is owned by another wave; these compound selectors
+   (.state-message.state-X, specificity 0,2,0) outrank its
+   single-class rules despite load order, applying the glass
+   treatment without touching the out-of-scope file.
+   ============================================================ */
+.state-message {
+  border-radius: var(--radius-lg);
+}
+.state-message.state-empty .state-message-icon { color: var(--muted); }
+.state-message.state-error .state-message-icon { color: var(--bad); }
+.state-message.state-info .state-message-icon { color: var(--accent); }
+/* Tinted-glass tint behind the icon by kind (brief §Status chips pattern). */
+.state-message.state-empty .state-message-icon {
+  background: var(--glass-thin);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+  padding: 0.5rem;
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
+}
+.state-message.state-error .state-message-icon {
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: var(--radius-full);
+  padding: 0.5rem;
+}
+.state-message.state-info .state-message-icon {
+  background: var(--glass-accent);
+  border: 1px solid var(--glass-accent-border);
+  border-radius: var(--radius-full);
+  padding: 0.5rem;
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
 }

@@ -45,6 +45,9 @@
   --leading-xs: 1.2;
   --tracking-xs: 0.05em;
 
+  /* Form label size (brief: 12px muted labels). */
+  --text-label: 12px;
+
   --text-sm: 13px;
   --leading-sm: 1.4;
 
@@ -85,18 +88,43 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --radius-xl: 20px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
   --radius-full: 9999px;
 
   /* Legacy alias — web app uses --radius */
   --radius: var(--radius-md);
   --maxw: 760px;
 
+  /* ---- Glass materials (liquid glass system) ----
+     Translucent surfaces stacked over the near-black canvas. Each weight
+     pairs an rgba background with a matching backdrop-filter. --glass-border
+     is the shared 1px inner seam. See docs/design-brief.md. */
+  --glass-thin: rgba(20, 20, 24, 0.45);
+  --glass-thin-blur: blur(12px) saturate(1.4);
+  --glass: rgba(20, 20, 24, 0.6);
+  --glass-blur: blur(20px) saturate(1.4);
+  --glass-thick: rgba(20, 20, 24, 0.75);
+  --glass-thick-blur: blur(32px) saturate(1.4);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-strong: rgba(255, 255, 255, 0.25);
+  /* Solid fallback surface used when translucency is unsupported/disabled. */
+  --glass-solid: #141418;
+  /* Tinted violet glass for active nav pills / accents. */
+  --glass-accent: rgba(175, 80, 255, 0.16);
+  --glass-accent-border: rgba(175, 80, 255, 0.4);
+
   /* ---- Motion ---- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Critically-damped spring approximations (no bounce): used for interactive
+     movement where a plain ease feels mechanical. ponytail: cubic-bezier
+     approximations — swap for real spring() if a motion lib lands. */
+  --ease-spring: cubic-bezier(0.32, 1.55, 0.5, 1);
+  --ease-spring-soft: cubic-bezier(0.34, 1.32, 0.64, 1);
   --duration-fast: 0.15s;
   --duration-normal: 0.3s;
   --duration-slow: 0.6s;
+  --duration-press: 0.1s;
 }
 
 /* ---- Light theme override ---- */
@@ -120,6 +148,15 @@
     --bad: #dc2626;
     --bubble: rgba(0, 0, 0, 0.04);
     --user: rgba(154, 62, 230, 0.1);
+    /* Light glass: translucent white surfaces over the light canvas. */
+    --glass-thin: rgba(255, 255, 255, 0.55);
+    --glass: rgba(255, 255, 255, 0.7);
+    --glass-thick: rgba(255, 255, 255, 0.82);
+    --glass-border: rgba(0, 0, 0, 0.08);
+    --glass-border-strong: rgba(0, 0, 0, 0.25);
+    --glass-solid: #ffffff;
+    --glass-accent: rgba(154, 62, 230, 0.12);
+    --glass-accent-border: rgba(154, 62, 230, 0.4);
   }
 }
 
@@ -128,5 +165,43 @@
   *, *::before, *::after {
     animation-duration: 0s !important;
     transition-duration: 0s !important;
+  }
+}
+
+/* ============================================================
+   GLASS FALLBACKS — mandatory per design-brief.md
+   When the environment can't render translucency or needs more
+   contrast, collapse every glass surface to the solid token and
+   raise border alpha so seams stay visible.
+   ============================================================ */
+
+/* No backdrop-filter support → drop the blur/saturate, use solid fills. */
+@supports not (backdrop-filter: blur(1px)) {
+  :root {
+    --glass-thin: var(--glass-solid);
+    --glass: var(--glass-solid);
+    --glass-thick: var(--glass-solid);
+    --glass-thin-blur: none;
+    --glass-blur: none;
+    --glass-thick-blur: none;
+  }
+}
+
+/* User asked the OS to minimise translucency (macOS "Reduce transparency"). */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-thin: var(--glass-solid);
+    --glass: var(--glass-solid);
+    --glass-thick: var(--glass-solid);
+    --glass-thin-blur: none;
+    --glass-blur: none;
+    --glass-thick-blur: none;
+  }
+}
+
+/* User asked for more contrast → raise every glass seam to --glass-border-strong. */
+@media (prefers-contrast: more) {
+  :root {
+    --glass-border: var(--glass-border-strong);
   }
 }

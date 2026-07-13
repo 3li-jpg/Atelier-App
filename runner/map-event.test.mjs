@@ -119,3 +119,38 @@ test("NOISE set contains expected events", () => {
   assert.ok(NOISE.has("approval.responded"));
   assert.equal(NOISE.size, 2);
 });
+
+test("tool.started todo → todo started with preview", () => {
+  const r = mapEvent({ event: "tool.started", tool: "todo", preview: "3 tasks" }, state());
+  assert.deepEqual(r, { type: "todo", payload: { status: "started", preview: "3 tasks" } });
+});
+
+test("tool.started todo without preview → empty preview", () => {
+  const r = mapEvent({ event: "tool.started", tool: "todo" }, state());
+  assert.deepEqual(r, { type: "todo", payload: { status: "started", preview: "" } });
+});
+
+test("tool.started delegate_task → subagent started with goal", () => {
+  const r = mapEvent({ event: "tool.started", tool: "delegate_task", preview: "refactor auth" }, state());
+  assert.deepEqual(r, { type: "subagent", payload: { status: "started", goal: "refactor auth" } });
+});
+
+test("tool.completed todo no error → todo completed", () => {
+  const r = mapEvent({ event: "tool.completed", tool: "todo", duration: 0.4, error: false }, state());
+  assert.deepEqual(r, { type: "todo", payload: { status: "completed" } });
+});
+
+test("tool.completed todo error → todo failed", () => {
+  const r = mapEvent({ event: "tool.completed", tool: "todo", duration: 0.4, error: true }, state());
+  assert.deepEqual(r, { type: "todo", payload: { status: "failed" } });
+});
+
+test("tool.completed delegate_task no error → subagent completed", () => {
+  const r = mapEvent({ event: "tool.completed", tool: "delegate_task", duration: 5.0, error: false }, state());
+  assert.deepEqual(r, { type: "subagent", payload: { status: "completed" } });
+});
+
+test("tool.completed delegate_task error → subagent failed", () => {
+  const r = mapEvent({ event: "tool.completed", tool: "delegate_task", duration: 5.0, error: true }, state());
+  assert.deepEqual(r, { type: "subagent", payload: { status: "failed" } });
+});

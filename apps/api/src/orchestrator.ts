@@ -1,10 +1,20 @@
 import { canTransition, type SessionState } from "@atelier/schema";
+import { E2BProvider, DaytonaProvider } from "@atelier/sandbox";
 import type { SandboxProvider } from "@atelier/sandbox";
 import type { AnyStore } from "./pg-store.ts";
 import { decryptKey, sealConfig, type SealedConfig } from "./secrets.ts";
 
 const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "registry.fly.io/atelier-sandboxes:runner-v1";
 const PUBLIC_URL = process.env.PUBLIC_URL ?? "http://localhost:3000";
+
+// Infer the provider name for routing destroy/resume/stop. SandboxProvider has
+// no name field, so check the instance. ponytail: Fly/Local/fake fall back to
+// "fly" — matches the existing hardcoded `provider: "fly"` literals.
+function sandboxProviderName(s: SandboxProvider): string {
+  if (s instanceof E2BProvider) return "e2b";
+  if (s instanceof DaytonaProvider) return "daytona";
+  return "fly";
+}
 
 // Hibernation thresholds from measured data (docs/spike-notes.md):
 // suspend→start ≈ 0.75 s. Read lazily so tests (and ops) can override via env.
@@ -32,6 +42,33 @@ export class Orchestrator {
 
   constructor(store: AnyStore, sandbox: SandboxProvider, now: () => number = Date.now) {
     this.store = store; this.sandbox = sandbox; this.clock = now;
+  }
+
+  // Resolve a per-session sandbox when the user has BYOC compute creds.
+  // ponytail: instantiate per-launch; cache if allocation cost matters.
+  private async sandboxFor(sessionId: string): Promise<SandboxProvider> {
+    const s = await this.store.getSession(sessionId);
+    if (!s || !s.user_id) return this.sandbox;
+    const creds = await this.store.getComputeKey(s.user_id);
+    if (!creds) return this.sandbox;
+    if (creds.provider === "e2b") return new E2BProvider(creds.key);
+    if (creds.provider === "daytona") return new DaytonaProvider(creds.key, "");
+    return this.sandbox;
+  }
+
+  // Resolve the sandbox for an EXISTING session (destroy/wake/finish).
+  // sandbox_provider is the string stored at launch, or null for old sessions.
+  private async sandboxForRef(s: any): Promise<SandboxProvider> {
+    const name = s.sandbox_provider;
+    if (name === "e2b" && s.user_id) {
+      const c = await this.store.getComputeKey(s.user_id);
+      if (c) return new E2BProvider(c.key);
+    }
+    if (name === "daytona" && s.user_id) {
+      const c = await this.store.getComputeKey(s.user_id);
+      if (c) return new DaytonaProvider(c.key, "");
+    }
+    return this.sandbox;
   }
 
   private async accrueBilling(sessionId: string, from: SessionState, to: SessionState): Promise<void> {
@@ -65,10 +102,13 @@ export class Orchestrator {
   async launch(sessionId: string): Promise<void> {
     const s = await this.store.getSession(sessionId);
     await this.transition(sessionId, "provisioning");
+    const sandbox = await this.sandboxFor(sessionId);
+    // record which provider this session uses so destroy/wake/finish route correctly
+    await this.store.setSessionSandboxProvider(sessionId, sandboxProviderName(sandbox));
 
     // Secrets never enter machine env — the supervisor fetches them via the
     // sealed-box handshake (guide §2.6, POST /internal/sessions/:id/handshake).
-    const ref = await this.sandbox.create({
+    const ref = await sandbox.create({
       name: `ses-${sessionId.slice(0, 8)}`,
       image: RUNNER_IMAGE,
       env: {
@@ -95,6 +135,7 @@ export class Orchestrator {
       repo_url: s.repo_url,
       branch: s.branch,
       task: s.task,
+      toolsets: s.toolsets ? JSON.parse(s.toolsets) : undefined,
       llm_base_url: provider.base_url,
       llm_api_key: decryptKey(provider.key_ciphertext),
       llm_model: s.model_id,
@@ -142,7 +183,8 @@ export class Orchestrator {
     this.setTimer(sessionId, "suspend", SUSPEND_AFTER_MS(), async () => {
       const s = await this.store.getSession(sessionId);
       if (s?.state !== "awaiting_user" || !s.machine_id) return;
-      await this.sandbox.suspend({ id: s.machine_id, provider: "fly" }).catch(() => {});
+      const sandbox = await this.sandboxForRef(s);
+      await sandbox.suspend({ id: s.machine_id, provider: s.sandbox_provider ?? "fly" }).catch(() => {});
       await this.transition(sessionId, "hibernated");
     });
   }
@@ -153,9 +195,10 @@ export class Orchestrator {
     this.clearTimer(sessionId, "finish");
     const s = await this.store.getSession(sessionId);
     if (s?.state === "hibernated" && s.machine_id) {
-      const ref = { id: s.machine_id, provider: "fly" as const };
-      await this.sandbox.resume(ref);
-      await this.sandbox.waitFor(ref, "started", 30).catch(() => {}); // confirm resumed before handing back (audit L6)
+      const sandbox = await this.sandboxForRef(s);
+      const ref = { id: s.machine_id, provider: s.sandbox_provider ?? "fly" };
+      await sandbox.resume(ref);
+      await sandbox.waitFor(ref, "started", 30).catch(() => {}); // confirm resumed before handing back (audit L6)
       await this.transition(sessionId, "awaiting_user");
     }
   }
@@ -173,13 +216,14 @@ export class Orchestrator {
       if (canTransition(s.state, "cancelled")) await this.transition(sessionId, "cancelled");
       return;
     }
-    const ref = { id: s.machine_id, provider: "fly" as const };
+    const sandbox = await this.sandboxForRef(s);
+    const ref = { id: s.machine_id, provider: s.sandbox_provider ?? "fly" };
     if (s.state === "hibernated") {
-      await this.sandbox.resume(ref);
-      await this.sandbox.waitFor(ref, "started", 30).catch(() => {});
+      await sandbox.resume(ref);
+      await sandbox.waitFor(ref, "started", 30).catch(() => {});
       await this.transition(sessionId, "awaiting_user");
     }
-    await this.sandbox.stop(ref).catch(() => {});
+    await sandbox.stop(ref).catch(() => {});
     this.setTimer(sessionId, "finish", 180_000, () => { void this.kill(sessionId, "finish timed out"); });
   }
 
@@ -247,7 +291,8 @@ export class Orchestrator {
     this.clearBudget(sessionId);
     const s = await this.store.getSession(sessionId);
     if (s?.machine_id) {
-      await this.sandbox.destroy({ id: s.machine_id, provider: "fly" }).catch(() => {});
+      const sandbox = await this.sandboxForRef(s);
+      await sandbox.destroy({ id: s.machine_id, provider: s.sandbox_provider ?? "fly" }).catch(() => {});
     }
   }
 

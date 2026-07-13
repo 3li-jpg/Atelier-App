@@ -32,19 +32,30 @@ export class PgStore {
       create table if not exists users (
         id text primary key, github_id bigint unique, login text, name text,
         avatar_url text, github_token_ciphertext bytea, created_at text,
-        email text, password_hash text);
+        email text, password_hash text, plan text default 'free',
+        compute_provider text, compute_key_ciphertext bytea);
       create table if not exists providers (
         id text primary key, name text, base_url text, dialect text,
-        key_ciphertext bytea, models text, quirks text, created_at text, user_id text);
+        key_ciphertext bytea, models text, quirks text, created_at text,
+        user_id text, headers text);
       create table if not exists sessions (
         id text primary key, repo_url text, branch text, provider_id text,
         model_id text, task text, state text, machine_id text,
         permission_mode text, budgets text, session_token text,
         started_at text, ended_at text, billed_seconds integer default 0,
-        user_id text, last_activity text);
+        user_id text, last_activity text, sandbox_provider text, toolsets text);
       create table if not exists events (
         session_id text, seq integer, type text, payload text, ts text,
         primary key (session_id, seq));
+    `);
+    // existing DBs predate these columns; IF NOT EXISTS keeps it idempotent (Supabase is v15+)
+    await this.sql.unsafe(`
+      alter table users add column if not exists plan text default 'free';
+      alter table users add column if not exists compute_provider text;
+      alter table users add column if not exists compute_key_ciphertext bytea;
+      alter table providers add column if not exists headers text;
+      alter table sessions add column if not exists sandbox_provider text;
+      alter table sessions add column if not exists toolsets text;
     `);
     return this;
   }
@@ -89,10 +100,10 @@ export class PgStore {
     return decryptKey(row.github_token_ciphertext);
   }
 
-  async createProvider(p: { name: string; base_url: string; dialect: string; key_ciphertext: Buffer; models: unknown; quirks?: unknown; user_id?: string }): Promise<string> {
+  async createProvider(p: { name: string; base_url: string; dialect: string; key_ciphertext: Buffer; models: unknown; quirks?: unknown; headers?: Record<string,string>; user_id?: string }): Promise<string> {
     const id = randomUUID();
-    await this.sql`insert into providers (id,name,base_url,dialect,key_ciphertext,models,quirks,created_at,user_id)
-      values (${id},${p.name},${p.base_url},${p.dialect},${p.key_ciphertext},${JSON.stringify(p.models)},${JSON.stringify(p.quirks ?? {})},${utcNow()},${p.user_id ?? null})`;
+    await this.sql`insert into providers (id,name,base_url,dialect,key_ciphertext,models,quirks,headers,created_at,user_id)
+      values (${id},${p.name},${p.base_url},${p.dialect},${p.key_ciphertext},${JSON.stringify(p.models)},${JSON.stringify(p.quirks ?? {})},${JSON.stringify(p.headers ?? {})},${utcNow()},${p.user_id ?? null})`;
     return id;
   }
 
@@ -102,6 +113,46 @@ export class PgStore {
     return { ...row, models: JSON.parse(row.models), quirks: JSON.parse(row.quirks) };
   }
 
+  // postgres.js tagged template can't take dynamic column names on the SET
+  // clause, so build a parameterized string + values array for unsafe(...).
+  async updateProvider(p: { id: string; name?: string; base_url?: string; dialect?: string; models?: unknown; headers?: Record<string,string>; quirks?: unknown; key_ciphertext?: Buffer }): Promise<void> {
+    const fields: string[] = [];
+    const vals: any[] = [];
+    if (p.name !== undefined) { fields.push('name = $' + (vals.length + 1)); vals.push(p.name); }
+    if (p.base_url !== undefined) { fields.push('base_url = $' + (vals.length + 1)); vals.push(p.base_url); }
+    if (p.dialect !== undefined) { fields.push('dialect = $' + (vals.length + 1)); vals.push(p.dialect); }
+    if (p.models !== undefined) { fields.push('models = $' + (vals.length + 1)); vals.push(JSON.stringify(p.models)); }
+    if (p.headers !== undefined) { fields.push('headers = $' + (vals.length + 1)); vals.push(JSON.stringify(p.headers)); }
+    if (p.quirks !== undefined) { fields.push('quirks = $' + (vals.length + 1)); vals.push(JSON.stringify(p.quirks)); }
+    if (p.key_ciphertext !== undefined) { fields.push('key_ciphertext = $' + (vals.length + 1)); vals.push(p.key_ciphertext); }
+    if (!fields.length) return;
+    vals.push(p.id);
+    await this.sql.unsafe('update providers set ' + fields.join(', ') + ' where id = $' + vals.length, vals);
+  }
+
+  async deleteProvider(id: string): Promise<void> {
+    await this.sql`delete from providers where id = ${id}`;
+  }
+
+  async getAccount(userId: string): Promise<any> {
+    const [row] = await this.sql`select u.*, (select count(*) from sessions where user_id = u.id) as session_count, (select coalesce(sum(billed_seconds),0) from sessions where user_id = u.id) as billed_seconds from users u where u.id = ${userId}`;
+    return row ?? null;
+  }
+
+  async setCompute(userId: string, provider: string, keyCiphertext: Buffer): Promise<void> {
+    await this.sql`update users set compute_provider = ${provider}, compute_key_ciphertext = ${keyCiphertext} where id = ${userId}`;
+  }
+
+  async clearCompute(userId: string): Promise<void> {
+    await this.sql`update users set compute_provider = null, compute_key_ciphertext = null where id = ${userId}`;
+  }
+
+  async getComputeKey(userId: string): Promise<{ provider: string; key: string } | null> {
+    const [row] = await this.sql`select compute_provider, compute_key_ciphertext from users where id = ${userId}`;
+    if (!row?.compute_key_ciphertext) return null;
+    return { provider: row.compute_provider, key: decryptKey(row.compute_key_ciphertext) };
+  }
+
   async listProviders(userId?: string): Promise<any[]> {
     const rows = userId
       ? await this.sql`select id,name,base_url,dialect,models,created_at from providers where user_id = ${userId} order by created_at desc`
@@ -109,10 +160,10 @@ export class PgStore {
     return rows.map((r: any) => ({ ...r, models: JSON.parse(r.models) }));
   }
 
-  async createSession(s: { repo_url: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string }): Promise<string> {
+  async createSession(s: { repo_url: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string; toolsets?: string[] | null; sandbox_provider?: string | null }): Promise<string> {
     const id = randomUUID();
-    await this.sql`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,started_at,user_id)
-      values (${id},${s.repo_url},${s.branch},${s.provider_id},${s.model_id},${s.task},'created',${s.permission_mode},${JSON.stringify(s.budgets)},${s.session_token},${utcNow()},${s.user_id ?? null})`;
+    await this.sql`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,toolsets,sandbox_provider,started_at,user_id)
+      values (${id},${s.repo_url},${s.branch},${s.provider_id},${s.model_id},${s.task},'created',${s.permission_mode},${JSON.stringify(s.budgets)},${s.session_token},${JSON.stringify(s.toolsets ?? null)},${s.sandbox_provider ?? null},${utcNow()},${s.user_id ?? null})`;
     return id;
   }
 
@@ -123,8 +174,8 @@ export class PgStore {
 
   async listSessions(userId?: string): Promise<any[]> {
     return userId
-      ? await this.sql`select id,repo_url,branch,model_id,task,state,started_at,ended_at from sessions where user_id = ${userId} order by started_at desc`
-      : await this.sql`select id,repo_url,branch,model_id,task,state,started_at,ended_at from sessions order by started_at desc`;
+      ? await this.sql`select id,repo_url,branch,model_id,task,state,sandbox_provider,started_at,ended_at from sessions where user_id = ${userId} order by started_at desc`
+      : await this.sql`select id,repo_url,branch,model_id,task,state,sandbox_provider,started_at,ended_at from sessions order by started_at desc`;
   }
 
   async setSessionState(id: string, state: SessionState, machineId?: string): Promise<void> {
@@ -136,6 +187,10 @@ export class PgStore {
     if (["completed", "failed", "cancelled"].includes(state)) {
       await this.sql`update sessions set ended_at = ${utcNow()} where id = ${id}`;
     }
+  }
+
+  async setSessionSandboxProvider(id: string, provider: string): Promise<void> {
+    await this.sql`update sessions set sandbox_provider = ${provider} where id = ${id}`;
   }
 
   async touchActivity(id: string): Promise<void> {

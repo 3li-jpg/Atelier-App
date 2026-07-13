@@ -19,9 +19,7 @@ const {
   HERMES_KEY = "",
 } = process.env;
 
-for (const [k, v] of [["TASK", TASK], ["HERMES_KEY", HERMES_KEY]]) {
-  if (!v) { console.error(`hermes-bridge: ${k} is required`); process.exit(1); }
-}
+if (!HERMES_KEY) { console.error("hermes-bridge: HERMES_KEY is required"); process.exit(1); }
 
 const BASE = `http://127.0.0.1:${HERMES_PORT}`;
 const AUTH_HEADERS = {
@@ -230,24 +228,35 @@ async function sendFollowUp(text, state, currentRunRef) {
 async function main() {
   log("waiting for Hermes health");
   await waitForHealth();
-  log("healthy; starting run");
-  const runId = await startRun();
-  log(`run ${runId}; streaming events`);
   await emit("state_change", { state: "running" });
 
   const state = { pendingRequests: [] };
-  const currentRunRef = { runId };
+  const currentRunRef = { runId: null };
+
+  // Chat mode: empty TASK → no initial run; the first user reply starts it.
+  const chatMode = !TASK;
+  if (!chatMode) {
+    const runId = await startRun();
+    log(`run ${runId}; streaming events`);
+    currentRunRef.runId = runId;
+  } else {
+    log("chat mode: no initial task; waiting for first reply");
+  }
 
   const pollPromise = pollReplies(state, currentRunRef);
   try {
-    // Loop to handle follow-up runs: when a steering message creates a new
-    // run, we switch SSE consumption to the new run_id and keep going.
     while (true) {
+      // Wait until a run exists (chat mode: first reply starts it).
+      while (!currentRunRef.runId) await sleep(500);
       state.followUpRequested = false;
       await consumeSSE(currentRunRef.runId, state);
-      // If a follow-up was requested during consumption, loop and consume the new run.
       if (state.followUpRequested) {
         log(`switching to follow-up run: ${currentRunRef.runId}`);
+        continue;
+      }
+      if (chatMode) {
+        // Run finished; stay alive for the next reply.
+        currentRunRef.runId = null;
         continue;
       }
       break;

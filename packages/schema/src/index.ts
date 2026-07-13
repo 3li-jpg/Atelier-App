@@ -56,12 +56,17 @@ export const ProviderConfig = z.object({
 });
 export type ProviderConfig = z.infer<typeof ProviderConfig>;
 
+export const TOOLSETS = ["terminal","file","code_execution","web","search","browser","skills","memory","todo","clarify","delegation","cronjob","vision"] as const;
+export type Toolset = typeof TOOLSETS[number];
+export const ToolsetList = z.array(z.enum(TOOLSETS));
+
 export const CreateSession = z.object({
   repo_url: z.string().url(),
   branch: z.string().default("main"),
   provider_id: z.string(),
   model_id: z.string(),
-  task: z.string().min(1),
+  task: z.string().default(""),
+  toolsets: z.array(z.enum(TOOLSETS)).optional(),
   permission_mode: z.enum(["auto", "review", "plan"]).default("auto"),
   budgets: z.object({
     max_wall_clock_s: z.number().int().default(1800),

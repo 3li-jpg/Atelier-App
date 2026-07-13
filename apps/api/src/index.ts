@@ -4,7 +4,8 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { streamSSE } from "hono/streaming";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { Event, ProviderConfig, CreateSession } from "@atelier/schema";
+import { Event, ProviderConfig, CreateSession, Dialect } from "@atelier/schema";
+import { z } from "zod";
 import { FlyMachinesProvider, LocalSandboxProvider, DaytonaProvider, E2BProvider, type SandboxProvider } from "@atelier/sandbox";
 import { Store, bus } from "./store.ts";
 import { PgStore, type AnyStore } from "./pg-store.ts";
@@ -44,7 +45,7 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
   // Only API data paths are guarded — /auth/*, /internal/* (supervisor
   // bearer), /health, and the static SPA bundle stay reachable so the
   // login page can load at all.
-  const GUARDED = /^\/(sessions|providers|repos)(\/|$)/;
+  const GUARDED = /^\/(sessions|providers|repos|account)(\/|$)/;
   app.use("*", async (c, next) => {
     if (!GUARDED.test(c.req.path)) return next();
 
@@ -237,9 +238,62 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     return c.json(result, result.ok ? 200 : 422);
   });
 
+  app.patch("/providers/:id", async (c) => {
+    const uid = uidOf(c);
+    const existing = await store.getProvider(c.req.param("id"));
+    if (!existing) return c.json({ error: "not found" }, 404);
+    if (uid !== undefined && existing.user_id && existing.user_id !== uid) {
+      return c.json({ error: "not found" }, 404); // don't leak cross-user existence
+    }
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "invalid json" }, 400);
+    // Validate each present field with the same zod shapes as create.
+    const patch: Record<string, unknown> = {};
+    if (body.name !== undefined) {
+      const v = z.string().min(1).safeParse(body.name); if (!v.success) return c.json({ error: "invalid name" }, 400); patch.name = v.data;
+    }
+    if (body.base_url !== undefined) {
+      const v = z.string().url().safeParse(body.base_url); if (!v.success) return c.json({ error: "invalid base_url" }, 400); patch.base_url = v.data;
+    }
+    if (body.dialect !== undefined) {
+      const v = Dialect.safeParse(body.dialect); if (!v.success) return c.json({ error: "invalid dialect" }, 400); patch.dialect = v.data;
+    }
+    if (body.models !== undefined) {
+      // full replace — same shape as create
+      const v = z.array(z.object({ id: z.string(), role: z.enum(["coder","utility"]), context: z.number().int().positive().optional(), tool_calls: z.boolean().default(true) })).min(1).safeParse(body.models);
+      if (!v.success) return c.json({ error: "invalid models" }, 400); patch.models = v.data;
+    }
+    if (body.headers !== undefined) {
+      const v = z.record(z.string()).safeParse(body.headers); if (!v.success) return c.json({ error: "invalid headers" }, 400); patch.headers = v.data;
+    }
+    if (body.quirks !== undefined) {
+      const v = z.record(z.unknown()).safeParse(body.quirks); if (!v.success) return c.json({ error: "invalid quirks" }, 400); patch.quirks = v.data;
+    }
+    if (body.api_key !== undefined) {
+      if (typeof body.api_key !== "string" || !body.api_key) return c.json({ error: "invalid api_key" }, 400);
+      patch.key_ciphertext = encryptKey(body.api_key);
+    }
+    if (Object.keys(patch).length === 0) return c.json({ error: "no fields to update" }, 400);
+    await store.updateProvider({ id: c.req.param("id"), ...patch });
+    return c.json({ ok: true });
+  });
+
+  app.delete("/providers/:id", async (c) => {
+    const uid = uidOf(c);
+    const existing = await store.getProvider(c.req.param("id"));
+    if (!existing) return c.json({ error: "not found" }, 404);
+    if (uid !== undefined && existing.user_id && existing.user_id !== uid) {
+      return c.json({ error: "not found" }, 404);
+    }
+    await store.deleteProvider(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
   // ---- Sessions (FR-3.x) ----
   app.post("/sessions", async (c) => {
-    const req = CreateSession.parse(await c.req.json());
+    const parsed = CreateSession.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: "invalid session", issues: parsed.error.issues }, 400);
+    const req = parsed.data;
     const provider = await store.getProvider(req.provider_id);
     if (!provider) return c.json({ error: "unknown provider" }, 404);
     const uid = uidOf(c);
@@ -332,6 +386,41 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
         await stream.writeSSE({ event: "ping", data: "" }).catch(() => { open = false; });
       }
     });
+  });
+
+  // ---- Account ----
+  app.get("/account", async (c) => {
+    const uid = uidOf(c);
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    const row = await store.getAccount(uid);
+    if (!row) return c.json({ error: "not found" }, 404);
+    const githubConnected = Boolean(row.github_token_ciphertext);
+    return c.json({
+      user: {
+        id: row.id, login: row.login, name: row.name, avatar_url: row.avatar_url,
+        github_connected: githubConnected,
+      },
+      plan: { id: row.plan ?? "free", name: "Free", byok: true, compute: "byoc" },
+      usage: { sessions: row.session_count ?? 0, billed_seconds: row.billed_seconds ?? 0 },
+      compute: { byoc_provider: row.compute_provider ?? null },
+    });
+  });
+
+  app.put("/account/compute", async (c) => {
+    const uid = uidOf(c);
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    const body = await c.req.json().catch(() => null) as { provider?: string; api_key?: string } | null;
+    if (!body || !body.provider || !body.api_key) return c.json({ error: "provider and api_key required" }, 400);
+    if (body.provider !== "e2b" && body.provider !== "daytona") return c.json({ error: "unsupported compute provider" }, 400);
+    await store.setCompute(uid, body.provider, encryptKey(body.api_key));
+    return c.json({ ok: true });
+  });
+
+  app.delete("/account/compute", async (c) => {
+    const uid = uidOf(c);
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    await store.clearCompute(uid);
+    return c.json({ ok: true });
   });
 
   // ---- Internal: supervisor endpoints (guide §2.5–2.6) ----

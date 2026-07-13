@@ -39,6 +39,12 @@ export class Store {
     safeAlter(this.db, "alter table sessions add column last_activity text");
     safeAlter(this.db, "alter table users add column email text");
     safeAlter(this.db, "alter table users add column password_hash text");
+    safeAlter(this.db, "alter table users add column plan text default 'free'");
+    safeAlter(this.db, "alter table users add column compute_provider text");
+    safeAlter(this.db, "alter table users add column compute_key_ciphertext blob");
+    safeAlter(this.db, "alter table sessions add column sandbox_provider text");
+    safeAlter(this.db, "alter table sessions add column toolsets text");
+    safeAlter(this.db, "alter table providers add column headers text");
   }
 
   upsertUser(githubId: number, login: string, name: string | null, avatarUrl: string | null): string {
@@ -81,12 +87,51 @@ export class Store {
     return decryptKey(row.github_token_ciphertext);
   }
 
-  createProvider(p: { name: string; base_url: string; dialect: string; key_ciphertext: Buffer; models: unknown; quirks?: unknown; user_id?: string }) {
+  createProvider(p: { name: string; base_url: string; dialect: string; key_ciphertext: Buffer; models: unknown; quirks?: unknown; headers?: Record<string,string>; user_id?: string }) {
     const id = randomUUID();
-    this.db.prepare(`insert into providers (id,name,base_url,dialect,key_ciphertext,models,quirks,created_at,user_id)
-      values (?,?,?,?,?,?,?,datetime('now'),?)`)
-      .run(id, p.name, p.base_url, p.dialect, p.key_ciphertext, JSON.stringify(p.models), JSON.stringify(p.quirks ?? {}), p.user_id ?? null);
+    this.db.prepare(`insert into providers (id,name,base_url,dialect,key_ciphertext,models,quirks,headers,created_at,user_id)
+      values (?,?,?,?,?,?,?,?,datetime('now'),?)`)
+      .run(id, p.name, p.base_url, p.dialect, p.key_ciphertext, JSON.stringify(p.models), JSON.stringify(p.quirks ?? {}), JSON.stringify(p.headers ?? {}), p.user_id ?? null);
     return id;
+  }
+
+  updateProvider(p: { id: string; name?: string; base_url?: string; dialect?: string; models?: unknown; headers?: Record<string,string>; quirks?: unknown; key_ciphertext?: Buffer }): void {
+    const fields: string[] = [];
+    const params: unknown[] = [];
+    if (p.name !== undefined) { fields.push("name = ?"); params.push(p.name); }
+    if (p.base_url !== undefined) { fields.push("base_url = ?"); params.push(p.base_url); }
+    if (p.dialect !== undefined) { fields.push("dialect = ?"); params.push(p.dialect); }
+    if (p.models !== undefined) { fields.push("models = ?"); params.push(JSON.stringify(p.models)); }
+    if (p.headers !== undefined) { fields.push("headers = ?"); params.push(JSON.stringify(p.headers)); }
+    if (p.quirks !== undefined) { fields.push("quirks = ?"); params.push(JSON.stringify(p.quirks)); }
+    if (p.key_ciphertext !== undefined) { fields.push("key_ciphertext = ?"); params.push(p.key_ciphertext); }
+    if (!fields.length) return;
+    params.push(p.id);
+    this.db.prepare(`update providers set ${fields.join(", ")} where id = ?`).run(...params);
+  }
+
+  deleteProvider(id: string): void {
+    this.db.prepare("delete from providers where id = ?").run(id);
+  }
+
+  getAccount(userId: string): any {
+    return this.db.prepare(`select u.*, (select count(*) from sessions where user_id = u.id) as session_count,
+      (select coalesce(sum(billed_seconds),0) from sessions where user_id = u.id) as billed_seconds
+      from users u where u.id = ?`).get(userId) ?? null;
+  }
+
+  setCompute(userId: string, provider: string, keyCiphertext: Buffer): void {
+    this.db.prepare("update users set compute_provider = ?, compute_key_ciphertext = ? where id = ?").run(provider, keyCiphertext, userId);
+  }
+
+  clearCompute(userId: string): void {
+    this.db.prepare("update users set compute_provider = null, compute_key_ciphertext = null where id = ?").run(userId);
+  }
+
+  getComputeKey(userId: string): { provider: string; key: string } | null {
+    const row: any = this.db.prepare("select compute_provider, compute_key_ciphertext from users where id = ?").get(userId);
+    if (!row || !row.compute_key_ciphertext) return null;
+    return { provider: row.compute_provider, key: decryptKey(row.compute_key_ciphertext) };
   }
 
   getProvider(id: string): any {
@@ -103,11 +148,11 @@ export class Store {
     return rows.map((r: any) => ({ ...r, models: JSON.parse(r.models) }));
   }
 
-  createSession(s: { repo_url: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string }) {
+  createSession(s: { repo_url: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string; toolsets?: string[] | null; sandbox_provider?: string | null }) {
     const id = randomUUID();
-    this.db.prepare(`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,started_at,user_id)
-      values (?,?,?,?,?,?,'created',?,?,?,datetime('now'),?)`)
-      .run(id, s.repo_url, s.branch, s.provider_id, s.model_id, s.task, s.permission_mode, JSON.stringify(s.budgets), s.session_token, s.user_id ?? null);
+    this.db.prepare(`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,toolsets,sandbox_provider,started_at,user_id)
+      values (?,?,?,?,?,?,'created',?,?,?,?,?,datetime('now'),?)`)
+      .run(id, s.repo_url, s.branch, s.provider_id, s.model_id, s.task, s.permission_mode, JSON.stringify(s.budgets), s.session_token, JSON.stringify(s.toolsets ?? null), s.sandbox_provider ?? null, s.user_id ?? null);
     return id;
   }
 
@@ -117,8 +162,8 @@ export class Store {
 
   listSessions(userId?: string): any[] {
     const rows = userId
-      ? this.db.prepare("select id,repo_url,branch,model_id,task,state,started_at,ended_at from sessions where user_id = ? order by started_at desc").all(userId)
-      : this.db.prepare("select id,repo_url,branch,model_id,task,state,started_at,ended_at from sessions order by started_at desc").all();
+      ? this.db.prepare("select id,repo_url,branch,model_id,task,state,sandbox_provider,started_at,ended_at from sessions where user_id = ? order by started_at desc").all(userId)
+      : this.db.prepare("select id,repo_url,branch,model_id,task,state,sandbox_provider,started_at,ended_at from sessions order by started_at desc").all();
     return rows;
   }
 
@@ -131,6 +176,10 @@ export class Store {
     if (["completed", "failed", "cancelled"].includes(state)) {
       this.db.prepare("update sessions set ended_at = datetime('now') where id = ?").run(id);
     }
+  }
+
+  setSessionSandboxProvider(id: string, provider: string): void {
+    this.db.prepare("update sessions set sandbox_provider = ? where id = ?").run(provider, id);
   }
 
   touchActivity(id: string) {

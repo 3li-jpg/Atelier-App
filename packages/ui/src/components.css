@@ -17,36 +17,60 @@
   border: 1px solid transparent;
   transition: background var(--duration-fast) var(--ease-out),
               border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out),
+              transform var(--duration-press) var(--ease-out),
               opacity var(--duration-fast) var(--ease-out);
   white-space: nowrap;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .atelier-btn:disabled { opacity: 0.5; cursor: default; }
+/* Press: physical push (brief §Motion: scale 0.98 @ 100ms). Keyboard-only ring. */
+.atelier-btn:active:not(:disabled) { transform: scale(0.98); }
+.atelier-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 .atelier-btn-sm { font-size: var(--text-sm); padding: var(--space-1) var(--space-3); }
 .atelier-btn-md { font-size: var(--text-base); padding: var(--space-2) var(--space-4); }
 .atelier-btn-lg { font-size: var(--text-lg); padding: var(--space-3) var(--space-6); }
 
+/* Primary: violet filled — one per view. Inner seam + tinted glow for depth. */
 .atelier-btn-primary {
   background: var(--accent);
   color: var(--accent-fg);
   border-color: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18),
+              0 6px 20px -8px rgba(175, 80, 255, 0.5);
 }
-.atelier-btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.atelier-btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  transform: translateY(-1px);
+}
+.atelier-btn-primary:active:not(:disabled) { transform: scale(0.98) translateY(0); }
 
+/* Secondary: glass ghost over the canvas. */
 .atelier-btn-secondary {
-  background: var(--panel-2);
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
   color: var(--text);
-  border-color: var(--border);
+  border-color: var(--glass-border);
 }
-.atelier-btn-secondary:hover:not(:disabled) { background: var(--panel); border-color: var(--border-strong); }
+.atelier-btn-secondary:hover:not(:disabled) {
+  background: var(--glass);
+  border-color: var(--glass-border-strong);
+  transform: translateY(-1px);
+}
 
 .atelier-btn-ghost {
   background: transparent;
   color: var(--text-muted);
   border-color: transparent;
 }
-.atelier-btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--panel); }
+.atelier-btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--glass-thin); }
 
 .atelier-btn-danger {
   background: var(--bad);
@@ -61,10 +85,12 @@
   flex-direction: column;
   gap: var(--space-1);
 }
+/* Brief: 12px muted labels, 6px above the field. */
 .atelier-input-label {
-  font-size: var(--text-sm);
+  font-size: var(--text-label);
   color: var(--text-muted);
   font-weight: 500;
+  letter-spacing: 0.01em;
 }
 .atelier-input-field {
   position: relative;
@@ -83,15 +109,18 @@
 
 .atelier-input {
   width: 100%;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   color: var(--text);
   padding: var(--space-2) var(--space-3);
   font-family: var(--font-sans);
   font-size: var(--text-base);
   transition: border-color var(--duration-fast) var(--ease-out),
-              box-shadow var(--duration-fast) var(--ease-out);
+              box-shadow var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
 }
 .atelier-input:focus {
   outline: none;
@@ -107,19 +136,29 @@
 
 /* ---- Card ---- */
 .atelier-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  /* ponytail: inner seam + tinted shadow simulate the glass refraction edge
+     from the brief without a second element. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06),
+              0 8px 30px -12px rgba(0, 0, 0, 0.6);
   border-radius: var(--radius-lg);
   padding: var(--space-6);
 }
 .atelier-card-default { /* default styles above */ }
 .atelier-card-elevated {
-  border-color: var(--border-strong);
-  background: var(--panel-2);
+  border-color: var(--glass-border-strong);
+  background: var(--glass-thick);
+  backdrop-filter: var(--glass-thick-blur);
+  -webkit-backdrop-filter: var(--glass-thick-blur);
 }
 .atelier-card-accent {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--glass-accent-border);
+  background: var(--glass-accent);
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
 }
 .atelier-card-header {
   margin-bottom: var(--space-4);
@@ -134,7 +173,9 @@
   gap: var(--space-2);
 }
 
-/* ---- Badge ---- */
+/* ---- Badge ----
+   Brief §Components: status chips = tinted glass (tone at ~15% bg, 40% border).
+   Each tonal badge sits on a translucent tint of its own color. */
 .atelier-badge {
   display: inline-flex;
   align-items: center;
@@ -142,34 +183,44 @@
   font-weight: 600;
   border-radius: var(--radius-sm);
   padding: 0 var(--space-1);
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: var(--tracking-xs);
   line-height: 1.6;
 }
-.atelier-badge-default { color: var(--text-muted); border-color: var(--border); }
-.atelier-badge-ok { color: var(--ok); border-color: var(--ok); }
-.atelier-badge-warn { color: var(--warn); border-color: var(--warn); }
-.atelier-badge-bad { color: var(--bad); border-color: var(--bad); }
-.atelier-badge-accent { color: var(--accent); border-color: var(--accent); }
-.atelier-badge-idle { color: var(--text-muted); border-color: var(--border); }
+.atelier-badge-default { color: var(--text-muted); border-color: var(--glass-border); background: var(--glass-thin); }
+.atelier-badge-ok { color: var(--ok); border-color: rgba(74, 222, 128, 0.4); background: rgba(74, 222, 128, 0.15); }
+.atelier-badge-warn { color: var(--warn); border-color: rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.15); }
+.atelier-badge-bad { color: var(--bad); border-color: rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.15); }
+.atelier-badge-accent { color: var(--accent); border-color: var(--glass-accent-border); background: var(--glass-accent); }
+.atelier-badge-idle { color: var(--text-muted); border-color: var(--glass-border); background: var(--glass-thin); }
 
-/* ---- Skeleton ---- */
+/* ---- Skeleton ----
+   Subtle shimmer over glass. Reduced-motion safe: the global reduce rule
+   kills the animation; here we also pin a static fill so a frozen frame
+   never lands mid-sweep. */
 .atelier-skeleton {
   display: block;
   background: linear-gradient(
     90deg,
-    var(--panel) 0%,
-    var(--panel-2) 50%,
-    var(--panel) 100%
+    var(--glass-thin) 0%,
+    var(--glass) 50%,
+    var(--glass-thin) 100%
   );
   background-size: 200% 100%;
-  animation: atelier-shimmer 1.5s infinite linear;
+  animation: atelier-shimmer 1.6s infinite linear;
+  border-radius: var(--radius-sm);
 }
 @keyframes atelier-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .atelier-skeleton {
+    animation: none;
+    background: var(--glass-thin);
+  }
 }
 
 /* ---- Spinner ---- */
@@ -230,13 +281,16 @@
   min-width: 240px;
   max-width: 400px;
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--panel-solid);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-thick);
+  backdrop-filter: var(--glass-thick-blur);
+  -webkit-backdrop-filter: var(--glass-thick-blur);
   color: var(--text);
   font-size: var(--text-sm);
   font-family: var(--font-sans);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08),
+              0 12px 36px -10px rgba(0, 0, 0, 0.6);
   animation: atelier-toast-in var(--duration-normal) var(--ease-out);
 }
 .atelier-toast-success { border-color: var(--ok); }

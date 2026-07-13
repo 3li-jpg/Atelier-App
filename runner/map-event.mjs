@@ -52,11 +52,26 @@ export function mapEvent(data, state) {
         payload: { prompt, options: [], request_id: "clarify", kind: "question" },
       };
     }
+    // Todo toolset — surface as a dedicated todo event (items are not on the
+    // wire; the callback drops args, only tool+preview arrive).
+    if (data.tool === "todo") {
+      return { type: "todo", payload: { status: "started", preview: data.preview || "" } };
+    }
+    // Delegation/subagent lifecycle — delegate_task surfaces as a tool event.
+    if (data.tool === "delegate_task") {
+      return { type: "subagent", payload: { status: "started", goal: data.preview || "" } };
+    }
     // Default tool started.
     return { type: "tool_call", payload: { tool: data.tool, status: "running" } };
   }
 
   if (evt === "tool.completed") {
+    if (data.tool === "todo") {
+      return { type: "todo", payload: { status: data.error ? "failed" : "completed" } };
+    }
+    if (data.tool === "delegate_task") {
+      return { type: "subagent", payload: { status: data.error ? "failed" : "completed" } };
+    }
     return {
       type: "tool_call",
       payload: {

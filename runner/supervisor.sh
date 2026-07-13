@@ -19,9 +19,11 @@ if [[ -n "${HANDSHAKE_URL:-}" ]]; then
   LLM_API_KEY=$(jq -r .llm_api_key <<<"$CONFIG_JSON")
   LLM_MODEL=$(jq -r .llm_model <<<"$CONFIG_JSON")
   GIT_TOKEN=$(jq -r .git_token <<<"$CONFIG_JSON")
+  TOOLSETS_HS=$(jq -r '(.toolsets // []) | map(select(type=="string")) | join(",")' <<<"$CONFIG_JSON")
+  [[ -n "$TOOLSETS_HS" ]] && TOOLSETS="$TOOLSETS_HS"
   unset CONFIG_JSON
 fi
-: "${REPO_URL:?}" "${TASK:?}"
+: "${REPO_URL:?}"
 : "${LLM_BASE_URL:?}" "${LLM_API_KEY:?}" "${LLM_MODEL:?}"
 BRANCH="${BRANCH:-main}"
 GIT_TOKEN="${GIT_TOKEN:-}"   # empty for public repos (local/dev); push is skipped
@@ -36,6 +38,22 @@ emit() { # emit <type> <json-payload> — stdout always, control plane if config
       -d "[$line]" >/dev/null || true   # never let telemetry kill the session
   fi
 }
+
+# Toolsets: handshake .toolsets > env TOOLSETS > default. Validate against a
+# whitelist; drop unknown names, never fail the boot over a toolset.
+TOOLSETS_WHITELIST="terminal file code_execution web search browser skills memory todo clarify delegation cronjob vision"
+DEFAULT_TOOLSETS="terminal,file,code_execution,web,skills,memory,todo,clarify"
+RAW_TOOLSETS="${TOOLSETS:-$DEFAULT_TOOLSETS}"
+VALID_TOOLSETS=""
+for t in ${RAW_TOOLSETS//,/ }; do
+  [[ -z "$t" ]] && continue
+  if [[ " $TOOLSETS_WHITELIST " == *" $t "* ]]; then
+    VALID_TOOLSETS="${VALID_TOOLSETS:+$VALID_TOOLSETS,}$t"
+  else
+    emit error "{\"message\":\"dropping unknown toolset: $t\"}" 2>/dev/null || true
+  fi
+done
+[[ -z "$VALID_TOOLSETS" ]] && VALID_TOOLSETS="$DEFAULT_TOOLSETS"
 
 # ponytail: surface any crash (clone failure, hermes error, etc.) as a failed
 # state so the session doesn't hang in a transient state.
@@ -79,6 +97,10 @@ else
   mkdir -p "$HERMES_CFG"
 fi
 # Write Hermes config.yaml for the BYOK endpoint
+TOOLSETS_YAML=""
+for t in ${VALID_TOOLSETS//,/ }; do
+  TOOLSETS_YAML+="    - $t"$'\n'
+done
 cat > "$HERMES_CFG/config.yaml" <<EOF
 model:
   default: $LLM_MODEL
@@ -87,13 +109,7 @@ model:
   api_key: $LLM_API_KEY
 platform_toolsets:
   api_server:
-    - terminal
-    - file
-    - code_execution
-    - web
-    - skills
-    - memory
-    - todo
+$TOOLSETS_YAML
 agent:
   max_turns: 100
 terminal:
