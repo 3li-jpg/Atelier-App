@@ -21,6 +21,7 @@ if [[ -n "${HANDSHAKE_URL:-}" ]]; then
   GIT_TOKEN=$(jq -r .git_token <<<"$CONFIG_JSON")
   TOOLSETS_HS=$(jq -r '(.toolsets // []) | map(select(type=="string")) | join(",")' <<<"$CONFIG_JSON")
   [[ -n "$TOOLSETS_HS" ]] && TOOLSETS="$TOOLSETS_HS"
+  PERMISSION_MODE=$(jq -r '.permission_mode // "auto"' <<<"$CONFIG_JSON")
   unset CONFIG_JSON
 fi
 : "${LLM_BASE_URL:?}" "${LLM_API_KEY:?}" "${LLM_MODEL:?}"
@@ -142,6 +143,25 @@ fi
 # ponytail: the canonical opencode model id is "providerID/modelID" (e.g.
 # "umans-ai/umans-glm-5.2"); the bridge splits on the first "/" to build the
 # {providerID, modelID} object the /message API requires.
+# Permission policy fragment for opencode.json (landing: "flip on autopilot").
+# - auto: omit the permission block → opencode allows all tools (autopilot).
+# - review: every mutating tool asks → opencode pauses, the bridge surfaces a
+#   permission question, the user approves/denies via the chip in ChatThread.
+# - plan: same ask-policy as review, but the task is prefixed to plan-only.
+# Tools mapped to "ask": the file-editing + shell set from opencode-map FILE_TOOLS
+# plus bash (terminal). Read-only tools (search, list) stay auto.
+PERMISSION_MODE="${PERMISSION_MODE:-auto}"
+if [[ "$PERMISSION_MODE" == "review" || "$PERMISSION_MODE" == "plan" ]]; then
+  ASK_TOOLS='{"edit":"ask","write":"ask","str_replace":"ask","create":"write","multi_edit":"ask","bash":"ask"}'
+  PERMISSION_JSON=",\"permission\":${ASK_TOOLS}"
+  if [[ "$PERMISSION_MODE" == "plan" ]]; then
+    # plan = review + instruct the agent to only plan, not modify files yet.
+    TASK="Plan only — do not edit, write, or run shell commands that mutate the repo. Produce a step-by-step plan and stop. Once the user approves the plan, they will switch you to auto mode. Task: ${TASK}"
+  fi
+else
+  PERMISSION_JSON=""
+fi
+
 REAL_OPCODE_DATA="${ATELIER_REAL_HOME:-$HOME}/.local/share/opencode"
 if [[ -n "${SKIP_FIREWALL:-}" && -d "$REAL_OPCODE_DATA" ]]; then
   # Local dev: reuse the operator's authenticated providers. Link ONLY
@@ -150,6 +170,14 @@ if [[ -n "${SKIP_FIREWALL:-}" && -d "$REAL_OPCODE_DATA" ]]; then
   # DB; the credential file is the only thing reused.
   mkdir -p "$HOME/.local/share/opencode"
   [[ -f "$REAL_OPCODE_DATA/auth.json" ]] && ln -sfn "$REAL_OPCODE_DATA/auth.json" "$HOME/.local/share/opencode/auth.json"
+  # Local mode reuses the operator's providers (no provider block needed), but
+  # still needs the permission policy for review/plan modes. Write a minimal
+  # opencode.json carrying only the permission block (empty in auto mode).
+  if [[ -n "$PERMISSION_JSON" ]]; then
+    echo "{\"permission\":${ASK_TOOLS}}" > "$OPENCODE_CFG/opencode.json"
+  else
+    echo '{}' > "$OPENCODE_CFG/opencode.json"
+  fi
   # Normalize the model id to "providerID/modelID". LLM_MODEL may already carry
   # the provider prefix; if not, OPENCODE_PROVIDER_ID supplies it (default umans-ai).
   if [[ "$LLM_MODEL" == */* ]]; then
@@ -174,7 +202,7 @@ else
         "${LLM_MODEL}": {}
       }
     }
-  }
+  }${PERMISSION_JSON}
 }
 EOF
   export OPENCODE_PROVIDER_ATELIER_API_KEY="$LLM_API_KEY"

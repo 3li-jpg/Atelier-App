@@ -133,6 +133,24 @@ export function mapOpenCodeEvent(ev, state) {
     return { type: "state_change", payload: { state: "awaiting_user" } };
   }
 
+  // ---- permission request: a tool set to "ask" is waiting for approval ----
+  // (review/plan modes). Surface as a question with kind:"permission" so the
+  // ChatThread approve chip fires; record it so pollReplies can resolve it.
+  if (type === "permission.asked") {
+    const id = p.id ?? p.request_id ?? "";
+    const perm = p.permission ?? "";
+    state.pendingRequests.push({ id, kind: "permission", permission: perm });
+    return {
+      type: "question",
+      payload: {
+        prompt: `Allow ${perm || "tool"}?`,
+        options: ["approve", "deny"],
+        request_id: id,
+        kind: "permission",
+      },
+    };
+  }
+
   // ---- file diff summary ----
   if (type === "session.diff") {
     const diff = p.diff;

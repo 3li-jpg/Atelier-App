@@ -109,6 +109,12 @@ export const api = {
   createSession: (input: CreateSessionReq) =>
     req<{ id: string; state: string }>("/sessions", { method: "POST", body: JSON.stringify(input) }),
   getSession: (id: string) => req<SessionDetail>(`/sessions/${encodeURIComponent(id)}`),
+  // Live autonomy toggle — "flip on autopilot". Persists + emits an event so the
+  // topbar reflects the new mode over SSE; the runner applies it next handshake.
+  updateSession: (id: string, patch: { permission_mode: "auto" | "review" | "plan" }) =>
+    req<{ ok: boolean; permission_mode: string }>(`/sessions/${encodeURIComponent(id)}`, {
+      method: "PATCH", body: JSON.stringify(patch),
+    }),
   cancelSession: (id: string) =>
     req<{ ok: boolean }>(`/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
   finishSession: (id: string) =>

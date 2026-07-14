@@ -168,6 +168,7 @@ export class Orchestrator {
       llm_api_key: apiKey,
       llm_model: s.model_id,
       git_token: (await this.store.getUserToken(s.user_id)) ?? process.env.GIT_TOKEN ?? "",
+      permission_mode: s.permission_mode ?? "auto",
     });
   }
 

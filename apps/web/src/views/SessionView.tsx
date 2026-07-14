@@ -200,6 +200,17 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
     );
   };
 
+  // Live autonomy toggle (landing: "flip on autopilot"). Persists + emits an
+  // event; the runner applies the new permission policy on next handshake.
+  const setMode = (mode: "auto" | "review" | "plan") => {
+    if (!session || session.permission_mode === mode) return;
+    setSession({ ...session, permission_mode: mode }); // optimistic
+    api.updateSession(id, { permission_mode: mode }).catch((e) => {
+      toast.push(humanizeToast(e), "error");
+      api.getSession(id).then(setSession).catch(() => {}); // revert on failure
+    });
+  };
+
   // ── Build file map from file_diff events ──
   // Paths are humanized (repo-relative) and agent scratch files outside the
   // repo are dropped — old sessions recorded raw sandbox paths before the
@@ -300,6 +311,25 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
             role="status"
             aria-label={live ? "Stream live" : "Stream reconnecting"}
           />
+        )}
+        {!terminal && session && (
+          <div className="ws-mode-toggle" role="group" aria-label="Autonomy mode">
+            {(["auto", "review", "plan"] as const).map((m) => (
+              <button
+                key={m}
+                className={`ws-mode-btn ${session.permission_mode === m ? "active" : ""}`}
+                onClick={() => setMode(m)}
+                aria-pressed={session.permission_mode === m}
+                title={
+                  m === "auto" ? "Autopilot — agent runs without asking" :
+                  m === "review" ? "Approve every change before the agent acts" :
+                  "Plan only — agent proposes a plan, no edits"
+                }
+              >
+                {m === "auto" ? "auto" : m === "review" ? "review" : "plan"}
+              </button>
+            ))}
+          </div>
         )}
         {!terminal && (
           <div className="ws-overflow">

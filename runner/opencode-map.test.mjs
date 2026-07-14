@@ -176,6 +176,28 @@ test("unknown event → harness breadcrumb", () => {
   assert.deepEqual(r, { type: "harness", payload: { event: "something.new" } });
 });
 
+// ---- permission.asked (review/plan modes) ----
+
+test("permission.asked → question with kind:permission + records pending", () => {
+  const s = state();
+  const r = mapOpenCodeEvent({
+    type: "permission.asked",
+    properties: { id: "perm-1", sessionID: "s", permission: "edit" },
+  }, s);
+  assert.deepEqual(r, {
+    type: "question",
+    payload: {
+      prompt: "Allow edit?",
+      options: ["approve", "deny"],
+      request_id: "perm-1",
+      kind: "permission",
+    },
+  });
+  assert.equal(s.pendingRequests.length, 1);
+  assert.equal(s.pendingRequests[0].id, "perm-1");
+  assert.equal(s.pendingRequests[0].kind, "permission");
+});
+
 test("NOISE set contains expected events", () => {
   assert.ok(NOISE.has("server.connected"));
   assert.ok(NOISE.has("plugin.added"));

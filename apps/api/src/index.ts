@@ -4,7 +4,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { streamSSE } from "hono/streaming";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { Event, ProviderConfig, CreateSession, Dialect } from "@atelier/schema";
+import { Event, ProviderConfig, CreateSession, UpdateSession, Dialect } from "@atelier/schema";
 import { z } from "zod";
 import { FlyMachinesProvider, LocalSandboxProvider, DaytonaProvider, E2BProvider, type SandboxProvider } from "@atelier/sandbox";
 import { Store, bus } from "./store.ts";
@@ -322,6 +322,24 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
     const { session_token, ...safe } = s;
     return c.json(safe);
+  });
+
+  // Live autonomy toggle (landing: "flip on autopilot"). Persists the new mode;
+  // the next handshake re-seals config so the runner applies the permission
+  // policy. Emits an event so the UI reflects the change over SSE.
+  app.patch("/sessions/:id", async (c) => {
+    const parsed = UpdateSession.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "invalid update", issues: parsed.success ? [] : parsed.error.issues }, 400);
+    const s = await store.getSession(c.req.param("id"));
+    if (!s) return c.json({ error: "not found" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
+    await store.setPermissionMode(c.req.param("id"), parsed.data.permission_mode);
+    await store.appendEvent(c.req.param("id"), {
+      ts: new Date().toISOString(), type: "state_change",
+      payload: { permission_mode: parsed.data.permission_mode },
+    });
+    return c.json({ ok: true, permission_mode: parsed.data.permission_mode });
   });
 
   app.post("/sessions/:id/cancel", async (c) => {

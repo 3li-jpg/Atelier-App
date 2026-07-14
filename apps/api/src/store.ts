@@ -182,6 +182,12 @@ export class Store {
     this.db.prepare("update sessions set sandbox_provider = ? where id = ?").run(provider, id);
   }
 
+  // Live autonomy toggle (landing: "flip on autopilot"). Writes the row; the next
+  // handshake re-seals the config so the runner applies the new permission policy.
+  setPermissionMode(id: string, mode: string): void {
+    this.db.prepare("update sessions set permission_mode = ? where id = ?").run(mode, id);
+  }
+
   touchActivity(id: string) {
     this.db.prepare("update sessions set last_activity = datetime('now') where id = ?").run(id);
   }

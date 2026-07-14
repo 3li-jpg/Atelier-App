@@ -132,6 +132,22 @@ async function abortSession(sessionId) {
   }
 }
 
+// Resolve a pending permission.asked request (review/plan modes). opencode
+// exposes POST /session/:id/permissions/:permissionID with {response} — NOT a
+// chat message. "approve"→allow, anything else→deny.
+async function resolvePermission(sessionId, permissionId, allow) {
+  try {
+    await fetch(`${OPENCODE_URL}/session/${sessionId}/permissions/${encodeURIComponent(permissionId)}`, {
+      method: "POST",
+      headers: OC_HEADERS,
+      body: JSON.stringify({ response: allow ? "allow" : "deny" }),
+      ...T(),
+    });
+  } catch (e) {
+    log(`resolve permission ${permissionId} failed: ${e.message}`);
+  }
+}
+
 // ---- SSE consumer (manual parse, no EventSource dependency) ----
 //
 // OpenCode GET /event emits SSE with `data: {json}\n\n`. The event type is
@@ -240,9 +256,10 @@ async function pollReplies(state, sessionId) {
           const pending = state.pendingRequests.shift();
           if (pending) {
             if (pending.kind === "permission") {
-              // Permission: send the approval/denial as a message.
-              // opencode resolves the pending permission based on the reply.
-              await sendMessage(sessionId, text.toLowerCase().trim() === "approve" ? "yes, proceed" : "no, stop");
+              // Permission: resolve via the dedicated endpoint (NOT a chat
+              // message — opencode ignores those for permissions). "approve"
+              // → allow, anything else → deny.
+              await resolvePermission(sessionId, pending.id, text.toLowerCase().trim() === "approve");
             } else {
               // Question kind (clarify) — send the reply as a message.
               await sendMessage(sessionId, text);

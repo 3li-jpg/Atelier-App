@@ -78,3 +78,11 @@ export const CreateSession = z.object({
   }).default({}),
 });
 export type CreateSession = z.infer<typeof CreateSession>;
+
+// Updateable session fields. permission_mode is the live "autopilot vs review"
+// toggle the landing promises; PATCHing it writes the DB row + re-seals the
+// config so the next supervisor handshake picks up the new autonomy level.
+export const UpdateSession = z.object({
+  permission_mode: z.enum(["auto", "review", "plan"]),
+});
+export type UpdateSession = z.infer<typeof UpdateSession>;
