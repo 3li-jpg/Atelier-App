@@ -278,7 +278,7 @@ function SessionCard({
           <Badge tone={tone}>{s.state}</Badge>
           <span className="session-time muted small">{formatRelTime(s.started_at)}</span>
         </span>
-        <span className="session-repo muted small">{repoLabel(s.repo_url)}</span>
+        <span className="session-repo muted small">{s.repo_url ? repoLabel(s.repo_url) : "blank workspace"}</span>
         <span className="session-task">{s.task}</span>
         <span className="session-model muted small">{s.model_id}</span>
       </Button>
@@ -347,6 +347,7 @@ function statusBadge(state: string): { tone: BadgeTone; pulse: boolean } {
 // Strip trailing .git and leading github.com host; non-github URLs fall back
 // to the pathname so something useful always shows.
 function repoLabel(repo_url: string): string {
+  if (!repo_url) return "blank workspace";
   let s = repo_url.trim().replace(/\.git$/, "");
   const gh = s.replace(/^https?:\/\/github\.com\//, "");
   if (gh !== s) return gh;

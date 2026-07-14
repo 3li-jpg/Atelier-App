@@ -112,9 +112,17 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
       const auth = c.req.header("Authorization") ?? "";
       if (auth.startsWith("Bearer ")) {
         const token = auth.slice(7);
-        uid = verifySession(token) ?? undefined;
-        if (!uid) {
-          uid = (await verifySupabaseToken(token)) ?? undefined;
+        // Static AUTH_TOKEN owner backdoor — the guarded routes accept it (above),
+        // but /auth/status must too, else the web UI gates on login even though
+        // every data call succeeds with the bearer (owner-alpha CLI flow).
+        const staticTok = process.env.AUTH_TOKEN;
+        if (staticTok && token === staticTok) {
+          uid = OWNER_ID;
+        } else {
+          uid = verifySession(token) ?? undefined;
+          if (!uid) {
+            uid = (await verifySupabaseToken(token)) ?? undefined;
+          }
         }
       }
     }

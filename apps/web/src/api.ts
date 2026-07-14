@@ -30,7 +30,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export type SessionSummary = {
-  id: string; repo_url: string; branch: string; model_id: string;
+  id: string; repo_url: string | null; branch: string; model_id: string;
   task: string; state: string; started_at: string; ended_at: string | null;
 };
 export type SessionDetail = SessionSummary & {

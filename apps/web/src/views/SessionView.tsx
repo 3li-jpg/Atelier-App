@@ -238,10 +238,10 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
     return null;
   }, [events, terminal]);
 
-  const repoFullName = session
+  const repoFullName = session?.repo_url
     ? session.repo_url.replace(/\.git$/, "").replace(/^https:\/\/github\.com\//, "")
     : "";
-  const repoBranch = session ? `${repoFullName} · ${session.branch}` : "";
+  const repoBranch = session ? (repoFullName ? `${repoFullName} · ${session.branch}` : `blank workspace · ${session.branch}`) : "";
   const modelId = session?.model_id ?? "";
   const repoName = repoFullName.split("/").pop() || repoFullName;
 
