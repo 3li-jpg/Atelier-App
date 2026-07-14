@@ -34,9 +34,12 @@ test("message.part.delta empty delta → null", () => {
 
 // ---- part lifecycle (message.part.updated) ----
 
-test("message.part.updated text part with text → assistant_text", () => {
+// text part lifecycle must NOT re-emit — deltas carry every token, and
+// re-emitting part.text overlays the full text on the accumulated deltas,
+// duplicating the answer (regression: live run printed "7 times 8 is 56" 3×).
+test("message.part.updated text part → null (deltas are the source of truth)", () => {
   const r = mapOpenCodeEvent({ type: "message.part.updated", properties: { part: { type: "text", text: "Done." } } }, state());
-  assert.deepEqual(r, { type: "assistant_text", payload: { text: "Done." } });
+  assert.equal(r, null);
 });
 
 test("message.part.updated reasoning part → null", () => {

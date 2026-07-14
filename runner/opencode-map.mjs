@@ -74,13 +74,11 @@ export function mapOpenCodeEvent(ev, state) {
     const part = p.part ?? {};
     const pt = part.type ?? "";
 
-    // Final text part — emit the full accumulated text if the delta stream
-    // somehow missed it (defensive; deltas are the primary path).
-    if (pt === "text") {
-      const text = part.text ?? "";
-      if (!text) return null;
-      return { type: "assistant_text", payload: { text } };
-    }
+    // text part lifecycle — deltas (message.part.delta) are the primary path
+    // and carry every token. Re-emitting part.text here overlays the full
+    // accumulated text on top of the deltas → the answer appears 2-3×
+    // (verified against a live run: "7 times 8 is 56" printed three times).
+    if (pt === "text") return null;
 
     // reasoning / step markers — not surfaced.
     if (pt === "reasoning" || pt === "step-start" || pt === "step-finish") return null;
