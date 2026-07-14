@@ -83,6 +83,41 @@
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 
+/* ── IDE chrome: traffic dots + active badge (landing hero-mockup__chrome) ──
+   Dots are the landing's red/yellow/green, softened for the dark-violet surface. */
+.ws-chrome-dots {
+  display: inline-flex;
+  gap: 0.36rem;
+  align-items: center;
+  padding-right: 0.2rem;
+}
+.ws-chrome-dots .ws-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: block;
+}
+.ws-chrome-dots .ws-dot.red    { background: #c8806f; }
+.ws-chrome-dots .ws-dot.yellow { background: #c4a96a; }
+.ws-chrome-dots .ws-dot.green  { background: #8aab73; }
+
+/* Active badge: "model · state" pill, accent-tinted like hero-mockup__badge. */
+.ws-badge {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  background: var(--ide-violet-tint);
+  border: 1px solid var(--ide-violet-border);
+  border-radius: var(--radius-full);
+  padding: 0.12rem 0.55rem;
+  text-transform: lowercase;
+}
+.ws-badge.tone-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.ws-badge.tone-bad  { color: var(--bad);  border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.ws-badge.tone-ok   { color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+
 /* ── Body: center + right rail ── */
 .ws-body {
   flex: 1;

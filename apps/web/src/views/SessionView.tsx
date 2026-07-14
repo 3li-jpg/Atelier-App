@@ -255,14 +255,27 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
 
   return (
     <div className="ws view-fade" role="application" aria-label="Session workspace">
-      {/* ── Top bar ── */}
+      {/* ── Top bar: IDE chrome (dots + titlebar + active badge) ── */}
       <header className="ws-topbar" role="banner">
-        <button className="ws-back" onClick={onBack} aria-label="Back to sessions list">
-          ← back
+        <button className="ws-back" onClick={onBack} aria-label="Back to sessions list" title="Back">
+          ←
         </button>
-        <h1 className="ws-title ellipsis" aria-label={`Session: ${session?.task ?? id.slice(0, 8)}`}>
+        <span className="ws-chrome-dots" aria-hidden="true">
+          <span className="ws-dot red" />
+          <span className="ws-dot yellow" />
+          <span className="ws-dot green" />
+        </span>
+        <h1 className="ws-title ellipsis" title={session?.task ?? id} aria-label={`Session: ${session?.task ?? id.slice(0, 8)}`}>
           {session?.task ?? id.slice(0, 8)}
         </h1>
+        {!terminal && (
+          <span
+            className={`ws-badge tone-${stateTone(state)}`}
+            title={`${modelId || session?.model_id || "model"} · ${state}`}
+          >
+            {modelId || session?.model_id || "model"} · {state}
+          </span>
+        )}
         {!terminal && (
           <span
             className={`ws-live-dot ${live ? "" : "off"}`}
