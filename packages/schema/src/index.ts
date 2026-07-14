@@ -61,8 +61,11 @@ export const TOOLSETS = ["terminal","file","code_execution","web","search","brow
 export type Toolset = typeof TOOLSETS[number];
 export const ToolsetList = z.array(z.enum(TOOLSETS));
 
+// repo_url is optional: a blank workspace (no repo) is a Cursor-like scratchpad
+// — the agent runs in an empty dir and you chat it into existence. The supervisor
+// skips clone + git finalize when REPO_URL is empty.
 export const CreateSession = z.object({
-  repo_url: z.string().url(),
+  repo_url: z.string().url().optional(),
   branch: z.string().default("main"),
   provider_id: z.string(),
   model_id: z.string(),

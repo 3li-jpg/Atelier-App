@@ -7,6 +7,112 @@
   padding: 0.5rem;
 }
 
+.sessions-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* QuickStart — chat-first composer. Mirrors the ws-composer look so the entry
+   feels continuous with the in-session chat. */
+.qs-wrap {
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.qs-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+.qs-composer:focus-within { border-color: var(--accent); }
+.qs-textarea {
+  flex: 1;
+  resize: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.4;
+  max-height: 160px;
+  outline: none;
+  padding: 0.2rem 0;
+}
+.qs-textarea::placeholder { color: var(--muted); }
+.qs-send {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.qs-send:hover:not(:disabled) { background: var(--accent-hover); }
+.qs-send:active:not(:disabled) { transform: scale(0.92); }
+.qs-send:disabled { opacity: 0.35; cursor: default; }
+.qs-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.2rem;
+}
+.qs-toggle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0;
+}
+.qs-toggle:hover { color: var(--text); }
+.qs-summary {
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qs-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.4rem 0.2rem 0;
+}
+.qs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  flex: 1 1 8rem;
+}
+.qs-field-wide { flex: 1 1 100%; }
+.qs-empty {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.qs-error {
+  color: var(--bad);
+  font-size: 0.8rem;
+  padding: 0 0.2rem;
+}
+
 .session-list {
   list-style: none;
   margin: 0;

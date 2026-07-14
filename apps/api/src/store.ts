@@ -148,11 +148,11 @@ export class Store {
     return rows.map((r: any) => ({ ...r, models: JSON.parse(r.models) }));
   }
 
-  createSession(s: { repo_url: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string; toolsets?: string[] | null; sandbox_provider?: string | null }) {
+  createSession(s: { repo_url?: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string; toolsets?: string[] | null; sandbox_provider?: string | null }) {
     const id = randomUUID();
     this.db.prepare(`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,toolsets,sandbox_provider,started_at,user_id)
       values (?,?,?,?,?,?,'created',?,?,?,?,?,datetime('now'),?)`)
-      .run(id, s.repo_url, s.branch, s.provider_id, s.model_id, s.task, s.permission_mode, JSON.stringify(s.budgets), s.session_token, JSON.stringify(s.toolsets ?? null), s.sandbox_provider ?? null, s.user_id ?? null);
+      .run(id, s.repo_url ?? null, s.branch, s.provider_id, s.model_id, s.task, s.permission_mode, JSON.stringify(s.budgets), s.session_token, JSON.stringify(s.toolsets ?? null), s.sandbox_provider ?? null, s.user_id ?? null);
     return id;
   }
 

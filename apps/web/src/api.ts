@@ -75,7 +75,7 @@ export type ValidationResult = {
 };
 
 export type CreateSessionReq = {
-  repo_url: string;
+  repo_url?: string; // optional — blank workspace = Cursor-like scratchpad
   branch?: string;
   provider_id: string;
   model_id: string;
