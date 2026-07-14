@@ -105,11 +105,15 @@ async function sendMessage(sessionId, text) {
   const model = modelObject(OPENCODE_MODEL);
   if (model) body.model = model;
   if (OPENCODE_AGENT) body.agent = OPENCODE_AGENT;
+  // POST /message blocks until the agent turn completes (deltas stream on
+  // GET /event during this window). A reasoning model's first turn can run
+  // 60-120s+, so 30s aborts every non-trivial turn and kills the session.
+  // 5min: bounded but roomy for multi-step reasoning + tool calls.
   const res = await fetch(`${OPENCODE_URL}/session/${sessionId}/message`, {
     method: "POST",
     headers: OC_HEADERS,
     body: JSON.stringify(body),
-    ...T(30_000),
+    ...T(300_000),
   });
   if (!res.ok) throw new Error(`POST /session/${sessionId}/message failed: ${res.status} ${await res.text()}`);
   const data = await res.json();
