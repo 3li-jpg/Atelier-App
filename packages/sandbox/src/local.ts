@@ -1,5 +1,5 @@
 // LocalSandboxProvider — runs the supervisor as a local subprocess (the agent
-// runs on the host via the installed `hermes`, no Fly microVM). Selected when
+// runs on the host via the installed `opencode`, no Fly microVM). Selected when
 // SANDBOX=local. ponytail: no process isolation (it's your own machine), no
 // suspend/resume (no-op), and the process group is killed on destroy.
 import { spawn } from "node:child_process";
@@ -24,9 +24,9 @@ export class LocalSandboxProvider implements SandboxProvider {
       SKIP_FIREWALL: "1",
       RUNNER_BIN: RUNNER_DIR,
       WORKSPACE: workspace,
-      // Isolate HOME inside the workspace: the supervisor writes hermes
-      // config (config.yaml with the LLM key) under $HOME/.hermes — pointing
-      // that at the operator's real home would clobber their own hermes setup.
+      // Isolate HOME inside the workspace: the supervisor writes opencode
+      // config (opencode.json with the LLM key) under $HOME/.opencode — pointing
+      // that at the operator's real home would clobber their own opencode setup.
       HOME: workspace,
       PATH: `${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
     };

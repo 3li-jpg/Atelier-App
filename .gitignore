@@ -6,9 +6,11 @@ dist/
 .DS_Store
 .env*
 
-# Hermes desktop app
-.hermes/
 .mcp.json
+
+# Local agent runtime data (OpenCode/Claude Code + legacy Hermes desktop attachments)
+.hermes/
+.opencode/
 
 # Next.js build output
 .next/

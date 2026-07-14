@@ -13,11 +13,11 @@ test("create sends correct config and lifecycle verbs hit right paths", async ()
   const calls: { url: string; init: any }[] = [];
   const daytona = new DaytonaProvider("key", "ws-1", fakeFetch(calls) as typeof fetch);
 
-  const ref = await daytona.create({ name: "s1", image: "atelier-runner:hermes-v1", env: { TASK: "x" }, cpus: 2 });
+  const ref = await daytona.create({ name: "s1", image: "atelier-runner:opencode-v1", env: { TASK: "x" }, cpus: 2 });
   assert.equal(ref.id, "sandbox-123");
   assert.equal(ref.provider, "daytona");
   const body = JSON.parse(calls[0].init.body);
-  assert.equal(body.image, "atelier-runner:hermes-v1");
+  assert.equal(body.image, "atelier-runner:opencode-v1");
   assert.equal(body.resources.cpus, 2);
   assert.equal(calls[0].init.headers.Authorization, "Bearer key");
 

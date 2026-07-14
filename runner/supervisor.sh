@@ -55,7 +55,7 @@ for t in ${RAW_TOOLSETS//,/ }; do
 done
 [[ -z "$VALID_TOOLSETS" ]] && VALID_TOOLSETS="$DEFAULT_TOOLSETS"
 
-# ponytail: surface any crash (clone failure, hermes error, etc.) as a failed
+# ponytail: surface any crash (clone failure, agent error, etc.) as a failed
 # state so the session doesn't hang in a transient state.
 trap 'ec=$?; if [ $ec -ne 0 ]; then emit error "{\"message\":\"supervisor exited ($ec)\"}" 2>/dev/null || true; emit state_change "{\"state\":\"failed\"}" 2>/dev/null || true; fi' EXIT
 
@@ -107,54 +107,59 @@ if [[ -z "${SKIP_FIREWALL:-}" ]]; then
     codeload.github.com "${EVENTS_URL:-github.com}"
 fi
 
-# Point Hermes at the BYOK endpoint. Config lives on tmpfs (RAM) so the key
+# OpenCode serve — the agent runtime. Config lives on tmpfs (RAM) so the key
 # is never written to the persistent rootfs (audit C2: PRD §9.3 "never on disk").
-# HERMES_HOME → tmpfs so config.yaml + .env stay in memory only.
-HERMES_CFG=/dev/shm/hermes
-if mkdir -p "$HERMES_CFG" 2>/dev/null && [ -w "$HERMES_CFG" ]; then
-  ln -sfn "$HERMES_CFG" "$HOME/.hermes"
+# OPENCODE_HOME → tmpfs so opencode.json + auth stay in memory only.
+OPENCODE_CFG=/dev/shm/opencode
+if mkdir -p "$OPENCODE_CFG" 2>/dev/null && [ -w "$OPENCODE_CFG" ]; then
+  ln -sfn "$OPENCODE_CFG" "$HOME/.opencode"
 else
-  HERMES_CFG="$HOME/.hermes"
-  mkdir -p "$HERMES_CFG"
+  OPENCODE_CFG="$HOME/.opencode"
+  mkdir -p "$OPENCODE_CFG"
 fi
-# Write Hermes config.yaml for the BYOK endpoint
-TOOLSETS_YAML=""
-for t in ${VALID_TOOLSETS//,/ }; do
-  TOOLSETS_YAML+="    - $t"$'\n'
-done
-cat > "$HERMES_CFG/config.yaml" <<EOF
-model:
-  default: $LLM_MODEL
-  provider: custom
-  base_url: $LLM_BASE_URL
-  api_key: $LLM_API_KEY
-platform_toolsets:
-  api_server:
-$TOOLSETS_YAML
-agent:
-  max_turns: 100
-terminal:
-  cwd: $WORKSPACE/repo
+
+# BYOK custom-provider wiring: write an opencode.json pointing the provider
+# at the sealed-handshake LLM base_url + model. The API key is set via env
+# OPENCODE_PROVIDER_<ID>_API_KEY (opencode reads provider keys from env).
+# ponytail: opencode's exact config schema for custom providers is not fully
+# documented; this is a reasonable OpenAI-compatible provider entry. If the
+# npm adapter name changes, update here — the $schema field helps.
+PROVIDER_ID="atelier"
+cat > "$OPENCODE_CFG/opencode.json" <<EOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "${PROVIDER_ID}": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Atelier BYOK",
+      "options": {
+        "baseURL": "${LLM_BASE_URL}"
+      },
+      "models": {
+        "${LLM_MODEL}": {}
+      }
+    }
+  }
+}
 EOF
-# API server key (bearer token for the bridge — random per session)
-HERMES_KEY=$(openssl rand -hex 32)
-export API_SERVER_ENABLED=1
-export API_SERVER_KEY="$HERMES_KEY"
-export API_SERVER_HOST=127.0.0.1
-export API_SERVER_PORT=8642
-export HERMES_HOME="$HERMES_CFG"
-unset LLM_API_KEY   # scrub from PID 1 env (audit C3) — Hermes reads it from config
+export OPENCODE_PROVIDER_ATELIER_API_KEY="$LLM_API_KEY"
+# API server password (basic auth for the bridge — random per session)
+OPENCODE_PASSWORD=$(openssl rand -hex 32)
+export OPENCODE_SERVER_USERNAME="opencode"
+export OPENCODE_SERVER_PASSWORD="$OPENCODE_PASSWORD"
+OPENCODE_PORT="${OPENCODE_PORT:-4096}"
+unset LLM_API_KEY   # scrub from PID 1 env (audit C3) — opencode reads it from env
 
 emit state_change '{"state":"running"}'
 REPLIES_URL="${EVENTS_URL%/events}/replies"
-# Launch the Hermes gateway (which starts the api_server platform) in the background
-hermes gateway run >"$WORKSPACE/hermes.log" 2>&1 &
-HERMES_PID=$!
+# Launch opencode serve in the background (the agent runtime)
+opencode serve --hostname 127.0.0.1 --port "${OPENCODE_PORT}" >"$WORKSPACE/opencode.log" 2>&1 &
+OPENCODE_PID=$!
 
 finalize() {  # graceful stop (fly machine stop -> SIGINT; kill_timeout=120s window)
   trap - TERM INT EXIT
   emit state_change '{"state":"finalizing"}'
-  kill "$BRIDGE_PID" "$HERMES_PID" 2>/dev/null || true
+  kill "$BRIDGE_PID" "$OPENCODE_PID" 2>/dev/null || true
   cd "$WORKSPACE/repo"
   if [[ -n "$(git status --porcelain)" || -n "$(git log origin/$BRANCH..HEAD --oneline 2>/dev/null)" ]]; then
     git checkout -b "atelier/$(date +%s)" 2>/dev/null || true
@@ -179,20 +184,23 @@ finalize() {  # graceful stop (fly machine stop -> SIGINT; kill_timeout=120s win
 }
 trap finalize TERM INT
 
-# Bridge relays Hermes /v1/runs SSE events to the control plane and injects
-# the initial task. It runs for the whole session (idle no longer stops it).
-HERMES_PORT=8642 HERMES_KEY="$HERMES_KEY" REPLIES_URL="$REPLIES_URL" \
-  TASK="$TASK" SESSION_ID="${SESSION_ID}" \
-  node "${RUNNER_BIN}/hermes-bridge.mjs" &
+# Bridge relays OpenCode SSE events to the control plane and injects the
+# initial task. It runs for the whole session (idle no longer stops it).
+OPENCODE_URL="http://127.0.0.1:${OPENCODE_PORT}" \
+  OPENCODE_USER="opencode" OPENCODE_PASSWORD="$OPENCODE_PASSWORD" \
+  OPENCODE_MODEL="$LLM_MODEL" OPENCODE_AGENT="${OPENCODE_AGENT:-}" \
+  REPLIES_URL="$REPLIES_URL" TASK="$TASK" SESSION_ID="${SESSION_ID}" \
+  EVENTS_URL="$EVENTS_URL" SESSION_TOKEN="$SESSION_TOKEN" \
+  node "${RUNNER_BIN}/opencode-bridge.mjs" &
 BRIDGE_PID=$!
 wait "$BRIDGE_PID" || ec=$?; ec=${ec:-0}
-# Observability: a dead bridge usually means hermes never started. Ship the
-# hermes.log tail to the control plane so failures are diagnosable after the
-# VM is gone (key lines filtered — config.yaml holds the only secret, but
+# Observability: a dead bridge usually means opencode never started. Ship the
+# opencode.log tail to the control plane so failures are diagnosable after
+# the VM is gone (key lines filtered — config holds the only secret, but
 # belt and braces).
-if [[ "$ec" != 0 && -s "$WORKSPACE/hermes.log" ]]; then
-  LOG_TAIL=$(tail -c 1500 "$WORKSPACE/hermes.log" | grep -vi 'api_key' || true)
-  emit error "$(jq -cn --arg m "hermes.log tail (bridge exit $ec)" --arg d "$LOG_TAIL" '{message:$m, detail:$d}')" || true
+if [[ "$ec" != 0 && -s "$WORKSPACE/opencode.log" ]]; then
+  LOG_TAIL=$(tail -c 1500 "$WORKSPACE/opencode.log" | grep -vi 'api_key' || true)
+  emit error "$(jq -cn --arg m "opencode.log tail (bridge exit $ec)" --arg d "$LOG_TAIL" '{message:$m, detail:$d}')" || true
 fi
 # propagate the bridge's exit code: a clean exit (0) must not be misreported as
 # failed. The EXIT trap only emits on non-zero, so exit 0 leaves the session in
