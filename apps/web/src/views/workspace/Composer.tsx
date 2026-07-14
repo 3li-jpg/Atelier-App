@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { useVoice } from "./useVoice.ts";
 
 // Sticky glass composer. Auto-growing textarea; Enter=send, Shift+Enter=newline.
 // Send = violet primary with a spring on press. No Stop button — cancel lives in
@@ -35,6 +36,10 @@ export function Composer({
   endBar: ReactNode | null;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+
+  // Voice dictation (Web Speech API). Appends transcript live; no-op on
+  // browsers without SpeechRecognition (supported=false hides the mic).
+  const voice = useVoice((t) => onChange(value ? `${value.replace(/\s+$/, "")} ${t}` : t));
 
   // Auto-grow: reset height then size to scrollHeight, capped.
   useEffect(() => {
@@ -80,6 +85,23 @@ export function Composer({
               rows={1}
               aria-disabled={disabled}
             />
+            {voice.supported && (
+              <button
+                type="button"
+                className={`ws-mic ${voice.listening ? "listening" : ""}`}
+                onClick={voice.toggle}
+                disabled={disabled}
+                aria-label={voice.listening ? "Stop dictation" : "Dictate a task"}
+                aria-pressed={voice.listening}
+                title={voice.listening ? "Stop dictation" : "Dictate a task"}
+              >
+                {/* mic icon */}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" fill="currentColor" />
+                  <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
             <button
               type="submit"
               className="ws-send"

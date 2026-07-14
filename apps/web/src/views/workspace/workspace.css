@@ -77,6 +77,38 @@
   animation: ws-pulse 2.4s infinite;
 }
 .ws-live-dot.off { background: var(--muted); animation: none; opacity: 0.6; }
+
+/* Autonomy toggle — landing's "flip on autopilot". Segmented control; the
+   active segment fills violet. auto=run freely, review=approve each change,
+   plan=plan-only (no edits). */
+.ws-mode-toggle {
+  display: inline-flex;
+  gap: 1px;
+  flex-shrink: 0;
+  padding: 1px;
+  border-radius: var(--radius-md);
+  background: var(--ide-violet-border);
+  border: 1px solid var(--ide-violet-border);
+}
+.ws-mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.18rem 0.5rem;
+  border-radius: calc(var(--radius-md) - 1px);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+  letter-spacing: 0.02em;
+}
+.ws-mode-btn:hover { color: var(--text); }
+.ws-mode-btn.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
 @keyframes ws-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 50%, transparent); }
   70% { box-shadow: 0 0 0 5px transparent; }
@@ -720,6 +752,36 @@
 .ws-send:hover:not(:disabled) { background: var(--accent-hover); }
 .ws-send:active:not(:disabled) { transform: scale(0.95); }
 .ws-send:disabled { opacity: 0.4; cursor: default; }
+.ws-mic {
+  flex-shrink: 0;
+  align-self: flex-end;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  background: transparent;
+  border: 1px solid var(--ide-violet-border);
+  color: var(--muted);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out),
+              transform var(--duration-press) var(--ease-spring-soft);
+}
+.ws-mic:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.ws-mic:active:not(:disabled) { transform: scale(0.95); }
+.ws-mic:disabled { opacity: 0.4; cursor: default; }
+.ws-mic.listening {
+  color: var(--accent-fg);
+  background: var(--accent);
+  border-color: var(--accent);
+  animation: ws-mic-pulse 1.4s var(--ease-out) infinite;
+}
+@keyframes ws-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--ide-violet-glow); }
+  50% { box-shadow: 0 0 0 4px transparent; }
+}
 
 /* ── Status line ── */
 .ws-statusline {
