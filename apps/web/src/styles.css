@@ -22,11 +22,11 @@
   --muted: var(--color-steel);
   --accent: var(--color-signal-violet);
   --accent-fg: var(--color-almost-white);
-  --ok: #7fbf6a;
-  --warn: #e0b04f;
-  --bad: #e08f6a;
+  --ok: var(--syn-num);
+  --warn: var(--syn-type);
+  --bad: var(--syn-str);
   --bubble: rgba(216, 207, 196, 0.04);
-  --user: rgba(139, 69, 230, 0.14);
+  --user: var(--ide-violet-tint);
   --radius: var(--radius-md);
   --maxw: 760px;
   --font-sans: 'Inter', -apple-system, sans-serif;
@@ -284,23 +284,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 }
 .authbar input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #faf8f4;
-    --panel: rgba(26, 23, 19, 0.03);
-    --panel-2: rgba(26, 23, 19, 0.06);
-    --border: rgba(26, 23, 19, 0.12);
-    --text: #1a1713;
-    --muted: #6f6a61;
-    --accent: #8b45e6;
-    --accent-fg: #fffdf9;
-    --ok: #6a9e58;
-    --warn: #b8943a;
-    --bad: #b87355;
-    --bubble: rgba(26, 23, 19, 0.04);
-    --user: rgba(139, 69, 230, 0.1);
-  }
-}
+/* ponytail: light-mode overrides removed — tokens.css @media (prefers-color-scheme: light)
+   already flips every semantic + IDE token to warm paper. Redundant re-declaration
+   here only risked drift. The workspace uses --ide-* tokens directly, so it
+   auto-adapts. */
 
 /* ============================================================
    BOOT LOADING STATE — cleanup after React mount
