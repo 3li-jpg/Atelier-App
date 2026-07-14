@@ -88,6 +88,15 @@ The API warns at boot if the selected provider's key is missing. BYOC keys are s
 - **Deep links / routing** — shareable workspace URLs and stable client-side routing.
 - **PWA push notifications** — agent completions and approval requests delivered to installed clients.
 
+## Agent engines
+
+The runner supports swappable agent engines via the `ENGINE` env var. The control plane is engine-agnostic — it only consumes Atelier Event objects, so any runtime that can emit those events works.
+
+- **`opencode`** (default) — [OpenCode](https://opencode.ai) CLI via `opencode serve` + `opencode-bridge.mjs`. This is the battle-tested path.
+- **`claude`** (experimental stub) — Claude Code CLI engine. Currently a no-op scaffold (`claude-bridge.mjs`) that emits running → message → completed without spawning the CLI. The real implementation will use the Claude Agent SDK or `claude -p` print mode. Select with `ENGINE=claude`.
+
+See `runner/engines.md` for the engine contract and how to add new engines.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Self-hosting is encouraged.

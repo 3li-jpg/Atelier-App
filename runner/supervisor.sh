@@ -148,18 +148,41 @@ OPENCODE_PASSWORD=$(openssl rand -hex 32)
 export OPENCODE_SERVER_USERNAME="opencode"
 export OPENCODE_SERVER_PASSWORD="$OPENCODE_PASSWORD"
 OPENCODE_PORT="${OPENCODE_PORT:-4096}"
+# Save for non-opencode engines (e.g. claude-bridge) before PID 1 scrub.
+_SAVED_LLM_API_KEY="$LLM_API_KEY"
 unset LLM_API_KEY   # scrub from PID 1 env (audit C3) — opencode reads it from env
 
 emit state_change '{"state":"running"}'
 REPLIES_URL="${EVENTS_URL%/events}/replies"
-# Launch opencode serve in the background (the agent runtime)
-opencode serve --hostname 127.0.0.1 --port "${OPENCODE_PORT}" >"$WORKSPACE/opencode.log" 2>&1 &
-OPENCODE_PID=$!
+
+# ---- engine selector ---------------------------------------------------
+# ENGINE=opencode (default) launches the opencode serve + opencode-bridge pair.
+# ENGINE=claude launches the claude-bridge stub (no opencode serve). The bridge
+# is responsible for spawning the claude CLI itself.
+# ponytail: STUB — claude bridge is a no-op scaffold; real integration pending.
+ENGINE="${ENGINE:-opencode}"
+case "$ENGINE" in
+  opencode)
+    # Launch opencode serve in the background (the agent runtime)
+    opencode serve --hostname 127.0.0.1 --port "${OPENCODE_PORT}" >"$WORKSPACE/opencode.log" 2>&1 &
+    OPENCODE_PID=$!
+    ;;
+  claude)
+    # No opencode serve — the claude bridge spawns the CLI directly.
+    OPENCODE_PID=""
+    ;;
+  *)
+    emit error "{\"message\":\"unknown ENGINE: $ENGINE\"}" || true
+    echo "supervisor: unknown ENGINE: $ENGINE (expected opencode|claude)" >&2
+    exit 64
+    ;;
+esac
 
 finalize() {  # graceful stop (fly machine stop -> SIGINT; kill_timeout=120s window)
   trap - TERM INT EXIT
   emit state_change '{"state":"finalizing"}'
-  kill "$BRIDGE_PID" "$OPENCODE_PID" 2>/dev/null || true
+  if [[ -n "$BRIDGE_PID" ]]; then kill "$BRIDGE_PID" 2>/dev/null || true; fi
+  if [[ -n "$OPENCODE_PID" ]]; then kill "$OPENCODE_PID" 2>/dev/null || true; fi
   cd "$WORKSPACE/repo"
   if [[ -n "$(git status --porcelain)" || -n "$(git log origin/$BRANCH..HEAD --oneline 2>/dev/null)" ]]; then
     git checkout -b "atelier/$(date +%s)" 2>/dev/null || true
@@ -184,21 +207,36 @@ finalize() {  # graceful stop (fly machine stop -> SIGINT; kill_timeout=120s win
 }
 trap finalize TERM INT
 
-# Bridge relays OpenCode SSE events to the control plane and injects the
-# initial task. It runs for the whole session (idle no longer stops it).
-OPENCODE_URL="http://127.0.0.1:${OPENCODE_PORT}" \
-  OPENCODE_USER="opencode" OPENCODE_PASSWORD="$OPENCODE_PASSWORD" \
-  OPENCODE_MODEL="$LLM_MODEL" OPENCODE_AGENT="${OPENCODE_AGENT:-}" \
-  REPLIES_URL="$REPLIES_URL" TASK="$TASK" SESSION_ID="${SESSION_ID}" \
-  EVENTS_URL="$EVENTS_URL" SESSION_TOKEN="$SESSION_TOKEN" \
-  node "${RUNNER_BIN}/opencode-bridge.mjs" &
-BRIDGE_PID=$!
+# Bridge relays engine events to the control plane and injects the initial
+# task. It runs for the whole session (idle no longer stops it).
+case "$ENGINE" in
+  opencode)
+    OPENCODE_URL="http://127.0.0.1:${OPENCODE_PORT}" \
+      OPENCODE_USER="opencode" OPENCODE_PASSWORD="$OPENCODE_PASSWORD" \
+      OPENCODE_MODEL="$LLM_MODEL" OPENCODE_AGENT="${OPENCODE_AGENT:-}" \
+      REPLIES_URL="$REPLIES_URL" TASK="$TASK" SESSION_ID="${SESSION_ID}" \
+      EVENTS_URL="$EVENTS_URL" SESSION_TOKEN="$SESSION_TOKEN" \
+      node "${RUNNER_BIN}/opencode-bridge.mjs" &
+    BRIDGE_PID=$!
+    ;;
+  claude)
+    # ponytail: STUB — claude-bridge is a no-op scaffold that emits running →
+    # message → completed → exit 0. It does not spawn the claude CLI yet.
+    CLAUDE_MODEL="$LLM_MODEL" \
+      CLAUDE_AGENT="${CLAUDE_AGENT:-}" \
+      LLM_BASE_URL="$LLM_BASE_URL" LLM_API_KEY="$_SAVED_LLM_API_KEY" \
+      REPLIES_URL="$REPLIES_URL" TASK="$TASK" SESSION_ID="${SESSION_ID}" \
+      EVENTS_URL="$EVENTS_URL" SESSION_TOKEN="$SESSION_TOKEN" \
+      node "${RUNNER_BIN}/claude-bridge.mjs" &
+    BRIDGE_PID=$!
+    ;;
+esac
 wait "$BRIDGE_PID" || ec=$?; ec=${ec:-0}
 # Observability: a dead bridge usually means opencode never started. Ship the
 # opencode.log tail to the control plane so failures are diagnosable after
 # the VM is gone (key lines filtered — config holds the only secret, but
 # belt and braces).
-if [[ "$ec" != 0 && -s "$WORKSPACE/opencode.log" ]]; then
+if [[ "$ec" != 0 && -f "$WORKSPACE/opencode.log" && -s "$WORKSPACE/opencode.log" ]]; then
   LOG_TAIL=$(tail -c 1500 "$WORKSPACE/opencode.log" | grep -vi 'api_key' || true)
   emit error "$(jq -cn --arg m "opencode.log tail (bridge exit $ec)" --arg d "$LOG_TAIL" '{message:$m, detail:$d}')" || true
 fi
