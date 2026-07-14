@@ -228,9 +228,15 @@ REPLIES_URL="${EVENTS_URL%/events}/replies"
 ENGINE="${ENGINE:-opencode}"
 case "$ENGINE" in
   opencode)
-    # Launch opencode serve in the background (the agent runtime)
-    opencode serve --hostname 127.0.0.1 --port "${OPENCODE_PORT}" >"$WORKSPACE/opencode.log" 2>&1 &
+    # Launch opencode web in the background — it's `opencode serve` + a web UI
+    # on the same port. The bridge talks to the API; the Atelier UI embeds the
+    # web UI via the API proxy. One process, not two.
+    opencode web --hostname 127.0.0.1 --port "${OPENCODE_PORT}" >"$WORKSPACE/opencode.log" 2>&1 &
     OPENCODE_PID=$!
+    # ponytail: port+auth discovery for the API proxy. The API reads this to
+    # forward /sessions/:id/opencode/* → 127.0.0.1:$OPENCODE_PORT. Same <id8>
+    # path convention as the preview route. Deleted on finalize.
+    printf '%s\n%s\n' "$OPENCODE_PORT" "$OPENCODE_PASSWORD" > "$WORKSPACE/opencode.web"
     ;;
   claude)
     # No opencode serve — the claude bridge spawns the CLI directly.
@@ -246,6 +252,7 @@ esac
 finalize() {  # graceful stop (fly machine stop -> SIGINT; kill_timeout=120s window)
   trap - TERM INT EXIT
   emit state_change '{"state":"finalizing"}'
+  rm -f "$WORKSPACE/opencode.web"  # stale port file would mislead the proxy
   if [[ -n "$BRIDGE_PID" ]]; then kill "$BRIDGE_PID" 2>/dev/null || true; fi
   if [[ -n "$OPENCODE_PID" ]]; then kill "$OPENCODE_PID" 2>/dev/null || true; fi
   cd "$WORKSPACE/repo"

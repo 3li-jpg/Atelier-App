@@ -1,49 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type SessionDetail } from "../api.ts";
+import { api, getAuthToken, type SessionDetail } from "../api.ts";
 import { useEventStream } from "../useEventStream.ts";
 import { useLiveRegion } from "../useLiveRegion.ts";
-import { type FileEntry } from "../components/FileTree.tsx";
-import { DiffPanel } from "../components/DiffPanel.tsx";
 import { stateTone, TERMINAL_STATES } from "../lib.ts";
 import { humanizeToast } from "./humanize.ts";
 import { useToast } from "@atelier/ui";
-import { ChatThread } from "./workspace/ChatThread.tsx";
-import { Composer } from "./workspace/Composer.tsx";
 import { RightRail } from "./workspace/RightRail.tsx";
 import "./session-view.css";
 import "./workspace/workspace.css";
 
-type MobileTab = "chat" | "editor" | "files" | "activity";
+type MobileTab = "workspace" | "browser";
 
 export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack: () => void; onOpenSession?: (id: string) => void }) {
   const toast = useToast();
   const [session, setSession] = useState<SessionDetail | null>(null);
   const { events, live } = useEventStream(id);
-  const [reply, setReply] = useState("");
-  const [sending, setSending] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  // Open-files tab model (Cursor-like): a file stays open as a tab until its ×
-  // is clicked, independent of which file is active. Opening a file that's
-  // already open just focuses its tab.
-  const [openFiles, setOpenFiles] = useState<string[]>([]);
-  const openFile = (p: string) => {
-    setOpenFiles((prev) => (prev.includes(p) ? prev : [...prev, p]));
-    setSelectedFile(p);
-  };
-  const closeFile = (p: string) => {
-    const idx = openFiles.indexOf(p);
-    const next = openFiles.filter((x) => x !== p);
-    setOpenFiles(next);
-    if (p === selectedFile) {
-      // Focus the previous tab, else the one that shifted into its slot.
-      setSelectedFile(idx > 0 ? (next[idx - 1] ?? null) : (next[idx] ?? null));
-    }
-  };
-  const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("workspace");
   const [menuOpen, setMenuOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const announce = useLiveRegion("polite");
   const announceAlert = useLiveRegion("assertive");
 
@@ -51,11 +26,9 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
     api.getSession(id).then(setSession).catch(() => {});
   }, [id]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [events.length]);
-
-  // Screen reader announcements for key streaming events (unchanged from prior).
+  // Screen reader announcements for key streaming events. The bridge still
+  // emits state_change / error / commit even though the chat itself now lives
+  // in the embedded opencode UI — these keep the shell reachable to AT users.
   const lastEventCount = useRef(0);
   useEffect(() => {
     if (events.length <= lastEventCount.current) return;
@@ -65,17 +38,6 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
     for (const e of newEvents) {
       const p = (e.payload ?? {}) as Record<string, unknown>;
       switch (e.type) {
-        case "assistant_text": {
-          const text = String(p.text ?? "");
-          if (text) announce(`Assistant: ${text.slice(0, 200)}`);
-          break;
-        }
-        case "tool_call": {
-          const tool = String(p.tool ?? p.name ?? "tool");
-          const status = typeof p.status === "string" ? p.status : "done";
-          announce(`Tool ${tool}: ${status}`);
-          break;
-        }
         case "error": {
           const msg = String(p.message ?? "");
           announceAlert(`Error: ${msg}`);
@@ -95,10 +57,6 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
           }
           break;
         }
-        case "question": {
-          announceAlert(`Question: ${String(p.prompt ?? p.message ?? "")}`);
-          break;
-        }
         case "commit": {
           announce(`Commit: ${String(p.sha ?? "").slice(0, 7)} — ${String(p.message ?? "")}`);
           break;
@@ -107,21 +65,6 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
     }
   }, [events, announce, announceAlert, toast]);
 
-  const send = async (text: string) => {
-    const body = text.trim();
-    if (!body || sending) return;
-    setSending(true);
-    try {
-      await api.reply(id, body);
-      setReply("");
-      announce("Message sent");
-    } catch (e) {
-      toast.push(humanizeToast(e), "error");
-    } finally {
-      setSending(false);
-    }
-  };
-
   // Derive live state from the stream (last state_change wins), fall back to the row.
   const state = useMemo(() => {
     const last = [...events].reverse().find((e) => e.type === "state_change");
@@ -129,24 +72,6 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
   }, [events, session]);
 
   const terminal = TERMINAL_STATES.has(state);
-  const awaitingUser = state === "awaiting_user";
-
-  // ── Cumulative token usage from `usage` events ({input, output, total}) ──
-  // Each event is a turn's totals; sum for the session. `total` may be absent
-  // on older runs — derive from input+output then.
-  const usage = useMemo(() => {
-    let i = 0, o = 0;
-    for (const e of events) {
-      if ((e.type as string) !== "usage") continue;
-      const p = (e.payload ?? {}) as Record<string, unknown>;
-      const ni = Number(p.input ?? p.in ?? 0);
-      const no = Number(p.output ?? p.out ?? 0);
-      const tot = Number(p.total ?? 0);
-      if (ni || no) { i += ni || 0; o += no || 0; }
-      else if (tot) o += tot; // total-only payloads: count once, not twice
-    }
-    return i || o ? { in: i, out: o } : null;
-  }, [events]);
 
   // ── Terminal: spin up a fresh workspace on this repo, reusing this
   // session's own provider/model/branch/toolsets. budgets/toolsets are JSON
@@ -163,7 +88,7 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
         if (Array.isArray(raw)) toolsets = raw as string[];
       } catch { /* old rows have no toolsets */ }
       const res = await api.createSession({
-        repo_url: session.repo_url,
+        repo_url: session.repo_url ?? undefined,
         branch: session.branch,
         provider_id: session.provider_id,
         model_id: session.model_id,
@@ -211,75 +136,15 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
     });
   };
 
-  // ── Build file map from file_diff events ──
-  // Paths are humanized (repo-relative) and agent scratch files outside the
-  // repo are dropped — old sessions recorded raw sandbox paths before the
-  // runner filtered them.
-  const cleanPath = (raw: string): string | null => {
-    if (!raw) return null;
-    const i = raw.indexOf("/repo/");
-    if (i >= 0) return raw.slice(i + "/repo/".length) || null;
-    return raw.startsWith("/") ? null : raw;
-  };
-  const fileMap = useMemo(() => {
-    const map = new Map<string, FileEntry>();
-    for (const e of events) {
-      if (e.type !== "file_diff") continue;
-      const p = (e.payload ?? {}) as Record<string, unknown>;
-      const files = (Array.isArray(p.files) ? p.files : []) as { path?: string; content?: unknown }[];
-      if (files.length > 0) {
-        for (const f of files) {
-          const fp = cleanPath(String(f.path ?? ""));
-          if (fp) map.set(fp, { path: fp, content: f.content, seq: e.seq ?? 0 });
-        }
-      } else {
-        const fp = cleanPath(String(p.path ?? p.file ?? ""));
-        if (fp) map.set(fp, { path: fp, content: p.content ?? null, seq: e.seq ?? 0 });
-      }
-    }
-    return map;
-  }, [events]);
-
-  // Chat is the primary surface: diffs open only on explicit click. (An
-  // auto-select-first-file effect used to live here — on mobile it replaced
-  // the conversation with a diff panel the moment any file event arrived.)
-
-  const selectedEntry = selectedFile ? fileMap.get(selectedFile) ?? null : null;
-
-  // ── Streaming feel: detect if last event is recent ──
-  const isStreaming = useMemo(() => {
-    if (terminal || !live) return false;
-    if (events.length === 0) return true;
-    const last = events[events.length - 1];
-    const ts = new Date(last.ts).getTime();
-    return Date.now() - ts < 5000;
-  }, [events, live, terminal]);
-
-  // ── Pending question for inline approval ──
-  const pendingQuestion = useMemo(() => {
-    if (terminal) return null;
-    for (let i = events.length - 1; i >= 0; i--) {
-      const e = events[i];
-      if (e.type === "question") return e;
-      if (e.type === "user_message") return null;
-    }
-    return null;
-  }, [events, terminal]);
-
-  const repoFullName = session?.repo_url
-    ? session.repo_url.replace(/\.git$/, "").replace(/^https:\/\/github\.com\//, "")
-    : "";
-  const repoBranch = session ? (repoFullName ? `${repoFullName} · ${session.branch}` : `blank workspace · ${session.branch}`) : "";
   const modelId = session?.model_id ?? "";
-  const repoName = repoFullName.split("/").pop() || repoFullName;
 
-  const placeholder = terminal
-    ? "session ended"
-    : awaitingUser
-      ? "reply or steer…"
-      : events.length === 0
-        ? "What should we build?"
-        : "reply…";
+  // The opencode web UI is served by the session's opencode web process and
+  // proxied at /sessions/:id/opencode/. Same-origin through the API proxy so
+  // its SSE + fetch calls work without CORS. The token goes in the URL once so
+  // the proxy can mint a session cookie for the iframe's subsequent calls
+  // (iframes can't set Authorization headers). key on id so a session switch
+  // remounts a fresh iframe (opencode holds session state in-memory).
+  const ocSrc = `/sessions/${encodeURIComponent(id)}/opencode/${getAuthToken() ? `?token=${encodeURIComponent(getAuthToken())}` : ""}`;
 
   return (
     <div className="ws view-fade" role="application" aria-label="Session workspace">
@@ -367,7 +232,7 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
       {/* ── Mobile segmented control ── */}
       <div className="ws-mobile-tabs" role="tablist" aria-label="Workspace panels">
         <div className="ws-mobile-seg">
-          {(["chat", "editor", "files", "activity"] as const).map((t) => (
+          {(["workspace", "browser"] as const).map((t) => (
             <button
               key={t}
               className={`ws-mobile-tab ${mobileTab === t ? "active" : ""}`}
@@ -376,122 +241,50 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
               aria-selected={mobileTab === t}
               aria-label={t.charAt(0).toUpperCase() + t.slice(1)}
             >
-              {t === "chat" ? "Chat" : t === "editor" ? "Editor" : t === "files" ? "Files" : "Activity"}
+              {t === "workspace" ? "Workspace" : "Browser"}
             </button>
           ))}
         </div>
       </div>
 
-      {/* ── Body: center + right rail ── */}
+      {/* ── Body: opencode web UI (embedded) + right rail (browser preview) ── */}
       <div className="ws-body">
+        {/* opencode's own web UI — chat, diffs, todos, approval, file tree. The
+            custom ChatThread/Composer/DiffPanel are no longer rendered (kept as
+            dormant files for now). The iframe is same-origin via the proxy so
+            opencode's SSE (/event) and fetch (/message, /session) all work. */}
         <div
-          className={`ws-center ${mobileTab === "chat" ? "mobile-active" : ""}`}
+          className={`ws-opencode ${mobileTab === "workspace" ? "mobile-active" : ""}`}
           role="region"
-          aria-label="Conversation"
+          aria-label="opencode workspace"
         >
-          <ChatThread
-            events={events}
-            isStreaming={isStreaming}
-            pendingQuestionSeq={pendingQuestion?.seq}
-            repoName={repoName}
-            onReply={(t) => send(t)}
-            onOpenFile={(p) => { openFile(p); setMobileTab("editor"); }}
-            selectedFile={selectedFile}
+          <iframe
+            key={id}
+            src={ocSrc}
+            className="ws-opencode-frame"
+            title="opencode workspace"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           />
-
-          <Composer
-            value={reply}
-            onChange={setReply}
-            onSend={() => send(reply)}
-            sending={sending}
-            disabled={terminal}
-            awaiting={awaitingUser}
-            stateLabel={state}
-            stateTone={stateTone(state)}
-            modelId={modelId}
-            repoBranch={repoBranch}
-            placeholder={placeholder}
-            usage={usage}
-            endBar={terminal ? (
-              <div className="ws-endbar" role="status" aria-label="Workspace ended">
-                <span className="ws-endbar-text">
-                  This workspace has ended.
-                </span>
-                <button
-                  className="ws-endbar-cta"
-                  onClick={newSessionOnRepo}
-                  disabled={creating || !session}
-                  aria-label="New workspace on this repo"
-                >
-                  {creating ? "starting…" : "New workspace on this repo"}
-                </button>
-              </div>
-            ) : null}
-          />
-
-        </div>
-
-        {/* ── Editor column: persistent tabs + diff, coexists with chat
-            (landing hero mockup grid: chat | editor). Empty → welcome
-            placeholder, never destroys the conversation. ── */}
-        <div
-          className={`ws-editor ${mobileTab === "editor" ? "mobile-active" : ""}`}
-          role="region"
-          aria-label="Code editor"
-        >
-          {openFiles.length === 0 ? (
-            <div className="ws-editor-empty">
-              <span className="ws-editor-empty-glyph" aria-hidden="true">⌘</span>
-              <p className="ws-editor-empty-title">No file open</p>
-              <p className="ws-editor-empty-hint">Click a file in Files, or a change in chat, to open it here.</p>
+          {terminal && (
+            <div className="ws-opencode-ended" role="status" aria-label="Workspace ended">
+              <span className="ws-endbar-text">This workspace has ended.</span>
+              <button
+                className="ws-endbar-cta"
+                onClick={newSessionOnRepo}
+                disabled={creating || !session}
+                aria-label="New workspace on this repo"
+              >
+                {creating ? "starting…" : "New workspace on this repo"}
+              </button>
             </div>
-          ) : (
-            <>
-              <div className="ws-editor-tabs" role="tablist" aria-label="Open files">
-                {openFiles.map((p) => (
-                  <button
-                    key={p}
-                    className={`ws-editor-tab ${p === selectedFile ? "active" : ""}`}
-                    onClick={() => setSelectedFile(p)}
-                    role="tab"
-                    aria-selected={p === selectedFile}
-                    title={p}
-                  >
-                    <span className="ws-editor-tab-name">{p.split("/").pop()}</span>
-                    <span
-                      className="ws-editor-tab-close"
-                      role="button"
-                      tabIndex={-1}
-                      aria-label={`Close ${p}`}
-                      onClick={(e) => { e.stopPropagation(); closeFile(p); }}
-                    >
-                      ×
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="ws-editor-stage">
-                {selectedEntry ? (
-                  <DiffPanel path={selectedEntry.path} content={selectedEntry.content} />
-                ) : (
-                  <div className="ws-editor-empty"><p className="ws-editor-empty-hint">File not available.</p></div>
-                )}
-              </div>
-            </>
           )}
         </div>
 
         <RightRail
-          files={fileMap}
-          events={events}
-          selectedFile={selectedFile}
-          onSelectFile={(p) => { openFile(p); setMobileTab("editor"); }}
-          mobileActive={mobileTab === "files" || mobileTab === "activity"}
+          mobileActive={mobileTab === "browser"}
           sessionId={id}
         />
       </div>
-
-      <div ref={bottomRef} aria-hidden="true" />
     </div>
   );
 }

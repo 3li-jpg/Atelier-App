@@ -53,6 +53,14 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
 
     const uid = verifySession(getCookie(c, SESSION_COOKIE));
     if (uid) { c.set("userId", uid); return next(); }
+    // Static AUTH_TOKEN via cookie: the embedded opencode iframe can't send a
+    // Bearer header, so the opencode proxy mints a scoped atelier_session
+    // cookie holding the static owner token. Honor it here (owner backdoor).
+    const staticTok = process.env.AUTH_TOKEN;
+    if (staticTok && getCookie(c, SESSION_COOKIE) === staticTok) {
+      c.set("userId", OWNER_ID);
+      return next();
+    }
 
     // Also accept the session token as a Bearer header (cross-origin: landing
     // page on :3001 passes the token to the PWA on :5173 via URL hash; the
@@ -388,6 +396,87 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     const hit = tryFile(abs) ?? tryFile(join(abs, "index.html")) ?? tryFile(join(repoDir, "index.html"));
     if (!hit) return c.json({ error: "no index.html to preview" }, 404);
     return c.body(readFileSync(hit.path), 200, { "Content-Type": hit.mime, "Cache-Control": "no-store" });
+  });
+
+  // opencode web UI proxy: forward /sessions/:id/opencode/* → the session's
+  // opencode web server (127.0.0.1:<port>). The supervisor writes port+password
+  // to <workspace>/opencode.web on launch. Streams both ways so SSE (/event) and
+  // large POST bodies pass through unbuffered. Basic auth injected from the
+  // discovery file — the client never sees the opencode password.
+  app.all("/sessions/:id/opencode/*", async (c) => {
+    const s = await store.getSession(c.req.param("id"));
+    if (!s) return c.json({ error: "not found" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
+    const webFile = join(process.env.RUNNER_WORKSPACE ?? "/tmp/atelier", `${c.req.param("id").slice(0, 8)}/opencode.web`);
+    if (!existsSync(webFile)) return c.json({ error: "workspace not ready" }, 409);
+    const [port, password] = readFileSync(webFile, "utf8").trim().split("\n");
+    if (!port || !password) return c.json({ error: "workspace not ready" }, 409);
+    // The iframe can't send an Authorization header, so the global middleware
+    // authenticates the first (HTML) request via ?token= in the URL. On that
+    // first hit, mint a session cookie scoped to this opencode prefix so the
+    // SPA's subsequent same-prefix fetches (rewritten by the boot script) stay
+    // authenticated without the query param.
+    const qTok = c.req.query("token");
+    if (qTok) {
+      // Accept the static AUTH_TOKEN or a signed session token — same set the
+      // global middleware honors. Mint a scoped cookie so the iframe's later
+      // same-prefix fetches stay authed without the query param.
+      const staticTok = process.env.AUTH_TOKEN;
+      const ok = (staticTok && qTok === staticTok) || !!verifySession(qTok);
+      if (ok) setCookie(c, SESSION_COOKIE, qTok, { httpOnly: true, sameSite: "Lax", path: `/sessions/${c.req.param("id")}/opencode`, maxAge: 86400 });
+    }
+    // Hono's c.req.param("*") returns "" here (the * wildcard after a :id param
+    // doesn't populate reliably in @hono/node-server). Slice the sub-path straight
+    // off c.req.path: everything after "/opencode/".
+    const marker = `/sessions/${c.req.param("id")}/opencode/`;
+    const sub = c.req.path.startsWith(marker) ? c.req.path.slice(marker.length) : "";
+    // Strip our `token` query param before forwarding — opencode doesn't know it.
+    const qs = c.req.url.split("?")[1] ?? "";
+    const cleanQs = qs.split("&").filter((p) => p && !p.startsWith("token=")).join("&");
+    const url = `http://127.0.0.1:${port}/${sub}${cleanQs ? "?" + cleanQs : ""}`;
+    // Forward only content-relevant headers. opencode web does content
+    // negotiation on Accept; forwarding the browser's text/html Accept for API
+    // routes would return the SPA. Pass through Accept + Content-Type only.
+    const fwdHeaders: Record<string, string> = {
+      authorization: "Basic " + Buffer.from(`opencode:${password}`).toString("base64"),
+    };
+    const accept = c.req.raw.headers.get("accept");
+    if (accept) fwdHeaders.accept = accept;
+    const ctype = c.req.raw.headers.get("content-type");
+    if (ctype) fwdHeaders["content-type"] = ctype;
+    const hasBody = !["GET", "HEAD"].includes(c.req.method);
+    const upstream = await fetch(url, {
+      method: c.req.method,
+      headers: fwdHeaders,
+      body: hasBody ? c.req.raw.body : undefined,
+      // @ts-expect-error duplex:"half" is required by undici when streaming a request body
+      ...(hasBody ? { duplex: "half" } : {}),
+    }).catch((e) => { throw new Error(`opencode proxy: ${e.message}`); });
+    // Drop hop-by-hop + host headers from the upstream response: the proxy is
+    // a fresh hop, so transfer-encoding/content-length/connection must not be
+    // copied verbatim (the node-server sets its own). Keep content-type etc.
+    const drop = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length"]);
+    const respHeaders: Record<string, string> = {};
+    upstream.headers.forEach((v, k) => { if (!drop.has(k.toLowerCase())) respHeaders[k] = v; });
+    // The opencode SPA hardcodes API calls against location.origin with
+    // root-relative paths (/event, /session, /config, …). Embedded at
+    // /sessions/:id/opencode/, those would miss the proxy. Inject a <base> for
+    // asset URLs AND a boot script that rewrites fetch/EventSource/XHR to prefix
+    // opencode API roots with the session's proxy path. ponytail: only the HTML
+    // document (empty sub) is rewritten; assets + SSE stream through untouched.
+    if (sub === "" && (upstream.headers.get("content-type") ?? "").includes("text/html")) {
+      const html = await upstream.text();
+      const prefix = `/sessions/${c.req.param("id")}/opencode`;
+      const base = `<base href="${prefix}/">`;
+      // opencode API path roots — matched at the START of the URL so app routes
+      // like /sessions (plural) are never rewritten, only opencode's own roots.
+      const boot = `<script>(function(){var P="${prefix}";var ROOTS=["/event","/session","/message","/config","/agent","/provider","/command","/file","/find","/formatter","/log","/lsp","/mcp","/path","/permission","/project","/pty","/question","/skill","/vcs","/global"];function pre(u){if(typeof u!=="string")return u;for(var i=0;i<ROOTS.length;i++){var r=ROOTS[i];if(u===r||u.indexOf(r+"/")===0||u.indexOf(r+"?")===0)return P+u;}return u;}var of=window.fetch;window.fetch=function(i,o){if(typeof i==="string"){i=pre(i);}else if(i&&i.url){i=new Request(pre(i.url),i);}return of.call(window,i,o);};var OE=window.EventSource;window.EventSource=function(u,c){return new OE(pre(u),c);};var oo=window.XMLHttpRequest.prototype.open;window.XMLHttpRequest.prototype.open=function(m,u){return oo.call(this,m,pre(u));};})();</script>`;
+      const rewritten = html.replace("<head>", `<head>${base}${boot}`);
+      respHeaders["content-type"] = "text/html; charset=utf-8";
+      return c.body(rewritten, upstream.status as any, respHeaders);
+    }
+    return c.body(upstream.body, upstream.status as any, respHeaders);
   });
 
   app.post("/sessions/:id/finish", async (c) => {

@@ -156,7 +156,7 @@
 .ws-body {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   overflow: hidden;
   min-height: 0;
 }
@@ -169,6 +169,37 @@
   overflow: hidden;
   position: relative;
   background: var(--bg);
+}
+
+/* ── opencode web UI (embedded) ── fills the center column with opencode's own
+   web UI, served same-origin via the /sessions/:id/opencode/ proxy. The iframe
+   is borderless and full-bleed so it reads as a native pane, not a frame. */
+.ws-opencode {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  background: var(--bg);
+}
+.ws-opencode-frame {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  min-height: 0;
+}
+.ws-opencode-ended {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(2px);
 }
 
 /* ── Chat thread ── */
@@ -1280,8 +1311,7 @@
     position: relative;
     grid-template-columns: 1fr;
   }
-  .ws-center,
-  .ws-editor,
+  .ws-opencode,
   .ws-rail {
     width: 100%;
     min-width: 0;
@@ -1290,12 +1320,9 @@
     inset: 0;
   }
   .ws-rail { border-left: none; }
-  .ws-center:not(.mobile-active),
-  .ws-editor:not(.mobile-active),
+  .ws-opencode:not(.mobile-active),
   .ws-rail:not(.mobile-active) { display: none; }
   .ws-rail-toggle { display: none; }
-  .ws-thread { padding: 1rem 0.9rem 0.5rem; }
-  .ws-composer { padding: 0.5rem 0.9rem calc(0.5rem + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* ── Accessibility ── */
