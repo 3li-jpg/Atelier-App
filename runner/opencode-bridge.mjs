@@ -22,6 +22,7 @@ const {
   OPENCODE_PASSWORD = "",
   OPENCODE_MODEL = "",
   OPENCODE_AGENT = "",
+  OPENCODE_PROVIDER_ID = "",
 } = process.env;
 
 if (!OPENCODE_PASSWORD) { console.error("opencode-bridge: OPENCODE_PASSWORD is required"); process.exit(1); }
@@ -86,9 +87,23 @@ async function createSession() {
   return data.id;
 }
 
+// opencode /message expects model as { providerID, modelID } | null — a bare
+// string ("umans-glm-5.2") is rejected with 400 (Payload: "Expected object |
+// null"). OPENCODE_MODEL may be "providerID/modelID" (opencode's canonical
+// form, e.g. "umans-ai/umans-glm-5.2") or a bare model id; split on the first
+// "/" to recover the pair. A bare id with no provider falls back to OPENCODE_PROVIDER_ID.
+function modelObject(raw) {
+  if (!raw) return null;
+  const slash = raw.indexOf("/");
+  if (slash > 0) return { providerID: raw.slice(0, slash), modelID: raw.slice(slash + 1) };
+  const providerID = OPENCODE_PROVIDER_ID || "atelier";
+  return { providerID, modelID: raw };
+}
+
 async function sendMessage(sessionId, text) {
   const body = { parts: [{ type: "text", text }] };
-  if (OPENCODE_MODEL) body.model = OPENCODE_MODEL;
+  const model = modelObject(OPENCODE_MODEL);
+  if (model) body.model = model;
   if (OPENCODE_AGENT) body.agent = OPENCODE_AGENT;
   const res = await fetch(`${OPENCODE_URL}/session/${sessionId}/message`, {
     method: "POST",
@@ -121,7 +136,7 @@ async function abortSession(sessionId) {
 
 async function consumeSSE(sessionId, state, onStreamEnd) {
   const res = await fetch(`${OPENCODE_URL}/event`, {
-    headers: { Authorization: BASIC_AUTH },
+    headers: { Authorization: BASIC_AUTH, Accept: "text/event-stream" },
   });
   if (!res.ok) throw new Error(`GET /event failed: ${res.status}`);
   if (!res.body) throw new Error("GET /event returned no body");
@@ -129,11 +144,13 @@ async function consumeSSE(sessionId, state, onStreamEnd) {
   const decoder = new TextDecoder();
   let buffer = "";
   let batch = [];
+  let lastFlush = Date.now();
 
   function flush() {
     if (batch.length === 0) return;
     const current = batch;
     batch = [];
+    lastFlush = Date.now();
     return postEvents(current);
   }
 
@@ -183,8 +200,11 @@ async function consumeSSE(sessionId, state, onStreamEnd) {
         batch.push({ ...atelier, ts: now() });
       }
     }
-    // Flush periodically to keep latency low.
-    if (batch.length >= 5) {
+    // Flush eagerly: the SSE stream stays open for the session lifetime, so
+    // we can't wait for stream-end or a 5-event batch (a short reply yields <5
+    // events and would sit buffered forever). Flush on any new data, plus a
+    // 500ms safety net so we don't flush on every single token delta.
+    if (batch.length > 0 && (batch.length >= 5 || Date.now() - lastFlush >= 500)) {
       await flush();
     }
   }
@@ -252,7 +272,19 @@ async function main() {
   // Start the replies poller concurrently.
   const pollPromise = pollReplies(state, sessionId);
 
-  // If TASK is non-empty, send it as the initial message.
+  // Subscribe to the SSE event stream BEFORE sending the message. opencode's
+  // POST /session/:id/message blocks until the agent turn completes, and it
+  // streams the turn's deltas on /event DURING that blocking window — so
+  // subscribing after sendMessage returns misses the entire turn. Kick off the
+  // consumer first, then send; the consumer runs until the stream ends.
+  let sseError = null;
+  const ssePromise = consumeSSE(sessionId, state, () => {
+    log("event stream ended");
+  }).catch((e) => { sseError = e; });
+
+  // Give the SSE socket a moment to open so the first deltas aren't missed.
+  await sleep(300);
+
   if (TASK) {
     log("sending initial task");
     await sendMessage(sessionId, TASK);
@@ -260,12 +292,9 @@ async function main() {
     log("chat mode: no initial task; waiting for first reply");
   }
 
-  // Consume the SSE event stream. The stream stays open for the session
-  // lifetime. When it ends (session completed/cancelled), we exit.
   try {
-    await consumeSSE(sessionId, state, () => {
-      log("event stream ended");
-    });
+    await ssePromise;
+    if (sseError) throw sseError;
   } catch (e) {
     log(`sse error: ${e.message}`);
     await emit("error", { message: e.message });

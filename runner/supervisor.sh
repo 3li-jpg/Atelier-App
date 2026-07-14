@@ -118,14 +118,34 @@ else
   mkdir -p "$OPENCODE_CFG"
 fi
 
-# BYOK custom-provider wiring: write an opencode.json pointing the provider
-# at the sealed-handshake LLM base_url + model. The API key is set via env
-# OPENCODE_PROVIDER_<ID>_API_KEY (opencode reads provider keys from env).
-# ponytail: opencode's exact config schema for custom providers is not fully
-# documented; this is a reasonable OpenAI-compatible provider entry. If the
-# npm adapter name changes, update here — the $schema field helps.
-PROVIDER_ID="atelier"
-cat > "$OPENCODE_CFG/opencode.json" <<EOF
+# opencode provider + model wiring. Two modes:
+#  - LOCAL (SKIP_FIREWALL=1, set by LocalSandboxProvider): the operator's real
+#    opencode auth (~/.local/share/opencode/auth.json) already holds a working
+#    key for providers like umans-ai. The isolated HOME ($WORKSPACE) would hide
+#    it, so we link the real opencode data dir in and route the session to the
+#    authenticated provider via "providerID/modelID". No custom provider block,
+#    no key in env — the operator's own credentialed provider is reused.
+#  - SEALED (Fly / handshake): the key arrives via the handshake; write a custom
+#    "atelier" OpenAI-compatible provider pointed at LLM_BASE_URL + LLM_API_KEY.
+# ponytail: the canonical opencode model id is "providerID/modelID" (e.g.
+# "umans-ai/umans-glm-5.2"); the bridge splits on the first "/" to build the
+# {providerID, modelID} object the /message API requires.
+REAL_OPCODE_DATA="${ATELIER_REAL_HOME:-$HOME}/.local/share/opencode"
+if [[ -n "${SKIP_FIREWALL:-}" && -d "$REAL_OPCODE_DATA" ]]; then
+  # Local dev: reuse the operator's authenticated providers.
+  mkdir -p "$HOME/.local/share"
+  ln -sfn "$REAL_OPCODE_DATA" "$HOME/.local/share/opencode"
+  # Normalize the model id to "providerID/modelID". LLM_MODEL may already carry
+  # the provider prefix; if not, OPENCODE_PROVIDER_ID supplies it (default umans-ai).
+  if [[ "$LLM_MODEL" == */* ]]; then
+    OC_MODEL="$LLM_MODEL"
+  else
+    OC_MODEL="${OPENCODE_PROVIDER_ID:-umans-ai}/${LLM_MODEL}"
+  fi
+else
+  # Sealed/production BYOK: custom provider with the handshake key.
+  PROVIDER_ID="${OPENCODE_PROVIDER_ID:-atelier}"
+  cat > "$OPENCODE_CFG/opencode.json" <<EOF
 {
   "\$schema": "https://opencode.ai/config.json",
   "provider": {
@@ -142,7 +162,9 @@ cat > "$OPENCODE_CFG/opencode.json" <<EOF
   }
 }
 EOF
-export OPENCODE_PROVIDER_ATELIER_API_KEY="$LLM_API_KEY"
+  export OPENCODE_PROVIDER_ATELIER_API_KEY="$LLM_API_KEY"
+  OC_MODEL="${PROVIDER_ID}/${LLM_MODEL}"
+fi
 # API server password (basic auth for the bridge — random per session)
 OPENCODE_PASSWORD=$(openssl rand -hex 32)
 export OPENCODE_SERVER_USERNAME="opencode"
@@ -213,7 +235,7 @@ case "$ENGINE" in
   opencode)
     OPENCODE_URL="http://127.0.0.1:${OPENCODE_PORT}" \
       OPENCODE_USER="opencode" OPENCODE_PASSWORD="$OPENCODE_PASSWORD" \
-      OPENCODE_MODEL="$LLM_MODEL" OPENCODE_AGENT="${OPENCODE_AGENT:-}" \
+      OPENCODE_MODEL="$OC_MODEL" OPENCODE_AGENT="${OPENCODE_AGENT:-}" \
       REPLIES_URL="$REPLIES_URL" TASK="$TASK" SESSION_ID="${SESSION_ID}" \
       EVENTS_URL="$EVENTS_URL" SESSION_TOKEN="$SESSION_TOKEN" \
       node "${RUNNER_BIN}/opencode-bridge.mjs" &

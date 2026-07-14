@@ -1,5 +1,6 @@
-// opencode-map.test.mjs — tests for the extracted OpenCode event mapper.
+// opencode-map.test.mjs — tests for the OpenCode event mapper (v1.17 schema).
 // Run: node --test runner/opencode-map.test.mjs
+// Event shapes verified against a live `opencode serve` 1.17.15 SSE capture.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -9,132 +10,163 @@ function state() {
   return { pendingRequests: [] };
 }
 
-test("EventSessionNextTextDelta → assistant_text with text", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionNextTextDelta", properties: { text: "hello" } }, state());
-  assert.deepEqual(r, { type: "assistant_text", payload: { text: "hello" } });
+// ---- streaming text (message.part.delta) ----
+
+test("message.part.delta text field → assistant_text", () => {
+  const r = mapOpenCodeEvent({ type: "message.part.delta", properties: { delta: "Hello", field: "text" } }, state());
+  assert.deepEqual(r, { type: "assistant_text", payload: { text: "Hello" } });
 });
 
-test("EventSessionNextTextDelta with delta field → assistant_text", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionNextTextDelta", properties: { delta: "world" } }, state());
+test("message.part.delta without explicit field defaults to text → assistant_text", () => {
+  const r = mapOpenCodeEvent({ type: "message.part.delta", properties: { delta: "world" } }, state());
   assert.deepEqual(r, { type: "assistant_text", payload: { text: "world" } });
 });
 
-test("EventSessionNextTextDelta with empty text → null", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionNextTextDelta", properties: { text: "" } }, state());
+test("message.part.delta reasoning field → null (not surfaced)", () => {
+  const r = mapOpenCodeEvent({ type: "message.part.delta", properties: { delta: "thinking...", field: "reasoning" } }, state());
   assert.equal(r, null);
 });
 
-test("EventSessionNextToolProgress running → tool_call running", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionNextToolProgress", properties: { tool: { name: "terminal" }, state: "running" } }, state());
+test("message.part.delta empty delta → null", () => {
+  const r = mapOpenCodeEvent({ type: "message.part.delta", properties: { delta: "", field: "text" } }, state());
+  assert.equal(r, null);
+});
+
+// ---- part lifecycle (message.part.updated) ----
+
+test("message.part.updated text part with text → assistant_text", () => {
+  const r = mapOpenCodeEvent({ type: "message.part.updated", properties: { part: { type: "text", text: "Done." } } }, state());
+  assert.deepEqual(r, { type: "assistant_text", payload: { text: "Done." } });
+});
+
+test("message.part.updated reasoning part → null", () => {
+  const r = mapOpenCodeEvent({ type: "message.part.updated", properties: { part: { type: "reasoning", text: "..." } } }, state());
+  assert.equal(r, null);
+});
+
+test("message.part.updated step-start/step-finish → null", () => {
+  assert.equal(mapOpenCodeEvent({ type: "message.part.updated", properties: { part: { type: "step-start" } } }, state()), null);
+  assert.equal(mapOpenCodeEvent({ type: "message.part.updated", properties: { part: { type: "step-finish" } } }, state()), null);
+});
+
+// ---- tool lifecycle (message.part.updated tool part) ----
+
+test("tool part running (terminal) → tool_call running", () => {
+  const r = mapOpenCodeEvent({
+    type: "message.part.updated",
+    properties: { part: { type: "tool", tool: "terminal", state: { status: "running", input: {} } } },
+  }, state());
   assert.deepEqual(r, { type: "tool_call", payload: { tool: "terminal", status: "running" } });
 });
 
-test("EventSessionNextToolProgress completed → tool_call done exit_code 0", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionNextToolProgress", properties: { tool: "terminal", state: "completed", duration: 1.5 } }, state());
-  assert.deepEqual(r, { type: "tool_call", payload: { tool: "terminal", status: "done", exit_code: 0, duration: 1.5 } });
+test("tool part completed (terminal) → tool_call done with result + duration", () => {
+  const r = mapOpenCodeEvent({
+    type: "message.part.updated",
+    properties: { part: { type: "tool", tool: "terminal", state: { status: "completed", output: "ok", time: { start: 1000, end: 1500 } } } },
+  }, state());
+  assert.deepEqual(r, { type: "tool_call", payload: { tool: "terminal", status: "done", result: "ok", duration: 500 } });
 });
 
-test("EventSessionNextToolProgress completed with error → tool_call done exit_code 1", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionNextToolProgress", properties: { tool: "terminal", state: "completed", error: "boom" } }, state());
-  assert.equal(r.payload.exit_code, 1);
-  assert.equal(r.payload.status, "done");
-  assert.equal(r.payload.error, "boom");
+test("write tool with filePath + content → file_diff with content", () => {
+  const r = mapOpenCodeEvent({
+    type: "message.part.updated",
+    properties: { part: { type: "tool", tool: "write", state: { status: "running", input: { filePath: "/workspace/repo/src/a.ts", content: "hi" } } } },
+  }, state());
+  assert.deepEqual(r, { type: "file_diff", payload: { path: "src/a.ts", content: "hi" } });
 });
 
-test("EventSessionNextToolProgress edit tool with path → file_diff with relative path", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionNextToolProgress", properties: { tool: "edit", state: "running", path: "src/auth.ts" } }, state());
-  assert.deepEqual(r, { type: "file_diff", payload: { path: "src/auth.ts", content: null } });
+test("write tool with relative path → file_diff", () => {
+  const r = mapOpenCodeEvent({
+    type: "message.part.updated",
+    properties: { part: { type: "tool", tool: "write", state: { status: "running", input: { filePath: "lib/foo.ts", content: "x" } } } },
+  }, state());
+  assert.deepEqual(r, { type: "file_diff", payload: { path: "lib/foo.ts", content: "x" } });
 });
 
-test("EventSessionNextToolProgress write tool with /repo/ path → file_diff with stripped path", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionNextToolProgress", properties: { tool: "write", state: "running", path: "/workspace/repo/lib/foo.ts" } }, state());
-  assert.deepEqual(r, { type: "file_diff", payload: { path: "lib/foo.ts", content: null } });
+test("write tool non-string content → file_diff content null", () => {
+  const r = mapOpenCodeEvent({
+    type: "message.part.updated",
+    properties: { part: { type: "tool", tool: "write", state: { status: "running", input: { filePath: "a.ts", content: { obj: true } } } } },
+  }, state());
+  assert.deepEqual(r, { type: "file_diff", payload: { path: "a.ts", content: null } });
 });
 
-test("EventSessionNextToolProgress write_file with input.path → file_diff", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionNextToolProgress", properties: { tool: "write_file", state: "running", input: { path: "lib/bar.ts" } } }, state());
-  assert.deepEqual(r, { type: "file_diff", payload: { path: "lib/bar.ts", content: null } });
+test("write tool without path → falls through to tool_call", () => {
+  const r = mapOpenCodeEvent({
+    type: "message.part.updated",
+    properties: { part: { type: "tool", tool: "write", state: { status: "running", input: {} } } },
+  }, state());
+  assert.deepEqual(r, { type: "tool_call", payload: { tool: "write", status: "running" } });
 });
 
-test("EventSessionNextToolProgress edit tool without path → falls through to tool_call", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionNextToolProgress", properties: { tool: "edit", state: "running" } }, state());
-  assert.deepEqual(r, { type: "tool_call", payload: { tool: "edit", status: "running" } });
+test("edit tool with metadata.filepath → file_diff", () => {
+  const r = mapOpenCodeEvent({
+    type: "message.part.updated",
+    properties: { part: { type: "tool", tool: "edit", state: { status: "completed", metadata: { filepath: "/workspace/repo/b.ts" } } } },
+  }, state());
+  assert.deepEqual(r, { type: "file_diff", payload: { path: "b.ts", content: null } });
 });
 
-test("EventPermissionAsked → question with kind permission, pushes to pendingRequests", () => {
-  const s = state();
-  const r = mapOpenCodeEvent({ type: "EventPermissionAsked", properties: { prompt: "rm -rf /tmp" } }, s);
-  assert.deepEqual(r, {
-    type: "question",
-    payload: {
-      prompt: "rm -rf /tmp",
-      options: ["approve", "deny"],
-      request_id: "approval",
-      kind: "permission",
-    },
-  });
-  assert.equal(s.pendingRequests.length, 1);
-  assert.equal(s.pendingRequests[0].kind, "permission");
+// ---- patch part ----
+
+test("patch part with path → file_diff", () => {
+  const r = mapOpenCodeEvent({ type: "message.part.updated", properties: { part: { type: "patch", path: "/workspace/repo/c.ts" } } }, state());
+  assert.deepEqual(r, { type: "file_diff", payload: { path: "c.ts", content: null } });
 });
 
-test("EventQuestionAsked → question with kind question, pushes to pendingRequests", () => {
-  const s = state();
-  const r = mapOpenCodeEvent({ type: "EventQuestionAsked", properties: { prompt: "Which branch?" } }, s);
-  assert.deepEqual(r, {
-    type: "question",
-    payload: {
-      prompt: "Which branch?",
-      options: [],
-      request_id: "clarify",
-      kind: "question",
-    },
-  });
-  assert.equal(s.pendingRequests.length, 1);
-  assert.equal(s.pendingRequests[0].kind, "question");
-});
-
-test("EventSessionUpdated completed with usage → usage event", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionUpdated", properties: { state: "completed", usage: { input: 100, output: 50, total: 150 } } }, state());
-  assert.deepEqual(r, {
-    type: "usage",
-    payload: { input: 100, output: 50, total: 150 },
-  });
-});
-
-test("EventSessionUpdated completed without usage → state_change completed", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionUpdated", properties: { state: "completed" } }, state());
-  assert.deepEqual(r, { type: "state_change", payload: { state: "completed" } });
-});
-
-test("EventSessionUpdated failed → error event", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionUpdated", properties: { state: "failed", error: "boom" } }, state());
-  assert.deepEqual(r, { type: "error", payload: { message: "boom" } });
-});
-
-test("EventSessionUpdated failed without error → default message", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionUpdated", properties: { state: "failed" } }, state());
-  assert.deepEqual(r, { type: "error", payload: { message: "session failed" } });
-});
-
-test("EventSessionUpdated cancelled → state_change cancelled", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionUpdated", properties: { state: "cancelled" } }, state());
-  assert.deepEqual(r, { type: "state_change", payload: { state: "cancelled" } });
-});
-
-test("EventSessionUpdated with metadata state → null (noise)", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionUpdated", properties: { state: "metadata", title: "new title" } }, state());
+test("patch part without path → null", () => {
+  const r = mapOpenCodeEvent({ type: "message.part.updated", properties: { part: { type: "patch" } } }, state());
   assert.equal(r, null);
 });
+
+// ---- session status ----
+
+test("session.status busy → state_change running", () => {
+  const r = mapOpenCodeEvent({ type: "session.status", properties: { status: { type: "busy" } } }, state());
+  assert.deepEqual(r, { type: "state_change", payload: { state: "running" } });
+});
+
+test("session.status idle → state_change awaiting_user", () => {
+  const r = mapOpenCodeEvent({ type: "session.status", properties: { status: { type: "idle" } } }, state());
+  assert.deepEqual(r, { type: "state_change", payload: { state: "awaiting_user" } });
+});
+
+test("session.idle → state_change awaiting_user", () => {
+  const r = mapOpenCodeEvent({ type: "session.idle", properties: {} }, state());
+  assert.deepEqual(r, { type: "state_change", payload: { state: "awaiting_user" } });
+});
+
+// ---- session diff ----
+
+test("session.diff with paths → file_diff first path", () => {
+  const r = mapOpenCodeEvent({ type: "session.diff", properties: { diff: [{ path: "/workspace/repo/d.ts" }] } }, state());
+  assert.deepEqual(r, { type: "file_diff", payload: { path: "d.ts", content: null } });
+});
+
+test("session.diff empty → null", () => {
+  const r = mapOpenCodeEvent({ type: "session.diff", properties: { diff: [] } }, state());
+  assert.equal(r, null);
+});
+
+// ---- noise ----
 
 test("server.connected → null", () => {
-  const r = mapOpenCodeEvent({ type: "server.connected", properties: {} }, state());
-  assert.equal(r, null);
+  assert.equal(mapOpenCodeEvent({ type: "server.connected", properties: {} }, state()), null);
 });
 
-test("EventSessionCreated → null", () => {
-  const r = mapOpenCodeEvent({ type: "EventSessionCreated", properties: { id: "abc" } }, state());
-  assert.equal(r, null);
+test("plugin.added → null", () => {
+  assert.equal(mapOpenCodeEvent({ type: "plugin.added", properties: {} }, state()), null);
 });
+
+test("message.updated → null", () => {
+  assert.equal(mapOpenCodeEvent({ type: "message.updated", properties: {} }, state()), null);
+});
+
+test("server.heartbeat → null", () => {
+  assert.equal(mapOpenCodeEvent({ type: "server.heartbeat", properties: {} }, state()), null);
+});
+
+// ---- unknown ----
 
 test("unknown event → harness breadcrumb", () => {
   const r = mapOpenCodeEvent({ type: "something.new", properties: { foo: "bar" } }, state());
@@ -143,6 +175,7 @@ test("unknown event → harness breadcrumb", () => {
 
 test("NOISE set contains expected events", () => {
   assert.ok(NOISE.has("server.connected"));
-  assert.ok(NOISE.has("EventSessionCreated"));
-  assert.equal(NOISE.size, 2);
+  assert.ok(NOISE.has("plugin.added"));
+  assert.ok(NOISE.has("message.updated"));
+  assert.ok(NOISE.has("session.updated"));
 });

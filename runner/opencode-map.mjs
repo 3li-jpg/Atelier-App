@@ -1,21 +1,49 @@
-// opencode-map.mjs — maps parsed OpenCode SSE JSON objects to Atelier event objects.
+// opencode-map.mjs — maps OpenCode serve (v1.17) SSE JSON to Atelier Event objects.
 // Pure function module, extracted from the bridge for testability.
 //
-// OpenCode serve SSE wire format: `data: {json}\n\n` — each SSE event has a
-// `type` field (e.g. EventSessionNextTextDelta) and a `properties` object
-// carrying the event-specific payload. Exact payload field names are not fully
-// published, so all reads are defensive (try multiple likely keys).
+// OpenCode serve SSE wire format: `data: {json}\n\n`. Each event has a `type`
+// and a `properties` payload. The session id lives in `properties.sessionID`
+// (the bridge filters on it before calling here). Verified against opencode
+// 1.17.15 by capturing the live stream:
+//   message.part.delta    — streaming token deltas; properties.delta is a text
+//                           fragment (field:"text" for prose, "reasoning" for
+//                           chain-of-thought).
+//   message.part.updated  — part lifecycle; properties.part.type ∈
+//                           {text, reasoning, tool, patch, step-start,
+//                           step-finish}. Tool parts carry part.tool,
+//                           part.state.status, part.state.input/output.
+//   session.status        — properties.status.type ∈ {busy, idle}.
+//   session.idle          — agent finished its turn (→ awaiting_user).
+//   session.diff          — file changes (properties.diff[]).
 
 // Events that carry no actionable content — drop entirely.
 export const NOISE = new Set([
   "server.connected",
-  "EventSessionCreated",
+  "server.heartbeat",
+  "session.updated",
+  "catalog.updated",
+  "reference.updated",
+  "integration.updated",
+  "plugin.added",
+  "message.updated",
 ]);
 
 // Tool names that produce files inside the workspace — surface as file_diff
-// so the web UI can render them in the Files rail. Other tools (terminal,
+// so the web UI renders them in the Files rail. Other tools (terminal,
 // search, etc.) stay plain tool_call rows.
-const FILE_TOOLS = new Set(["edit", "write", "str_replace", "create", "write_file", "edit_file"]);
+const FILE_TOOLS = new Set(["edit", "write", "str_replace", "create", "write_file", "edit_file", "multi_edit"]);
+
+// Workspace repo root marker — opencode runs with cwd = $WORKSPACE/repo, so
+// tool paths are absolute under it. Relativize to the repo root for display.
+const REPO_MARKER = "/repo/";
+
+function relativize(path) {
+  if (!path) return "";
+  const i = path.indexOf(REPO_MARKER);
+  if (i >= 0) return path.slice(i + REPO_MARKER.length);
+  if (!path.startsWith("/")) return path;
+  return "";
+}
 
 /**
  * Map a parsed OpenCode SSE JSON object to an Atelier event.
@@ -23,112 +51,102 @@ const FILE_TOOLS = new Set(["edit", "write", "str_replace", "create", "write_fil
  * @param {object} ev     — parsed JSON from the SSE `data:` line.
  * @param {object} state  — mutable bridge state; must have `pendingRequests` array.
  * @returns {{type: string, payload: object} | null}
- *   Returns null for noise events; otherwise { type, payload }.
+ *   Returns null for noise; otherwise { type, payload }.
  */
 export function mapOpenCodeEvent(ev, state) {
   const type = ev.type ?? "";
   const p = ev.properties ?? {};
 
-  // ---- noise ----
   if (NOISE.has(type)) return null;
 
-  // ---- streaming assistant text ----
-  if (type === "EventSessionNextTextDelta") {
-    const text = p.text || p.delta || p.content || "";
+  // ---- streaming assistant text (token deltas) ----
+  // message.part.delta: properties.field is "text" for prose, "reasoning" for CoT.
+  // Only prose becomes assistant_text; reasoning is dropped (not surfaced yet).
+  if (type === "message.part.delta") {
+    if (p.field && p.field !== "text") return null;
+    const text = p.delta ?? p.text ?? "";
     if (!text) return null;
     return { type: "assistant_text", payload: { text } };
   }
 
-  // ---- tool lifecycle ----
-  if (type === "EventSessionNextToolProgress") {
-    const tool = p.tool?.name || p.tool || p.title || p.name || "tool";
-    const toolState = p.state || p.step || p.status || "";
+  // ---- part lifecycle ----
+  if (type === "message.part.updated") {
+    const part = p.part ?? {};
+    const pt = part.type ?? "";
 
-    // File-producing tools — surface as file_diff so the web UI can render
-    // them, but only for files inside the workspace repo. Agents also write
-    // scratch files (e.g. /var/folders/...) that are not part of the change
-    // set — those stay plain tool_calls.
-    if (FILE_TOOLS.has(tool)) {
-      const path = p.path || p.file || (p.input && p.input.path) || "";
-      if (path) {
-        const i = path.indexOf("/repo/");
-        if (i >= 0) {
-          return { type: "file_diff", payload: { path: path.slice(i + 6), content: null } };
+    // Final text part — emit the full accumulated text if the delta stream
+    // somehow missed it (defensive; deltas are the primary path).
+    if (pt === "text") {
+      const text = part.text ?? "";
+      if (!text) return null;
+      return { type: "assistant_text", payload: { text } };
+    }
+
+    // reasoning / step markers — not surfaced.
+    if (pt === "reasoning" || pt === "step-start" || pt === "step-finish") return null;
+
+    // File patch summary — surface as a file_diff if it carries a path.
+    if (pt === "patch") {
+      const path = relativize(part.path ?? part.filePath ?? "");
+      if (!path) return null;
+      return { type: "file_diff", payload: { path, content: null } };
+    }
+
+    // Tool invocation lifecycle.
+    if (pt === "tool") {
+      const tool = part.tool ?? "tool";
+      const st = part.state ?? {};
+      const status = st.status ?? "";
+      const input = st.input ?? {};
+
+      // File-producing tools — surface as file_diff with content when available.
+      if (FILE_TOOLS.has(tool)) {
+        const rawPath = input.filePath ?? input.path ?? st.metadata?.filepath ?? st.title ?? "";
+        const path = relativize(rawPath);
+        if (path) {
+          const content = typeof input.content === "string" ? input.content : null;
+          return { type: "file_diff", payload: { path, content } };
         }
-        if (!path.startsWith("/")) {
-          return { type: "file_diff", payload: { path, content: null } };
-        }
-        // Absolute path outside the repo — scratch file; fall through to tool_call.
+        // No usable path — fall through to a regular tool_call.
       }
-      // No usable path — fall through to a regular tool_call.
-    }
 
-    if (toolState === "running" || toolState === "started" || toolState === "pending") {
-      return { type: "tool_call", payload: { tool, status: "running" } };
-    }
-
-    // completed or any other terminal state → done
-    const payload = {
-      tool,
-      status: "done",
-      exit_code: p.error ? 1 : 0,
-    };
-    if (p.duration != null) payload.duration = p.duration;
-    if (p.error) payload.error = String(p.error);
-    return { type: "tool_call", payload };
-  }
-
-  // ---- permission request (approval prompt) ----
-  if (type === "EventPermissionAsked") {
-    state.pendingRequests.push({ id: "approval", kind: "permission" });
-    return {
-      type: "question",
-      payload: {
-        prompt: p.prompt || p.message || p.command || "Permission required",
-        options: ["approve", "deny"],
-        request_id: "approval",
-        kind: "permission",
-      },
-    };
-  }
-
-  // ---- question asked (clarify) ----
-  if (type === "EventQuestionAsked") {
-    state.pendingRequests.push({ id: "clarify", kind: "question" });
-    return {
-      type: "question",
-      payload: {
-        prompt: p.prompt || p.question || p.message || "Clarification needed",
-        options: [],
-        request_id: "clarify",
-        kind: "question",
-      },
-    };
-  }
-
-  // ---- session lifecycle ----
-  if (type === "EventSessionUpdated") {
-    const status = p.state || p.status || "";
-    if (status === "completed" || status === "finished" || status === "done") {
-      const u = p.usage ?? p.tokens ?? {};
-      const input = u.input ?? u.input_tokens ?? 0;
-      const output = u.output ?? u.output_tokens ?? 0;
-      const total = u.total ?? u.total_tokens ?? (input + output);
-      if (input || output || total) {
-        return { type: "usage", payload: { input, output, total } };
+      const payload = { tool, status: status === "completed" || status === "done" ? "done" : "running" };
+      if (status === "completed" || status === "done") {
+        const out = st.output;
+        if (typeof out === "string" && out) payload.result = out;
+        if (st.time?.end && st.time?.start) payload.duration = st.time.end - st.time.start;
       }
-      return { type: "state_change", payload: { state: "completed" } };
+      return { type: "tool_call", payload };
     }
-    if (status === "failed" || status === "error") {
-      return { type: "error", payload: { message: p.error || p.message || "session failed" } };
-    }
-    if (status === "cancelled" || status === "aborted") {
-      return { type: "state_change", payload: { state: "cancelled" } };
-    }
-    // Other session updates (metadata, title changes) — noise.
+
     return null;
   }
 
-  // ---- unknown, non-noise → harness breadcrumb ----
+  // ---- session status: busy/idle → state_change ----
+  if (type === "session.status") {
+    const s = p.status?.type ?? p.status ?? "";
+    if (s === "busy") return { type: "state_change", payload: { state: "running" } };
+    if (s === "idle") return { type: "state_change", payload: { state: "awaiting_user" } };
+    return null;
+  }
+
+  // ---- session idle: agent turn finished ----
+  if (type === "session.idle") {
+    return { type: "state_change", payload: { state: "awaiting_user" } };
+  }
+
+  // ---- file diff summary ----
+  if (type === "session.diff") {
+    const diff = p.diff;
+    if (!Array.isArray(diff) || diff.length === 0) return null;
+    // Emit one file_diff per changed path.
+    const paths = diff.map((d) => relativize(d.path ?? d.file ?? "")).filter(Boolean);
+    if (paths.length === 0) return null;
+    // ponytail: emit the first; the bridge batches. Multiple paths would need
+    // multiple events — return the first, the rest surface via tool parts.
+    return { type: "file_diff", payload: { path: paths[0], content: null } };
+  }
+
+  // ---- unknown, non-noise → harness breadcrumb (keeps visibility) ----
   return { type: "harness", payload: { event: type } };
 }

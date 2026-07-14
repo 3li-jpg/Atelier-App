@@ -28,6 +28,10 @@ export class LocalSandboxProvider implements SandboxProvider {
       // config (opencode.json with the LLM key) under $HOME/.opencode — pointing
       // that at the operator's real home would clobber their own opencode setup.
       HOME: workspace,
+      // Real home is passed through so the supervisor can link the operator's
+      // authenticated opencode auth.json (~/.local/share/opencode) into the
+      // isolated HOME in local mode — reusing their credentialed providers.
+      ATELIER_REAL_HOME: process.env.HOME ?? "",
       PATH: `${process.env.HOME ?? ""}/.local/bin:${process.env.PATH ?? ""}`,
     };
     const child = spawn("bash", [`${RUNNER_DIR}/supervisor.sh`], {
