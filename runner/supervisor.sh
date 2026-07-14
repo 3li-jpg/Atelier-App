@@ -144,9 +144,12 @@ fi
 # {providerID, modelID} object the /message API requires.
 REAL_OPCODE_DATA="${ATELIER_REAL_HOME:-$HOME}/.local/share/opencode"
 if [[ -n "${SKIP_FIREWALL:-}" && -d "$REAL_OPCODE_DATA" ]]; then
-  # Local dev: reuse the operator's authenticated providers.
-  mkdir -p "$HOME/.local/share"
-  ln -sfn "$REAL_OPCODE_DATA" "$HOME/.local/share/opencode"
+  # Local dev: reuse the operator's authenticated providers. Link ONLY
+  # auth.json — symlinking the whole dir shares opencode.db (SQLite) across
+  # concurrent local sessions → "database is locked". Each session gets its own
+  # DB; the credential file is the only thing reused.
+  mkdir -p "$HOME/.local/share/opencode"
+  [[ -f "$REAL_OPCODE_DATA/auth.json" ]] && ln -sfn "$REAL_OPCODE_DATA/auth.json" "$HOME/.local/share/opencode/auth.json"
   # Normalize the model id to "providerID/modelID". LLM_MODEL may already carry
   # the provider prefix; if not, OPENCODE_PROVIDER_ID supplies it (default umans-ai).
   if [[ "$LLM_MODEL" == */* ]]; then

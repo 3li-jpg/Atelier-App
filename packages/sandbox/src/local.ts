@@ -18,12 +18,20 @@ export class LocalSandboxProvider implements SandboxProvider {
   async create(cfg: SandboxCreateConfig): Promise<SandboxRef> {
     const sessionId = cfg.metadata?.atelier_session ?? "unknown";
     const workspace = `${WORKSPACE_ROOT}/${sessionId.slice(0, 8)}`;
+    // Each local session gets its own opencode serve port — otherwise
+    // concurrent sessions collide on the supervisor's default 4096 and the
+    // second `opencode serve` dies with ServeError (port in use). Deterministic
+    // from the session id so a resumed session reuses its port. Range 14000+
+    // avoids the default 4096 and common dev ports.
+    let port = 14000;
+    for (let i = 0; i < sessionId.length; i++) port = (port * 31 + sessionId.charCodeAt(i)) % 16000;
     const env: Record<string, string> = {
       ...process.env as Record<string, string>,
       ...cfg.env,
       SKIP_FIREWALL: "1",
       RUNNER_BIN: RUNNER_DIR,
       WORKSPACE: workspace,
+      OPENCODE_PORT: String(port),
       // Isolate HOME inside the workspace: the supervisor writes opencode
       // config (opencode.json with the LLM key) under $HOME/.opencode — pointing
       // that at the operator's real home would clobber their own opencode setup.
