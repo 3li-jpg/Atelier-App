@@ -487,6 +487,7 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
           selectedFile={selectedFile}
           onSelectFile={(p) => { openFile(p); setMobileTab("editor"); }}
           mobileActive={mobileTab === "files" || mobileTab === "activity"}
+          sessionId={id}
         />
       </div>
 

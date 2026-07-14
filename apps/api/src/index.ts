@@ -4,6 +4,8 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { streamSSE } from "hono/streaming";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { existsSync, statSync, readFileSync } from "node:fs";
+import { join, resolve as resolvePath, normalize } from "node:path";
 import { Event, ProviderConfig, CreateSession, UpdateSession, Dialect } from "@atelier/schema";
 import { z } from "zod";
 import { FlyMachinesProvider, LocalSandboxProvider, DaytonaProvider, E2BProvider, type SandboxProvider } from "@atelier/sandbox";
@@ -363,6 +365,31 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     return c.redirect(`${wsUrl}/attach?token=${token}`, 302);
   });
 
+  // Browser preview: serve the agent's working repo as static files so the UI
+  // can render changes in an iframe (landing: "open it and test on localhost").
+  // Local mode only — the repo lives at /tmp/atelier/<id8>/repo. Path is
+  // confined to the repo root (no traversal). SPA fallback → index.html.
+  app.get("/sessions/:id/preview/*", async (c) => {
+    const s = await store.getSession(c.req.param("id"));
+    if (!s) return c.json({ error: "not found" }, 404);
+    const uid = uidOf(c);
+    if (uid !== undefined && s.user_id && s.user_id !== uid) return c.json({ error: "not found" }, 404);
+    const root = process.env.RUNNER_WORKSPACE ?? "/tmp/atelier";
+    const repoDir = resolvePath(root, `${c.req.param("id").slice(0, 8)}/repo`);
+    if (!existsSync(repoDir)) return c.json({ error: "no preview — workspace not ready" }, 409);
+    // Confine the requested path under repoDir (defeat ../ traversal).
+    const rel = normalize(c.req.param("*") ?? "");
+    const abs = resolvePath(repoDir, rel);
+    if (!abs.startsWith(repoDir + "/") && abs !== repoDir) return c.json({ error: "forbidden" }, 403);
+    const tryFile = (p: string): { path: string; mime: string } | null => {
+      if (!existsSync(p) || !statSync(p).isFile()) return null;
+      return { path: p, mime: mimeFor(p) };
+    };
+    const hit = tryFile(abs) ?? tryFile(join(abs, "index.html")) ?? tryFile(join(repoDir, "index.html"));
+    if (!hit) return c.json({ error: "no index.html to preview" }, 404);
+    return c.body(readFileSync(hit.path), 200, { "Content-Type": hit.mime, "Cache-Control": "no-store" });
+  });
+
   app.post("/sessions/:id/finish", async (c) => {
     const s = await store.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
@@ -554,6 +581,21 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
   }
 
   return app;
+}
+
+// ponytail: minimal MIME map for the preview proxy. Covers the common web
+// asset types; unknown → octet-stream (browser downloads instead of rendering).
+function mimeFor(path: string): string {
+  const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  const map: Record<string, string> = {
+    html: "text/html; charset=utf-8", htm: "text/html; charset=utf-8",
+    css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", mjs: "text/javascript; charset=utf-8",
+    json: "application/json; charset=utf-8", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg",
+    jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", ico: "image/x-icon",
+    woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", otf: "font/otf",
+    txt: "text/plain; charset=utf-8", map: "application/json; charset=utf-8",
+  };
+  return map[ext] ?? "application/octet-stream";
 }
 
 function selectSandbox(): SandboxProvider {
