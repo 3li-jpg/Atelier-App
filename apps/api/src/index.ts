@@ -9,7 +9,7 @@ import { z } from "zod";
 import { FlyMachinesProvider, LocalSandboxProvider, DaytonaProvider, E2BProvider, type SandboxProvider } from "@atelier/sandbox";
 import { Store, bus } from "./store.ts";
 import { PgStore, type AnyStore } from "./pg-store.ts";
-import { Orchestrator } from "./orchestrator.ts";
+import { Orchestrator, StaleProviderKeyError } from "./orchestrator.ts";
 import { encryptKey, redact } from "./secrets.ts";
 import { validateProvider } from "./validate.ts";
 import {
@@ -453,7 +453,15 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     const { pubkey } = await c.req.json();
     const raw = Buffer.from(String(pubkey ?? ""), "base64");
     if (raw.length !== 32) return c.json({ error: "pubkey must be 32 bytes base64" }, 400);
-    return c.json(await orch.handshake(c.req.param("id"), raw));
+    try {
+      return c.json(await orch.handshake(c.req.param("id"), raw));
+    } catch (e) {
+      if (e instanceof StaleProviderKeyError) {
+        // Session already failed + error event emitted inside handshake.
+        return c.json({ error: "stale_provider_key", message: e.message }, 422);
+      }
+      throw e;
+    }
   });
 
   app.post("/internal/sessions/:id/events", async (c) => {

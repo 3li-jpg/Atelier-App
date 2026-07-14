@@ -4,6 +4,18 @@ import type { SandboxProvider } from "@atelier/sandbox";
 import type { AnyStore } from "./pg-store.ts";
 import { decryptKey, sealConfig, type SealedConfig } from "./secrets.ts";
 
+// Thrown when a provider's key_ciphertext can't be decrypted (stale — encrypted
+// with an old MASTER_KEY). The handshake route catches this → 422 + the session
+// is already failed + an actionable error event emitted.
+export class StaleProviderKeyError extends Error {
+  providerName: string;
+  constructor(providerName: string) {
+    super(`provider "${providerName}" has an undecryptable (stale) API key`);
+    this.name = "StaleProviderKeyError";
+    this.providerName = providerName;
+  }
+}
+
 const RUNNER_IMAGE = process.env.RUNNER_IMAGE ?? "registry.fly.io/atelier-sandboxes:runner-v1";
 const PUBLIC_URL = process.env.PUBLIC_URL ?? "http://localhost:3000";
 
@@ -132,13 +144,28 @@ export class Orchestrator {
   async handshake(sessionId: string, supervisorPubRaw: Buffer): Promise<SealedConfig> {
     const s = await this.store.getSession(sessionId);
     const provider = await this.store.getProvider(s.provider_id);
+    let apiKey: string;
+    try {
+      apiKey = decryptKey(provider.key_ciphertext);
+    } catch {
+      // The provider's key was encrypted with a different MASTER_KEY (stale from
+      // before the current secret was set). GCM auth-tag fails → undecryptable.
+      // Surface a clear, actionable error instead of a bare 500 that strands the
+      // session in provisioning. The user must re-add the provider.
+      await this.store.appendEvent(sessionId, {
+        ts: new Date().toISOString(), type: "error",
+        payload: { message: `Provider "${provider.name}" has an undecryptable API key (encrypted with an old master key). Delete and re-add this provider in the Providers tab.`, hint: "re-add-provider" },
+      });
+      if (canTransition(s.state, "failed")) await this.transition(sessionId, "failed");
+      throw new StaleProviderKeyError(provider.name);
+    }
     return sealConfig(supervisorPubRaw, {
       repo_url: s.repo_url,
       branch: s.branch,
       task: s.task,
       toolsets: s.toolsets ? JSON.parse(s.toolsets) : undefined,
       llm_base_url: provider.base_url,
-      llm_api_key: decryptKey(provider.key_ciphertext),
+      llm_api_key: apiKey,
       llm_model: s.model_id,
       git_token: (await this.store.getUserToken(s.user_id)) ?? process.env.GIT_TOKEN ?? "",
     });
