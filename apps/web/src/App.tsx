@@ -22,6 +22,10 @@ const Settings = lazy(() => import("./views/Settings.tsx").then((m) => ({ defaul
 const Onboarding = lazy(() =>
   import("./onboarding/Onboarding.tsx").then((m) => ({ default: m.Onboarding })),
 );
+// ponytail: landing view — full-page, no AppShell, accessible without auth.
+const LandingView = lazy(() =>
+  import("./views/LandingView.tsx").then((m) => ({ default: m.LandingView })),
+);
 
 type View =
   | { kind: "list" }
@@ -29,7 +33,8 @@ type View =
   | { kind: "providers" }
   | { kind: "settings" }
   | { kind: "session"; id: string }
-  | { kind: "onboarding" };
+  | { kind: "onboarding" }
+  | { kind: "landing" };
 
 const ONBOARDED_KEY = "atelier:onboarded";
 
@@ -52,6 +57,7 @@ function viewToHash(view: View): string | null {
     case "session": return `#/w/${encodeURIComponent(view.id)}`;
     // onboarding owns the URL (no hash) until it completes.
     case "onboarding": return null;
+    case "landing": return "#/landing";
   }
 }
 
@@ -62,6 +68,7 @@ function hashToView(hash: string): View {
   if (path === "/repos") return { kind: "repos" };
   if (path === "/providers") return { kind: "providers" };
   if (path === "/settings") return { kind: "settings" };
+  if (path === "/landing") return { kind: "landing" };
   const sessionMatch = path.match(/^\/w\/(.+)$/);
   if (sessionMatch) {
     const id = decodeURIComponent(sessionMatch[1]);
@@ -168,6 +175,20 @@ export function App() {
                   setView({ kind: "list" });
                 }}
               />
+          </Suspense>
+        </div>
+      </MotionConfig>
+    );
+  }
+
+  // ponytail: landing is a full-page view (no AppShell), accessible
+  // WITHOUT auth — rendered before the auth-checking block so guests see it.
+  if (view.kind === "landing") {
+    return (
+      <MotionConfig reducedMotion="user">
+        <div key="landing" className="view-fade" style={{ height: "100%" }}>
+          <Suspense fallback={null}>
+            <LandingView onBack={() => setView({ kind: "list" })} />
           </Suspense>
         </div>
       </MotionConfig>
