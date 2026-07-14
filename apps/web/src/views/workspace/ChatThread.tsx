@@ -26,7 +26,7 @@ function toolLabel(s: ToolStatus, code?: number): string {
 
 type TodoItem = { text: string; done: boolean };
 
-// Todo events on the live hermes wire carry only {status, preview} — the
+// Todo events on the live agent wire carry only {status, preview} — the
 // item list itself is not forwarded (verified against a real run). Render
 // the plan ACTIVITY: each "started" preview becomes an entry, marked done
 // when its matching "completed" arrives. If a richer payload with items[]
@@ -85,7 +85,7 @@ export function humanPath(path: string): string {
 }
 
 // Live streams arrive as many small events; render them like a chat, not a
-// ledger (verified against a real hermes run):
+// ledger (verified against a real agent run):
 // - consecutive assistant_text chunks merge into one block
 // - a completed tool_call replaces its preceding "running" row (same tool)
 // - file_diff paths are relativized to the repo root

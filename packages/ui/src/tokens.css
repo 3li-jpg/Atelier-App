@@ -5,41 +5,64 @@
    ============================================================ */
 
 :root {
-  /* ---- Raw Colors ---- */
-  --color-near-black: #090909;
-  --color-almost-white: #f7f9fa;
-  --color-soft-white: #f0f0f0;
-  --color-steel: #828384;
-  --color-graphite: #474747;
-  --color-iron: #423738;
-  --color-ash: #6b6b6b;
-  --color-signal-violet: #af50ff;
-  --color-lavender-mist: #e1bdff;
+  /* ---- Raw Colors (warm dark-violet IDE palette) ---- */
+  --color-near-black: #1a1713;
+  --color-almost-white: #d8cfc4;
+  --color-soft-white: #c9bfb2;
+  --color-steel: #a99e90;
+  --color-graphite: #2a251f;
+  --color-iron: #221c26;
+  --color-ash: #8a7f72;
+  --color-signal-violet: #8b45e6;
+  --color-lavender-mist: #b79bff;
 
-  /* ---- Semantic Tokens (dark = default) ---- */
+  /* ---- Semantic Tokens (dark = default, warm dark-violet IDE) ---- */
   --bg: var(--color-near-black);
-  --panel: rgba(247, 249, 250, 0.03);
-  --panel-2: rgba(247, 249, 250, 0.06);
-  --panel-solid: #141414;
-  --border: rgba(247, 249, 250, 0.12);
-  --border-strong: rgba(247, 249, 250, 0.2);
+  --panel: rgba(216, 207, 196, 0.03);
+  --panel-2: rgba(216, 207, 196, 0.06);
+  --panel-solid: #161310;
+  --border: rgba(216, 207, 196, 0.12);
+  --border-strong: rgba(216, 207, 196, 0.2);
   --text: var(--color-almost-white);
   --text-muted: var(--color-steel);
   --muted: var(--color-steel);
   --accent: var(--color-signal-violet);
-  --accent-hover: #9a3ee6;
+  --accent-hover: #5f2ba8;
   --accent-fg: var(--color-almost-white);
-  --accent-soft: rgba(175, 80, 255, 0.12);
-  --ok: #4ade80;
-  --warn: #fbbf24;
-  --bad: #f87171;
-  --bubble: rgba(247, 249, 250, 0.04);
-  --user: rgba(175, 80, 255, 0.14);
+  --accent-soft: rgba(139, 69, 230, 0.12);
+  --ok: #7fbf6a;
+  --warn: #e0b04f;
+  --bad: #e08f6a;
+  --bubble: rgba(216, 207, 196, 0.04);
+  --user: rgba(139, 69, 230, 0.14);
+
+  /* ---- IDE surface tokens (warm dark-violet chat/code surface) ---- */
+  --ide-sidebar: #151210;
+  --ide-terminal: #131110;
+  --ide-dimmest: #6f655a;
+  --ide-lineno: #5b5248;
+  --ide-violet-tint: rgba(139, 69, 230, 0.14);
+  --ide-violet-border: rgba(139, 69, 230, 0.4);
+  --ide-violet-glow: 0 0 16px rgba(139, 69, 230, 0.28);
+  --ide-input-bg: #211b26;
+
+  /* ---- Syntax highlighting tokens (code/diff rendering) ---- */
+  --syn-kw: #c77dff;
+  --syn-fn: #7fc4e0;
+  --syn-type: #e0b04f;
+  --syn-str: #e08f6a;
+  --syn-num: #7fbf6a;
+  --syn-op: #8a7f72;
+  --syn-comment: #5b5248;
+  --syn-add-bg: rgba(127, 191, 106, 0.10);
+  --syn-add-border: #7fbf6a;
 
   /* ---- Typography ---- */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --font-display: 'Playfair Display', ui-serif, Georgia, serif;
+  --font-sans: 'Inter', -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
+  --font-serif: 'Instrument Serif', serif;
+  --font-hand: 'Delicious Handrawn', cursive;
+  --font-display: 'Instrument Serif', serif;
 
   --text-xs: 11px;
   --leading-xs: 1.2;
@@ -100,19 +123,19 @@
      Translucent surfaces stacked over the near-black canvas. Each weight
      pairs an rgba background with a matching backdrop-filter. --glass-border
      is the shared 1px inner seam. See docs/design-brief.md. */
-  --glass-thin: rgba(20, 20, 24, 0.45);
+  --glass-thin: rgba(26, 23, 19, 0.45);
   --glass-thin-blur: blur(12px) saturate(1.4);
-  --glass: rgba(20, 20, 24, 0.6);
+  --glass: rgba(26, 23, 19, 0.6);
   --glass-blur: blur(20px) saturate(1.4);
-  --glass-thick: rgba(20, 20, 24, 0.75);
+  --glass-thick: rgba(26, 23, 19, 0.75);
   --glass-thick-blur: blur(32px) saturate(1.4);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-border-strong: rgba(255, 255, 255, 0.25);
   /* Solid fallback surface used when translucency is unsupported/disabled. */
-  --glass-solid: #141418;
+  --glass-solid: #1a1713;
   /* Tinted violet glass for active nav pills / accents. */
-  --glass-accent: rgba(175, 80, 255, 0.16);
-  --glass-accent-border: rgba(175, 80, 255, 0.4);
+  --glass-accent: rgba(139, 69, 230, 0.16);
+  --glass-accent-border: rgba(139, 69, 230, 0.4);
 
   /* ---- Motion ---- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -130,33 +153,54 @@
 /* ---- Light theme override ---- */
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f7f9fa;
-    --panel: rgba(0, 0, 0, 0.03);
-    --panel-2: rgba(0, 0, 0, 0.06);
-    --panel-solid: #ffffff;
-    --border: rgba(0, 0, 0, 0.12);
-    --border-strong: rgba(0, 0, 0, 0.2);
-    --text: #1a1a1a;
-    --text-muted: #6b6b6b;
-    --muted: #6b6b6b;
-    --accent: #9a3ee6;
-    --accent-hover: #8b2dd4;
-    --accent-fg: #ffffff;
-    --accent-soft: rgba(154, 62, 230, 0.1);
-    --ok: #22c55e;
-    --warn: #d97706;
-    --bad: #dc2626;
-    --bubble: rgba(0, 0, 0, 0.04);
-    --user: rgba(154, 62, 230, 0.1);
-    /* Light glass: translucent white surfaces over the light canvas. */
-    --glass-thin: rgba(255, 255, 255, 0.55);
-    --glass: rgba(255, 255, 255, 0.7);
-    --glass-thick: rgba(255, 255, 255, 0.82);
-    --glass-border: rgba(0, 0, 0, 0.08);
-    --glass-border-strong: rgba(0, 0, 0, 0.25);
-    --glass-solid: #ffffff;
-    --glass-accent: rgba(154, 62, 230, 0.12);
-    --glass-accent-border: rgba(154, 62, 230, 0.4);
+    /* ---- Raw Colors (warm paper) ---- */
+    --color-near-black: #faf8f4;
+    --color-almost-white: #1a1713;
+    --color-soft-white: #2a251f;
+    --color-steel: #6f6a61;
+    --color-graphite: #efeae1;
+    --color-iron: #f4f1eb;
+    --color-ash: #6f6a61;
+    --color-signal-violet: #8b45e6;
+    --color-lavender-mist: #5f2ba8;
+
+    /* ---- Semantic Tokens ---- */
+    --bg: var(--color-near-black);
+    --panel: rgba(26, 23, 19, 0.03);
+    --panel-2: rgba(26, 23, 19, 0.06);
+    --panel-solid: #fffdf9;
+    --border: rgba(26, 23, 19, 0.12);
+    --border-strong: rgba(26, 23, 19, 0.2);
+    --text: var(--color-almost-white);
+    --text-muted: var(--color-steel);
+    --muted: var(--color-steel);
+    --accent: var(--color-signal-violet);
+    --accent-hover: #5f2ba8;
+    --accent-fg: #fffdf9;
+    --accent-soft: rgba(139, 69, 230, 0.1);
+    --ok: #6a9e58;
+    --warn: #b8943a;
+    --bad: #b87355;
+    --bubble: rgba(26, 23, 19, 0.04);
+    --user: rgba(139, 69, 230, 0.1);
+
+    /* ---- IDE surfaces (light) ---- */
+    --ide-sidebar: #f4f1eb;
+    --ide-terminal: #efeae1;
+    --ide-input-bg: #f4f1eb;
+
+    /* ---- Syntax (light-readable) ---- */
+    --syn-comment: #6f6a61;
+
+    /* Light glass: translucent warm-white surfaces over the paper canvas. */
+    --glass-thin: rgba(255, 253, 249, 0.55);
+    --glass: rgba(255, 253, 249, 0.7);
+    --glass-thick: rgba(255, 253, 249, 0.82);
+    --glass-border: rgba(26, 23, 19, 0.08);
+    --glass-border-strong: rgba(26, 23, 19, 0.25);
+    --glass-solid: #fffdf9;
+    --glass-accent: rgba(139, 69, 230, 0.12);
+    --glass-accent-border: rgba(139, 69, 230, 0.4);
   }
 }
 

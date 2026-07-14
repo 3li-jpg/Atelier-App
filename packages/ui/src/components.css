@@ -42,7 +42,7 @@
   color: var(--accent-fg);
   border-color: var(--accent);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18),
-              0 6px 20px -8px rgba(175, 80, 255, 0.5);
+              0 6px 20px -8px rgba(139, 69, 230, 0.5);
 }
 .atelier-btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
@@ -129,7 +129,7 @@
 }
 .atelier-input::placeholder { color: var(--text-muted); opacity: 0.7; }
 .atelier-input-err { border-color: var(--bad); }
-.atelier-input-err:focus { border-color: var(--bad); box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.15); }
+.atelier-input-err:focus { border-color: var(--bad); box-shadow: 0 0 0 2px rgba(224, 143, 106, 0.15); }
 .atelier-input-error { font-size: var(--text-xs); color: var(--bad); }
 .atelier-textarea { resize: vertical; min-height: 80px; }
 .atelier-select { cursor: pointer; }
@@ -190,9 +190,9 @@
   line-height: 1.6;
 }
 .atelier-badge-default { color: var(--text-muted); border-color: var(--glass-border); background: var(--glass-thin); }
-.atelier-badge-ok { color: var(--ok); border-color: rgba(74, 222, 128, 0.4); background: rgba(74, 222, 128, 0.15); }
-.atelier-badge-warn { color: var(--warn); border-color: rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.15); }
-.atelier-badge-bad { color: var(--bad); border-color: rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.15); }
+.atelier-badge-ok { color: var(--ok); border-color: rgba(127, 191, 106, 0.4); background: rgba(127, 191, 106, 0.15); }
+.atelier-badge-warn { color: var(--warn); border-color: rgba(224, 176, 79, 0.4); background: rgba(224, 176, 79, 0.15); }
+.atelier-badge-bad { color: var(--bad); border-color: rgba(224, 143, 106, 0.4); background: rgba(224, 143, 106, 0.15); }
 .atelier-badge-accent { color: var(--accent); border-color: var(--glass-accent-border); background: var(--glass-accent); }
 .atelier-badge-idle { color: var(--text-muted); border-color: var(--glass-border); background: var(--glass-thin); }
 
