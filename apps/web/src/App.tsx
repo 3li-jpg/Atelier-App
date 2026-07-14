@@ -80,13 +80,17 @@ function hashToView(hash: string): View {
 
 export function App() {
   const [view, setView] = useState<View>(() => {
+    // ponytail: #/landing is a public marketing page — it bypasses onboarding
+    // precedence so a brand-new browser (no `atelier:onboarded`) can still view it.
+    const initial = hashToView(window.location.hash);
+    if (initial.kind === "landing") return initial;
     // Onboarding takes precedence: a not-yet-onboarded browser shows onboarding
     // regardless of the hash (the hash is read after onboarding completes).
     try {
       if (!localStorage.getItem(ONBOARDED_KEY)) return { kind: "onboarding" };
     } catch { /* private mode */ }
     // ponytail: unknown/empty hash → list (hashToView's documented fallback).
-    return hashToView(window.location.hash);
+    return initial;
   });
   const authError = new URLSearchParams(window.location.search).get("auth_error");
 
