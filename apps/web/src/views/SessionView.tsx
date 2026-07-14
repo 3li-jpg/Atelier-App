@@ -13,7 +13,7 @@ import { RightRail } from "./workspace/RightRail.tsx";
 import "./session-view.css";
 import "./workspace/workspace.css";
 
-type MobileTab = "chat" | "files" | "activity";
+type MobileTab = "chat" | "editor" | "files" | "activity";
 
 export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack: () => void; onOpenSession?: (id: string) => void }) {
   const toast = useToast();
@@ -23,6 +23,23 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
   const [sending, setSending] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  // Open-files tab model (Cursor-like): a file stays open as a tab until its ×
+  // is clicked, independent of which file is active. Opening a file that's
+  // already open just focuses its tab.
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const openFile = (p: string) => {
+    setOpenFiles((prev) => (prev.includes(p) ? prev : [...prev, p]));
+    setSelectedFile(p);
+  };
+  const closeFile = (p: string) => {
+    const idx = openFiles.indexOf(p);
+    const next = openFiles.filter((x) => x !== p);
+    setOpenFiles(next);
+    if (p === selectedFile) {
+      // Focus the previous tab, else the one that shifted into its slot.
+      setSelectedFile(idx > 0 ? (next[idx - 1] ?? null) : (next[idx] ?? null));
+    }
+  };
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
   const [menuOpen, setMenuOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -320,15 +337,16 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
       {/* ── Mobile segmented control ── */}
       <div className="ws-mobile-tabs" role="tablist" aria-label="Workspace panels">
         <div className="ws-mobile-seg">
-          {(["chat", "files", "activity"] as const).map((t) => (
+          {(["chat", "editor", "files", "activity"] as const).map((t) => (
             <button
               key={t}
               className={`ws-mobile-tab ${mobileTab === t ? "active" : ""}`}
               onClick={() => setMobileTab(t)}
               role="tab"
               aria-selected={mobileTab === t}
+              aria-label={t.charAt(0).toUpperCase() + t.slice(1)}
             >
-              {t === "chat" ? "Chat" : t === "files" ? "Files" : "Activity"}
+              {t === "chat" ? "Chat" : t === "editor" ? "Editor" : t === "files" ? "Files" : "Activity"}
             </button>
           ))}
         </div>
@@ -347,7 +365,7 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
             pendingQuestionSeq={pendingQuestion?.seq}
             repoName={repoName}
             onReply={(t) => send(t)}
-            onOpenFile={(p) => { setSelectedFile(p); }}
+            onOpenFile={(p) => { openFile(p); setMobileTab("editor"); }}
             selectedFile={selectedFile}
           />
 
@@ -381,20 +399,55 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
             ) : null}
           />
 
-          {/* Center-stage diff overlay — inside .ws-center so it covers just
-              the chat column on desktop and the full screen on mobile. */}
-          {selectedEntry && (
-            <div
-              className="ws-diff-overlay"
-              role="dialog"
-              aria-label={`Diff for ${selectedEntry.path}`}
-            >
-              <DiffPanel
-                path={selectedEntry.path}
-                content={selectedEntry.content}
-                onBack={() => setSelectedFile(null)}
-              />
+        </div>
+
+        {/* ── Editor column: persistent tabs + diff, coexists with chat
+            (landing hero mockup grid: chat | editor). Empty → welcome
+            placeholder, never destroys the conversation. ── */}
+        <div
+          className={`ws-editor ${mobileTab === "editor" ? "mobile-active" : ""}`}
+          role="region"
+          aria-label="Code editor"
+        >
+          {openFiles.length === 0 ? (
+            <div className="ws-editor-empty">
+              <span className="ws-editor-empty-glyph" aria-hidden="true">⌘</span>
+              <p className="ws-editor-empty-title">No file open</p>
+              <p className="ws-editor-empty-hint">Click a file in Files, or a change in chat, to open it here.</p>
             </div>
+          ) : (
+            <>
+              <div className="ws-editor-tabs" role="tablist" aria-label="Open files">
+                {openFiles.map((p) => (
+                  <button
+                    key={p}
+                    className={`ws-editor-tab ${p === selectedFile ? "active" : ""}`}
+                    onClick={() => setSelectedFile(p)}
+                    role="tab"
+                    aria-selected={p === selectedFile}
+                    title={p}
+                  >
+                    <span className="ws-editor-tab-name">{p.split("/").pop()}</span>
+                    <span
+                      className="ws-editor-tab-close"
+                      role="button"
+                      tabIndex={-1}
+                      aria-label={`Close ${p}`}
+                      onClick={(e) => { e.stopPropagation(); closeFile(p); }}
+                    >
+                      ×
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="ws-editor-stage">
+                {selectedEntry ? (
+                  <DiffPanel path={selectedEntry.path} content={selectedEntry.content} />
+                ) : (
+                  <div className="ws-editor-empty"><p className="ws-editor-empty-hint">File not available.</p></div>
+                )}
+              </div>
+            </>
           )}
         </div>
 
@@ -402,7 +455,7 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
           files={fileMap}
           events={events}
           selectedFile={selectedFile}
-          onSelectFile={(p) => { setSelectedFile(p); setMobileTab("chat"); }}
+          onSelectFile={(p) => { openFile(p); setMobileTab("editor"); }}
           mobileActive={mobileTab === "files" || mobileTab === "activity"}
         />
       </div>

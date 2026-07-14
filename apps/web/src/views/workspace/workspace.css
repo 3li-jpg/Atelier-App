@@ -118,17 +118,19 @@
 .ws-badge.tone-bad  { color: var(--bad);  border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
 .ws-badge.tone-ok   { color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 
-/* ── Body: center + right rail ── */
+/* ── Body: chat | editor | rail (landing hero grid, Cursor-like) ──
+   ponytail: min-width 0 on every flex child so long paths/diff lines
+   truncate instead of blowing the grid out. */
 .ws-body {
   flex: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 300px;
   overflow: hidden;
   min-height: 0;
 }
 
-/* ── Center column ── */
+/* ── Center column (chat) ── */
 .ws-center {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -363,20 +365,99 @@
 }
 .ws-diff-toggle:hover { background: var(--panel-2); color: var(--color-almost-white); }
 
-/* ── Center-stage diff overlay ──
-   Rendered inside .ws-center, so it overlays just the chat column on desktop
-   (rail stays visible) and covers the full screen on mobile (center is
-   full-screen there). Closed via onBack → clear selection. */
-.ws-diff-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
+/* ── Editor column ──
+   Persistent tabbed code pane (landing hero-mockup__editor): coexists with
+   chat, never replaces it. Tab bar on top, DiffPanel fills the stage; empty
+   state when no file is open. */
+.ws-editor {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  background: var(--bg);
-  animation: ws-msg-in 0.2s var(--ease-out);
+  overflow: hidden;
+  border-left: 1px solid var(--color-graphite);
+  border-right: 1px solid var(--color-graphite);
+  background: var(--ide-terminal);
 }
+.ws-editor-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: var(--ide-sidebar);
+  border-bottom: 1px solid var(--color-graphite);
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.ws-editor-tabs::-webkit-scrollbar { display: none; }
+.ws-editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.6rem 0.45rem 0.75rem;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--color-graphite);
+  color: var(--color-steel);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+.ws-editor-tab:hover { background: var(--panel-2); color: var(--color-almost-white); }
+.ws-editor-tab.active {
+  background: var(--ide-terminal);
+  color: var(--text);
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.ws-editor-tab-name {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.ws-editor-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--ide-dimmest);
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+.ws-editor-tab-close:hover { background: var(--panel-2); color: var(--color-almost-white); }
+.ws-editor-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ws-editor-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-steel);
+}
+.ws-editor-empty-glyph {
+  font-family: var(--font-mono);
+  font-size: 1.6rem;
+  color: var(--ide-dimmest);
+  opacity: 0.6;
+}
+.ws-editor-empty-title { margin: 0; font-size: 0.92rem; color: var(--color-almost-white); }
+.ws-editor-empty-hint { margin: 0; font-size: 0.8rem; line-height: 1.5; max-width: 280px; }
 
 /* ── Question / approval inline action row ── */
 .ws-question {
@@ -1020,11 +1101,15 @@
 .ws-overflow-item.danger { color: var(--bad); }
 .ws-overflow-item:disabled { opacity: 0.5; cursor: default; }
 
-/* ── Mobile (<1000px): stacked segments ── */
+/* ── Mobile (<1000px): single visible pane per segment ── */
 @media (max-width: 999px) {
   .ws-mobile-tabs { display: block; }
-  .ws-body { position: relative; }
+  .ws-body {
+    position: relative;
+    grid-template-columns: 1fr;
+  }
   .ws-center,
+  .ws-editor,
   .ws-rail {
     width: 100%;
     min-width: 0;
@@ -1034,6 +1119,7 @@
   }
   .ws-rail { border-left: none; }
   .ws-center:not(.mobile-active),
+  .ws-editor:not(.mobile-active),
   .ws-rail:not(.mobile-active) { display: none; }
   .ws-rail-toggle { display: none; }
   .ws-thread { padding: 1rem 0.9rem 0.5rem; }
