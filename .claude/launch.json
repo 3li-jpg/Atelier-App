@@ -16,6 +16,13 @@
       "autoPort": false
     },
     {
+      "name": "landing",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/araffi/Downloads/Atelier Mobile /Atelier-Landing", "run", "dev"],
+      "port": 3001,
+      "autoPort": false
+    },
+    {
       "name": "api",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "-w", "@atelier/api"],

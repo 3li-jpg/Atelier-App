@@ -290,7 +290,7 @@ case "$ENGINE" in
       OPENCODE_MODEL="$OC_MODEL" OPENCODE_AGENT="${OPENCODE_AGENT:-}" \
       REPLIES_URL="$REPLIES_URL" TASK="$TASK" SESSION_ID="${SESSION_ID}" \
       EVENTS_URL="$EVENTS_URL" SESSION_TOKEN="$SESSION_TOKEN" \
-      node "${RUNNER_BIN}/opencode-bridge.mjs" &
+      node "${RUNNER_BIN}/opencode-bridge.mjs" >"$WORKSPACE/opencode-bridge.log" 2>&1 &
     BRIDGE_PID=$!
     ;;
   claude)

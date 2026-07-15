@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getAuthToken } from "../../api.ts";
 
 // The right rail is now a single Browser preview pane. opencode's own web UI
 // (embedded in the center column) already has its file tree, todos, and
@@ -76,7 +77,8 @@ export function RightRail({
 function BrowserPane({ sessionId }: { sessionId: string }) {
   const [path, setPath] = useState("");
   const [nonce, setNonce] = useState(0);
-  const src = `/sessions/${encodeURIComponent(sessionId)}/preview/${path.replace(/^\/+/, "")}?n=${nonce}`;
+  const token = getAuthToken();
+  const src = `/sessions/${encodeURIComponent(sessionId)}/preview/${path.replace(/^\/+/, "")}?n=${nonce}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
   return (
     <div className="ws-browser">
       <div className="ws-browser-bar">

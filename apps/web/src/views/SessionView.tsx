@@ -249,10 +249,7 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
 
       {/* ── Body: opencode web UI (embedded) + right rail (browser preview) ── */}
       <div className="ws-body">
-        {/* opencode's own web UI — chat, diffs, todos, approval, file tree. The
-            custom ChatThread/Composer/DiffPanel are no longer rendered (kept as
-            dormant files for now). The iframe is same-origin via the proxy so
-            opencode's SSE (/event) and fetch (/message, /session) all work. */}
+        {/* opencode's own web UI — chat, diffs, todos, approvals — embedded via same-origin iframe. */}
         <div
           className={`ws-opencode ${mobileTab === "workspace" ? "mobile-active" : ""}`}
           role="region"

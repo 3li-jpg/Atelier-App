@@ -431,6 +431,36 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     // off c.req.path: everything after "/opencode/".
     const marker = `/sessions/${c.req.param("id")}/opencode/`;
     const sub = c.req.path.startsWith(marker) ? c.req.path.slice(marker.length) : "";
+    // ponytail: opencode's root path (/) is a project/session picker. The Atelier
+    // session maps to exactly one workspace, so redirect root to the opencode web
+    // SPA's canonical route: /<base64url(directory)>/session. A slug route (e.g.
+    // /neon-knight/) causes the SPA to base64-decode the slug as a directory suffix,
+    // which produces a garbled directory and breaks API calls like /api/reference.
+    if (sub === "" && (c.req.method === "GET" || c.req.method === "HEAD")) {
+      const pathRes = await fetch(`http://127.0.0.1:${port}/path`, {
+        headers: { authorization: "Basic " + Buffer.from(`opencode:${password}`).toString("base64"), accept: "application/json" },
+      }).catch(() => null);
+      if (pathRes?.ok) {
+        const pathInfo = await pathRes.json().catch(() => null);
+        const dir = pathInfo?.directory;
+        if (typeof dir === "string") {
+          const b64 = Buffer.from(dir, "utf8").toString("base64url").replace(/=+$/, "");
+          // The bridge creates an opencode session named after the Atelier session.
+          // Open the UI on that exact session so user messages and model replies
+          // share the same opencode session that the bridge is already consuming.
+          const expectedTitle = `atelier-${c.req.param("id")}`;
+          const sessionsRes = await fetch(`http://127.0.0.1:${port}/session?directory=${encodeURIComponent(dir)}&roots=true&limit=55`, {
+            headers: { authorization: "Basic " + Buffer.from(`opencode:${password}`).toString("base64"), accept: "application/json" },
+          }).catch(() => null);
+          if (sessionsRes?.ok) {
+            const sessions = (await sessionsRes.json().catch(() => [])) as any[];
+            const match = sessions.find((s) => s.title === expectedTitle || s.id === expectedTitle);
+            if (match?.id) return c.redirect(`./${b64}/session/${match.id}`);
+          }
+          return c.redirect(`./${b64}/session`);
+        }
+      }
+    }
     // Strip our `token` query param before forwarding — opencode doesn't know it.
     const qs = c.req.url.split("?")[1] ?? "";
     const cleanQs = qs.split("&").filter((p) => p && !p.startsWith("token=")).join("&");
@@ -455,26 +485,84 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     }).catch((e) => { throw new Error(`opencode proxy: ${e.message}`); });
     // Drop hop-by-hop + host headers from the upstream response: the proxy is
     // a fresh hop, so transfer-encoding/content-length/connection must not be
-    // copied verbatim (the node-server sets its own). Keep content-type etc.
-    const drop = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length"]);
+    // copied verbatim (the node-server sets its own). Also drop the CSP header:
+    // opencode's strict CSP forbids inline scripts, but we inject a boot script
+    // into the HTML to rewrite the SPA's root-relative API calls under the proxy
+    // prefix. Keeping CSP would block that boot script → blank iframe.
+    // ponytail: drop content-encoding too — undici's fetch() auto-decompresses
+    // the body, so forwarding the original gzip header makes the browser try to
+    // gunzip plaintext → ERR_CONTENT_DECODING_FAILED. content-length goes since
+    // the decoded length differs.
+    const drop = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length", "content-encoding", "content-security-policy", "content-security-policy-report-only", "x-frame-options"]);
     const respHeaders: Record<string, string> = {};
     upstream.headers.forEach((v, k) => { if (!drop.has(k.toLowerCase())) respHeaders[k] = v; });
     // The opencode SPA hardcodes API calls against location.origin with
     // root-relative paths (/event, /session, /config, …). Embedded at
     // /sessions/:id/opencode/, those would miss the proxy. Inject a <base> for
     // asset URLs AND a boot script that rewrites fetch/EventSource/XHR to prefix
-    // opencode API roots with the session's proxy path. ponytail: only the HTML
-    // document (empty sub) is rewritten; assets + SSE stream through untouched.
-    if (sub === "" && (upstream.headers.get("content-type") ?? "").includes("text/html")) {
+    // opencode API roots with the session's proxy path. Apply this to any HTML
+    // response (root slug redirect or session slug page); assets + SSE stream
+    // through untouched.
+    const prefix = `/sessions/${c.req.param("id")}/opencode`;
+    // Root-absolute static-asset prefixes used by opencode. <base href> does NOT
+    // rebase paths that start with "/", so we rewrite these explicitly in both
+    // HTML and CSS responses.
+    const ASSET_PREFIXES = ["/assets/", "/favicon", "/site.webmanifest", "/apple-touch-icon", "/social-share", "/opencode-"];
+    const contentType = upstream.headers.get("content-type") ?? "";
+    if (contentType.includes("text/html")) {
       const html = await upstream.text();
-      const prefix = `/sessions/${c.req.param("id")}/opencode`;
+      let rewritten = html.replace(/((?:src|href)\s*=\s*")\/([^"]*)"/g, (m, attr, rest) => {
+        if (ASSET_PREFIXES.some((p) => ("/" + rest).startsWith(p))) return `${attr}${prefix}/${rest}"`;
+        return m;
+      });
+      // opencode's browser-router SPA reads window.location.pathname directly.
+      // The proxy prefix makes it see /sessions/.../opencode/<base64dir>/session.
+      // Mask that prefix so the SPA sees its own canonical route (e.g.
+      // /L3By.../session) before the bundle parses the route. Same-origin, no
+      // reload; the base tag still anchors relative assets to the proxy prefix.
       const base = `<base href="${prefix}/">`;
+      const routePath = sub ? `/${sub}` : prefix;
+      const routeMask = `<script>(function(){try{history.replaceState(null,"",${JSON.stringify(routePath)});}catch(e){}})();</script>`;
+      // ponytail: opencode web has a multi-server feature — it persists an active
+      // server URL in localStorage ("opencode.settings.dat:defaultServerUrl") and
+      // reads it via YQ() as the API base, overriding location.origin. Embedded in
+      // Atelier there is exactly ONE server (this proxy at location.origin), so any
+      // persisted entry (e.g. a raw http://127.0.0.1:<port> from earlier direct
+      // access) makes the SPA connect to opencode's real address, which needs Basic
+      // auth the browser can't supply → opencode's "add server" login dialog. Clear
+      // both keys before the bundle loads so it always falls back to location.origin.
+      const serverReset = `<script>(function(){try{localStorage.removeItem("opencode.settings.dat:defaultServerUrl");localStorage.removeItem("app.server.otherServers");}catch(e){}})();</script>`;
       // opencode API path roots — matched at the START of the URL so app routes
       // like /sessions (plural) are never rewritten, only opencode's own roots.
-      const boot = `<script>(function(){var P="${prefix}";var ROOTS=["/event","/session","/message","/config","/agent","/provider","/command","/file","/find","/formatter","/log","/lsp","/mcp","/path","/permission","/project","/pty","/question","/skill","/vcs","/global"];function pre(u){if(typeof u!=="string")return u;for(var i=0;i<ROOTS.length;i++){var r=ROOTS[i];if(u===r||u.indexOf(r+"/")===0||u.indexOf(r+"?")===0)return P+u;}return u;}var of=window.fetch;window.fetch=function(i,o){if(typeof i==="string"){i=pre(i);}else if(i&&i.url){i=new Request(pre(i.url),i);}return of.call(window,i,o);};var OE=window.EventSource;window.EventSource=function(u,c){return new OE(pre(u),c);};var oo=window.XMLHttpRequest.prototype.open;window.XMLHttpRequest.prototype.open=function(m,u){return oo.call(this,m,pre(u));};})();</script>`;
-      const rewritten = html.replace("<head>", `<head>${base}${boot}`);
+      // ponytail: monkey-patch fetch/EventSource/XHR so opencode's SPA — which
+      // builds absolute URLs from location.origin (e.g. http://host/global/config)
+      // — hits our proxy prefix instead of escaping to the parent origin (Vite's
+      // SPA fallback returns HTML, breaking the app). pre() strips the origin so
+      // both "/global/config" and "http://host/global/config" map to prefix+path.
+      const boot = `<script>(function(){var P="${prefix}";var ROOTS=["/event","/session","/message","/config","/agent","/provider","/command","/file","/find","/formatter","/log","/lsp","/mcp","/path","/permission","/project","/pty","/question","/skill","/vcs","/global","/api","/experimental"];function path(u){if(typeof u!=="string")return u;var i=u.indexOf("://");if(i>0){var s=u.indexOf("/",i+3);return s<0?"":"/"+u.slice(s+1);}return u;}function pre(u){u=path(u);for(var i=0;i<ROOTS.length;i++){var r=ROOTS[i];if(u===r||u.indexOf(r+"/")===0||u.indexOf(r+"?")===0||u.indexOf(r+"#")===0)return P+u;}return u;}var of=window.fetch;window.fetch=function(i,o){var url=typeof i==="string"?i:(i&&i.url);var init=typeof i==="string"?o:i;function send(body){var cfg={};if(init){var keys=["method","headers","body","mode","credentials","cache","redirect","referrer","referrerPolicy","integrity","keepalive","signal"];for(var k=0;k<keys.length;k++){var key=keys[k];if(init[key]!==undefined)cfg[key]=init[key];}if(body!==undefined)cfg.body=body;delete cfg.duplex;}return of.call(window,new Request(pre(url),cfg));}if(init&&init.body instanceof ReadableStream){return new Response(init.body).arrayBuffer().then(function(buf){return send(buf);});}return send();};var OE=window.EventSource;window.EventSource=function(u,c){return new OE(pre(u),c);};var oo=window.XMLHttpRequest.prototype.open;window.XMLHttpRequest.prototype.open=function(m,u){return oo.call(this,m,pre(u));};})();</script>`;
+      rewritten = rewritten.replace("<head>", `<head>${base}${routeMask}${serverReset}${boot}`);
       respHeaders["content-type"] = "text/html; charset=utf-8";
       return c.body(rewritten, upstream.status as any, respHeaders);
+    }
+    if (contentType.includes("text/css")) {
+      const css = await upstream.text();
+      const rewrittenCss = css.replace(/url\(\s*["']?\/([^"')\s]+)["']?\s*\)/g, (m, rest) => {
+        if (ASSET_PREFIXES.some((p) => ("/" + rest).startsWith(p))) return `url(${prefix}/${rest})`;
+        return m;
+      });
+      respHeaders["content-type"] = "text/css; charset=utf-8";
+      return c.body(rewrittenCss, upstream.status as any, respHeaders);
+    }
+    if (contentType.includes("javascript")) {
+      const js = await upstream.text();
+      // ponytail: opencode's bundle references its static assets with root-absolute
+      // /assets/ URLs. The boot script can only rewrite JS fetch/XHR; elements like
+      // SVG <use href="/assets/sprite-..."> are loaded by the browser, so we prefix
+      // all /assets/ strings in the bundle itself. This is safe for the generated
+      // bundle because every /assets/ occurrence is an asset path.
+      const rewrittenJs = js.replace(/\/(assets\/)/g, `${prefix}/$1`);
+      respHeaders["content-type"] = "text/javascript; charset=utf-8";
+      return c.body(rewrittenJs, upstream.status as any, respHeaders);
     }
     return c.body(upstream.body, upstream.status as any, respHeaders);
   });
