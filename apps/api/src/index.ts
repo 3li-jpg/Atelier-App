@@ -21,6 +21,7 @@ import {
 import { supabaseAdmin } from "./supabase.ts";
 import { createCheckoutSession, createBillingPortalSession, handleWebhook } from "./billing.ts";
 import { getTier } from "./plans.ts";
+import { LEGAL_DOCS, getDocBody, requireAcceptances } from "./legal.ts";
 
 const uidOf = (c: any): string | undefined => c.get("userId") as string | undefined;
 
@@ -43,6 +44,35 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
+
+  // ---- Legal docs (public) ----
+  app.get("/legal", (c) => {
+    const docs = Object.entries(LEGAL_DOCS).map(([id, m]) => ({
+      doc_id: id, version: m.version, effective: m.effective, title: m.title,
+    }));
+    return c.json(docs);
+  });
+
+  app.get("/legal/:docId", (c) => {
+    const meta = (LEGAL_DOCS as Record<string, any>)[c.req.param("docId")];
+    if (!meta) return c.json({ error: "not found" }, 404);
+    return c.json({
+      doc_id: c.req.param("docId"), version: meta.version,
+      effective: meta.effective, title: meta.title, body: getDocBody(c.req.param("docId")),
+    });
+  });
+
+  app.post("/legal/accept", async (c) => {
+    // /legal is public (before the auth middleware), so resolve the uid from the
+    // cookie here — accept is an authed action on a public route group.
+    const uid = uidOf(c) ?? verifySession(getCookie(c, SESSION_COOKIE));
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    const body = await c.req.json().catch(() => null) as { docId?: string; version?: string } | null;
+    if (!body?.docId || !body.version) return c.json({ error: "docId and version required" }, 400);
+    if (!(LEGAL_DOCS as Record<string, any>)[body.docId]) return c.json({ error: "not found" }, 404);
+    await store.recordAcceptance(uid, body.docId, body.version, c.req.header("x-forwarded-for") ?? "0.0.0.0", c.req.header("user-agent") ?? "");
+    return c.json({ ok: true });
+  });
 
   // --- Auth (handoff T3): session cookie (GitHub OAuth) OR static bearer
   // AUTH_TOKEN (owner/admin backdoor) OR open when nothing is configured.
@@ -367,9 +397,17 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     if (uid !== undefined && authConfigured() && !isAdmin) {
       const quota = await checkSandboxQuota(uid);
       if (!quota.ok) return c.json(quota.body, quota.status as 402);
+      // Explicit size from Cloud Agents launch modal wins over the tier default.
       if (quota.tierSpec) {
-        sessionArgs = { ...sessionArgs, cpus: quota.tierSpec.cpus, memory_mb: quota.tierSpec.memory_mb };
+        sessionArgs = {
+          ...sessionArgs,
+          cpus: req.cpus ?? quota.tierSpec.cpus,
+          memory_mb: req.memory_mb ?? quota.tierSpec.memory_mb,
+        };
       }
+    } else if (req.cpus || req.memory_mb) {
+      // In dev/owner mode, still allow explicit size if requested.
+      sessionArgs = { ...sessionArgs, cpus: req.cpus, memory_mb: req.memory_mb };
     }
     const id = await store.createSession(sessionArgs);
     orch.launch(id).catch(() => {}); // failure already recorded as events + failed state

@@ -82,3 +82,62 @@ test("deleteAcceptances clears a user's records", async () => {
   const acc = await store.currentAcceptances(uid);
   assert.equal(Object.keys(acc).length, 0);
 });
+
+import { buildApp } from "./index.ts";
+import { Orchestrator } from "./orchestrator.ts";
+import { signSession } from "./auth.ts";
+
+class FakeSandbox { async create(){return{id:"m",provider:"fake"}} async destroy(){} async suspend(){} async resume(){} async stop(){} async status(){return"started"} async waitFor(){} async listMachines(){return[]} }
+
+function legalSetup() {
+  const store = new Store(":memory:");
+  const orch = new Orchestrator(store, new FakeSandbox() as any);
+  return { store, app: buildApp(store, orch) };
+}
+
+test("GET /legal lists all current docs", async () => {
+  const { app } = legalSetup();
+  const res = await app.request("/legal");
+  assert.equal(res.status, 200);
+  const docs = await res.json();
+  assert.ok(docs.find((d: any) => d.doc_id === "terms"));
+});
+
+test("GET /legal/:docId returns body + version", async () => {
+  const { app } = legalSetup();
+  const res = await app.request("/legal/terms");
+  assert.equal(res.status, 200);
+  const doc = await res.json();
+  assert.equal(doc.version, "1.0");
+  assert.ok(doc.body.includes("Terms of Use"));
+});
+
+test("GET /legal/unknown returns 404", async () => {
+  const { app } = legalSetup();
+  const res = await app.request("/legal/nope");
+  assert.equal(res.status, 404);
+});
+
+test("POST /legal/accept records acceptance for an authed user", async () => {
+  const { store, app } = legalSetup();
+  const uid = store.createEmailUser("a@b.co", "hashhashhash");
+  const cookie = `atelier_session=${signSession(uid)}`;
+  const res = await app.request("/legal/accept", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ docId: "terms", version: "1.0" }),
+  });
+  assert.equal(res.status, 200);
+  const acc = await store.currentAcceptances(uid);
+  assert.equal(acc.terms, "1.0");
+});
+
+test("POST /legal/accept rejects unknown doc", async () => {
+  const { store, app } = legalSetup();
+  const uid = store.createEmailUser("a@b.co", "hashhashhash");
+  const cookie = `atelier_session=${signSession(uid)}`;
+  const res = await app.request("/legal/accept", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: JSON.stringify({ docId: "nope", version: "1.0" }),
+  });
+  assert.equal(res.status, 404);
+});
