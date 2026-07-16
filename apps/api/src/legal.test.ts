@@ -56,3 +56,29 @@ test("SUBPROCESSORS has the expected providers", () => {
     assert.ok(names.includes(expected), `missing ${expected}`);
   }
 });
+
+test("recordAcceptance + currentAcceptances round-trip", async () => {
+  const store = new Store(":memory:");
+  const uid = store.createEmailUser("a@b.co", "hashhashhash");
+  await store.recordAcceptance(uid, "terms", "1.0", "127.0.0.1", "Mozilla");
+  const acc = await store.currentAcceptances(uid);
+  assert.equal(acc.terms, "1.0");
+});
+
+test("currentAcceptances returns latest version per doc", async () => {
+  const store = new Store(":memory:");
+  const uid = store.createEmailUser("a@b.co", "hashhashhash");
+  await store.recordAcceptance(uid, "terms", "1.0", "127.0.0.1", "ua");
+  await store.recordAcceptance(uid, "terms", "1.1", "127.0.0.1", "ua");
+  const acc = await store.currentAcceptances(uid);
+  assert.equal(acc.terms, "1.1");
+});
+
+test("deleteAcceptances clears a user's records", async () => {
+  const store = new Store(":memory:");
+  const uid = store.createEmailUser("a@b.co", "hashhashhash");
+  await store.recordAcceptance(uid, "terms", "1.0", "127.0.0.1", "ua");
+  await store.deleteAcceptances(uid);
+  const acc = await store.currentAcceptances(uid);
+  assert.equal(Object.keys(acc).length, 0);
+});

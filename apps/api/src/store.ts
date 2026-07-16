@@ -86,6 +86,13 @@ export class Store {
         count integer default 0
       );
     `);
+
+    this.db.exec(`
+      create table if not exists legal_acceptances (
+        user_id text, doc_id text, version text, accepted_at text,
+        ip text, user_agent text,
+        primary key (user_id, doc_id, version));
+    `);
   }
 
   upsertUser(githubId: number, login: string, name: string | null, avatarUrl: string | null): string {
@@ -202,9 +209,10 @@ export class Store {
   }
 
   listSessions(userId?: string): any[] {
+    const cols = "id,repo_url,branch,model_id,task,state,sandbox_provider,cpus,memory_mb,started_at,ended_at";
     const rows = userId
-      ? this.db.prepare("select id,repo_url,branch,model_id,task,state,sandbox_provider,started_at,ended_at from sessions where user_id = ? order by started_at desc").all(userId)
-      : this.db.prepare("select id,repo_url,branch,model_id,task,state,sandbox_provider,started_at,ended_at from sessions order by started_at desc").all();
+      ? this.db.prepare(`select ${cols} from sessions where user_id = ? order by started_at desc`).all(userId)
+      : this.db.prepare(`select ${cols} from sessions order by started_at desc`).all();
     return rows;
   }
 
@@ -373,5 +381,22 @@ export class Store {
   deleteSession(id: string): void {
     this.db.prepare("delete from events where session_id = ?").run(id);
     this.db.prepare("delete from sessions where id = ?").run(id);
+  }
+
+  async recordAcceptance(userId: string, docId: string, version: string, ip: string, userAgent: string): Promise<void> {
+    this.db.prepare(`insert or ignore into legal_acceptances (user_id, doc_id, version, accepted_at, ip, user_agent)
+      values (?,?,?,?,datetime('now'),?)`).run(userId, docId, version, ip, userAgent);
+  }
+
+  async currentAcceptances(userId: string): Promise<Record<string, string>> {
+    // latest version per doc — sqlite has no DISTINCT ON; group by + max.
+    const rows: any[] = this.db.prepare(
+      `select doc_id, version from legal_acceptances where user_id = ?
+       group by doc_id having version = max(version)`).all(userId);
+    return Object.fromEntries(rows.map((r) => [r.doc_id, r.version]));
+  }
+
+  async deleteAcceptances(userId: string): Promise<void> {
+    this.db.prepare("delete from legal_acceptances where user_id = ?").run(userId);
   }
 }

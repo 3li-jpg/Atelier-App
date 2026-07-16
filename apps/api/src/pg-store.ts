@@ -90,6 +90,11 @@ export class PgStore {
         user_id text primary key,
         count integer default 0
       );
+
+      create table if not exists legal_acceptances (
+        user_id text, doc_id text, version text, accepted_at text,
+        ip text, user_agent text,
+        primary key (user_id, doc_id, version));
     `);
     return this;
   }
@@ -258,6 +263,23 @@ export class PgStore {
   async deleteSession(id: string): Promise<void> {
     await this.sql`delete from events where session_id = ${id}`;
     await this.sql`delete from sessions where id = ${id}`;
+  }
+
+  async recordAcceptance(userId: string, docId: string, version: string, ip: string, userAgent: string): Promise<void> {
+    await this.sql`insert into legal_acceptances (user_id, doc_id, version, accepted_at, ip, user_agent)
+      values (${userId}, ${docId}, ${version}, ${utcNow()}, ${ip}, ${userAgent})
+      on conflict (user_id, doc_id, version) do nothing`;
+  }
+
+  async currentAcceptances(userId: string): Promise<Record<string, string>> {
+    const rows = await this.sql`
+      select distinct on (doc_id) doc_id, version from legal_acceptances
+      where user_id = ${userId} order by doc_id, version desc`;
+    return Object.fromEntries(rows.map((r: any) => [r.doc_id, r.version]));
+  }
+
+  async deleteAcceptances(userId: string): Promise<void> {
+    await this.sql`delete from legal_acceptances where user_id = ${userId}`;
   }
 
   // ---- Billing methods (task 1 of 5) ----
