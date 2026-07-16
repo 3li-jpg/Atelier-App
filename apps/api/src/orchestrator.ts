@@ -284,6 +284,7 @@ export class Orchestrator {
       if (now - lastMs > maxMs) await this.finish(s.id);
     }
     await this.reapOrphans();
+    await this.sweepRetention();
   }
 
   // Orphan scan: destroy machines still alive on the substrate whose session is
@@ -328,6 +329,19 @@ export class Orchestrator {
     if (!plan?.vm_ref) return;
     const ref = { id: plan.vm_ref, provider: "fly" }; // ponytail: VPS provider inferred as fly; generalize if multi-VPS-provider lands
     await this.sandbox.destroy(ref).catch(() => {});
+  }
+
+  // Retention: purge old session events + destroy VPS disks past their grace.
+  // Idempotent (re-runnable where-clauses). ponytail: 90d events / 30d VPS grace
+  // are defaults; tune via env. [LEGAL REVIEW: retention windows]
+  async sweepRetention(): Promise<void> {
+    const eventDays = Number(process.env.RETENTION_EVENT_DAYS ?? 90);
+    const vpsGraceDays = Number(process.env.RETENTION_VPS_GRACE_DAYS ?? 30);
+    await this.store.deleteEventsOlderThan(eventDays).catch(() => {});
+    const cutoff = new Date(Date.now() - vpsGraceDays * 86400_000).toISOString().slice(0, 19).replace("T", " ");
+    for (const row of await this.store.listCanceledVpsBefore(cutoff)) {
+      await this.sandbox.destroy({ id: row.vm_ref, provider: "fly" }).catch(() => {});
+    }
   }
 
   private async reap(sessionId: string): Promise<void> {

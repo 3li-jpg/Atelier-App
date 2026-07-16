@@ -316,6 +316,14 @@ export class PgStore {
     await this.sql`update users set role = ${role} where id = ${userId}`;
   }
 
+  async deleteEventsOlderThan(days: number): Promise<void> {
+    await this.sql`delete from events where ts < now() - interval ${days + " days"}`;
+  }
+  async listCanceledVpsBefore(dateIso: string): Promise<{ user_id: string; vm_ref: string }[]> {
+    return (await this.sql`select user_id, vm_ref from user_plan where product='vps' and status='canceled' and vm_ref is not null and current_period_end < ${dateIso}`)
+      .filter((r: any) => r.vm_ref);
+  }
+
   async anonymizeUser(userId: string): Promise<void> {
     await this.sql`update users set login='deleted', email=null, github_token_ciphertext=null, compute_key_ciphertext=null, password_hash=null where id=${userId}`;
   }

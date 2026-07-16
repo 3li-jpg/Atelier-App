@@ -440,4 +440,12 @@ export class Store {
   async anonymizeUser(userId: string): Promise<void> {
     this.db.prepare("update users set login='deleted', email=null, github_token_ciphertext=null, compute_key_ciphertext=null, password_hash=null where id=?").run(userId);
   }
+
+  async deleteEventsOlderThan(days: number): Promise<void> {
+    this.db.prepare(`delete from events where ts < datetime('now', ?)`).run(`-${days} days`);
+  }
+  async listCanceledVpsBefore(dateIso: string): Promise<{ user_id: string; vm_ref: string }[]> {
+    return this.db.prepare(`select user_id, vm_ref from user_plan where product='vps' and status='canceled' and vm_ref is not null and current_period_end < ?`).all(dateIso)
+      .filter((r: any) => r.vm_ref);
+  }
 }
