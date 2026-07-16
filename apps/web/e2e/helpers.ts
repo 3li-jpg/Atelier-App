@@ -21,18 +21,35 @@ export const GUEST_STATUS = {
 };
 
 // Default /account payload — no BYOC compute configured, Free plan.
-export const DEFAULT_ACCOUNT = {
-  user: {
-    id: "u-1",
-    login: "testuser@example.com",
-    name: "Test User",
-    avatar_url: null,
-    github_connected: true,
-  },
-  plan: { id: "free", name: "Free", byok: true, compute: "byoc" },
-  usage: { sessions: 3, billed_seconds: 7200 },
-  compute: { byoc_provider: null },
-};
+export function defaultAccount(overrides: object = {}) {
+  return {
+    user: {
+      id: "u-1",
+      login: "testuser@example.com",
+      name: "Test User",
+      avatar_url: null,
+      github_connected: true,
+    },
+    plan: { id: "free", name: "Free", byok: true, compute: "byoc" },
+    usage: { sessions: 3, billed_seconds: 7200 },
+    compute: { byoc_provider: null },
+    billing: {
+      product: "sandbox",
+      tier: "Free",
+      status: "active",
+      trial_end: null,
+      current_period_start: null,
+      current_period_end: null,
+      stripe_customer_id: null,
+      stripe_subscription_id: null,
+      usage_hours: 0,
+      included_hours: 10,
+    },
+    ...overrides,
+  };
+}
+
+export const DEFAULT_ACCOUNT = defaultAccount();
 
 /** Mark the browser as onboarded so App.tsx skips the Onboarding view. */
 export async function markOnboarded(page: Page) {

@@ -29,7 +29,8 @@ export class Store {
         id text primary key, repo_url text, branch text, provider_id text,
         model_id text, task text, state text, machine_id text,
         permission_mode text, budgets text, session_token text,
-        started_at text, ended_at text, billed_seconds integer default 0, user_id text);
+        started_at text, ended_at text, billed_seconds integer default 0,
+        user_id text, cpus integer, memory_mb integer);
       create table if not exists events (
         session_id text, seq integer, type text, payload text, ts text,
         primary key (session_id, seq));
@@ -45,6 +46,8 @@ export class Store {
     safeAlter(this.db, "alter table users add column compute_key_ciphertext blob");
     safeAlter(this.db, "alter table sessions add column sandbox_provider text");
     safeAlter(this.db, "alter table sessions add column toolsets text");
+    safeAlter(this.db, "alter table sessions add column cpus integer");
+    safeAlter(this.db, "alter table sessions add column memory_mb integer");
     safeAlter(this.db, "alter table providers add column headers text");
 
     // ---- Billing: user_plan (task 1 of 5) ----
@@ -185,11 +188,11 @@ export class Store {
     return rows.map((r: any) => ({ ...r, models: JSON.parse(r.models) }));
   }
 
-  createSession(s: { repo_url?: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string; toolsets?: string[] | null; sandbox_provider?: string | null }) {
+  createSession(s: { repo_url?: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string; toolsets?: string[] | null; sandbox_provider?: string | null; cpus?: number | null; memory_mb?: number | null }) {
     const id = randomUUID();
-    this.db.prepare(`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,toolsets,sandbox_provider,started_at,user_id)
-      values (?,?,?,?,?,?,'created',?,?,?,?,?,datetime('now'),?)`)
-      .run(id, s.repo_url ?? null, s.branch, s.provider_id, s.model_id, s.task, s.permission_mode, JSON.stringify(s.budgets), s.session_token, JSON.stringify(s.toolsets ?? null), s.sandbox_provider ?? null, s.user_id ?? null);
+    this.db.prepare(`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,toolsets,sandbox_provider,started_at,user_id,cpus,memory_mb)
+      values (?,?,?,?,?,?,'created',?,?,?,?,?,datetime('now'),?,?,?)`)
+      .run(id, s.repo_url ?? null, s.branch, s.provider_id, s.model_id, s.task, s.permission_mode, JSON.stringify(s.budgets), s.session_token, JSON.stringify(s.toolsets ?? null), s.sandbox_provider ?? null, s.user_id ?? null, s.cpus ?? null, s.memory_mb ?? null);
     return id;
   }
 
@@ -239,6 +242,14 @@ export class Store {
   // ---- Billing methods (task 1 of 5) ----
   getUserPlan(userId: string): any {
     return this.db.prepare("select * from user_plan where user_id = ?").get(userId) ?? null;
+  }
+
+  getUserPlanBySubscriptionId(subscriptionId: string): any {
+    return this.db.prepare("select * from user_plan where stripe_subscription_id = ?").get(subscriptionId) ?? null;
+  }
+
+  getUserPlanByCustomerId(customerId: string): any {
+    return this.db.prepare("select * from user_plan where stripe_customer_id = ?").get(customerId) ?? null;
   }
 
   setUserPlan(

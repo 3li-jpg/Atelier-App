@@ -20,6 +20,7 @@ import {
 } from "./auth.ts";
 import { supabaseAdmin } from "./supabase.ts";
 import { createCheckoutSession, createBillingPortalSession, handleWebhook } from "./billing.ts";
+import { getTier } from "./plans.ts";
 
 const uidOf = (c: any): string | undefined => c.get("userId") as string | undefined;
 
@@ -309,6 +310,39 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
   });
 
   // ---- Sessions (FR-3.x) ----
+  function upgradeUrl(product: string, tier: string): string {
+    return `/billing/checkout?product=${encodeURIComponent(product)}&tier=${encodeURIComponent(tier)}`;
+  }
+
+  async function checkSandboxQuota(uid: string): Promise<{ ok: false; status: 402; body: Record<string, string> } | { ok: true; tierSpec: { id: string; cpus: number; memory_mb: number } | null }> {
+    const usage = await store.getUserUsage(uid);
+    // No plan row yet — treat as the free sandbox tier, which cannot run a billable session.
+    const tierId = usage?.tier ?? "free";
+    const status = usage?.status ?? "active";
+    const tier = getTier(tierId);
+
+    if (status !== "active" && status !== "trialing") {
+      return {
+        ok: false, status: 402, body: {
+          error: "plan required", code: "PLAN_REQUIRED",
+          upgrade_url: upgradeUrl("sandbox", tier?.id ?? "plus"),
+        },
+      };
+    }
+
+    const remainingHours = usage?.remaining_hours ?? 0;
+    if (remainingHours <= 0) {
+      return {
+        ok: false, status: 402, body: {
+          error: "out of quota", code: "OUT_OF_QUOTA",
+          upgrade_url: upgradeUrl("sandbox", tier?.id ?? "plus"),
+        },
+      };
+    }
+
+    return { ok: true, tierSpec: tier ? { id: tier.id, cpus: tier.cpus, memory_mb: tier.memory_mb } : null };
+  }
+
   app.post("/sessions", async (c) => {
     const parsed = CreateSession.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: "invalid session", issues: parsed.error.issues }, 400);
@@ -319,7 +353,20 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     if (uid !== undefined && provider.user_id && provider.user_id !== uid) {
       return c.json({ error: "unknown provider" }, 404); // don't leak cross-user existence
     }
-    const id = await store.createSession({ ...req, session_token: randomBytes(24).toString("hex"), user_id: uid });
+    let sessionArgs: Parameters<AnyStore["createSession"]>[0] = {
+      ...req, session_token: randomBytes(24).toString("hex"), user_id: uid,
+    };
+    // Only enforce sandbox billing when the app is in a real multi-user/auth
+    // configuration. In open dev/owner-alpha mode (no AUTH_TOKEN and no OAuth
+    // configured) existing tests expect sessions to just work.
+    if (uid !== undefined && authConfigured()) {
+      const quota = await checkSandboxQuota(uid);
+      if (!quota.ok) return c.json(quota.body, quota.status as 402);
+      if (quota.tierSpec) {
+        sessionArgs = { ...sessionArgs, cpus: quota.tierSpec.cpus, memory_mb: quota.tierSpec.memory_mb };
+      }
+    }
+    const id = await store.createSession(sessionArgs);
     orch.launch(id).catch(() => {}); // failure already recorded as events + failed state
     return c.json({ id, state: "created" }, 201);
   });
@@ -640,6 +687,7 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     const row = await store.getAccount(uid);
     if (!row) return c.json({ error: "not found" }, 404);
     const githubConnected = Boolean(row.github_token_ciphertext);
+    const userPlan = await store.getUserPlan(uid);
     return c.json({
       user: {
         id: row.id, login: row.login, name: row.name, avatar_url: row.avatar_url,
@@ -648,6 +696,15 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
       plan: { id: row.plan ?? "free", name: "Free", byok: true, compute: "byoc" },
       usage: { sessions: row.session_count ?? 0, billed_seconds: row.billed_seconds ?? 0 },
       compute: { byoc_provider: row.compute_provider ?? null },
+      billing: userPlan ? {
+        product: userPlan.product,
+        tier: userPlan.tier,
+        status: userPlan.status,
+        trial_end: userPlan.trial_end,
+        current_period_start: userPlan.current_period_start,
+        current_period_end: userPlan.current_period_end,
+        usage: await store.getUserUsage(uid),
+      } : null,
     });
   });
 
@@ -701,7 +758,7 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     const signature = c.req.header("stripe-signature") ?? "";
     const body = await c.req.text();
     try {
-      const result = await handleWebhook({ body, signature });
+      const result = await handleWebhook({ body, signature }, store);
       return c.json(result);
     } catch (e) {
       console.error("billing webhook error", e);

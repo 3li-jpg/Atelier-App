@@ -20,6 +20,7 @@ export default defineConfig({
       "/account": API,
       "/providers": API,
       "/repos": API,
+      "/billing": API,
       "/internal": API,
       "/webhooks": API,
     },

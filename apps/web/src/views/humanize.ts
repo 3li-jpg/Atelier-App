@@ -54,3 +54,32 @@ export function humanizeApiError(e: unknown): FriendlyError {
 export function humanizeToast(e: unknown): string {
   return humanizeApiError(e).message;
 }
+
+export type BillingError = {
+  message: string;
+  code: "OUT_OF_QUOTA" | "PLAN_REQUIRED" | string;
+  upgrade_url: string | null;
+};
+
+/**
+ * Parse a 402 Payment Required response from the API.
+ * Returns null when the error is not a structured billing error.
+ */
+export function parseBillingError(e: unknown): BillingError | null {
+  const raw = e instanceof Error ? e.message : String(e);
+  const status = /^(\d{3})\b/.exec(raw)?.[1] ?? "";
+  if (status !== "402") return null;
+
+  const body = raw.replace(/^\d{3}\s*/, "").trim();
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>;
+    if (typeof parsed.error !== "string") return null;
+    return {
+      message: parsed.error,
+      code: typeof parsed.code === "string" ? parsed.code : "",
+      upgrade_url: typeof parsed.upgrade_url === "string" ? parsed.upgrade_url : null,
+    };
+  } catch {
+    return null;
+  }
+}

@@ -43,7 +43,8 @@ export class PgStore {
         model_id text, task text, state text, machine_id text,
         permission_mode text, budgets text, session_token text,
         started_at text, ended_at text, billed_seconds integer default 0,
-        user_id text, last_activity text, sandbox_provider text, toolsets text);
+        user_id text, last_activity text, sandbox_provider text, toolsets text,
+        cpus integer, memory_mb integer);
       create table if not exists events (
         session_id text, seq integer, type text, payload text, ts text,
         primary key (session_id, seq));
@@ -56,6 +57,8 @@ export class PgStore {
       alter table providers add column if not exists headers text;
       alter table sessions add column if not exists sandbox_provider text;
       alter table sessions add column if not exists toolsets text;
+      alter table sessions add column if not exists cpus integer;
+      alter table sessions add column if not exists memory_mb integer;
 
       -- Billing: user_plan (task 1 of 5)
       create table if not exists user_plan (
@@ -190,10 +193,10 @@ export class PgStore {
     return rows.map((r: any) => ({ ...r, models: JSON.parse(r.models) }));
   }
 
-  async createSession(s: { repo_url?: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string; toolsets?: string[] | null; sandbox_provider?: string | null }): Promise<string> {
+  async createSession(s: { repo_url?: string; branch: string; provider_id: string; model_id: string; task: string; permission_mode: string; budgets: unknown; session_token: string; user_id?: string; toolsets?: string[] | null; sandbox_provider?: string | null; cpus?: number | null; memory_mb?: number | null }): Promise<string> {
     const id = randomUUID();
-    await this.sql`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,toolsets,sandbox_provider,started_at,user_id)
-      values (${id},${s.repo_url ?? null},${s.branch},${s.provider_id},${s.model_id},${s.task},'created',${s.permission_mode},${JSON.stringify(s.budgets)},${s.session_token},${JSON.stringify(s.toolsets ?? null)},${s.sandbox_provider ?? null},${utcNow()},${s.user_id ?? null})`;
+    await this.sql`insert into sessions (id,repo_url,branch,provider_id,model_id,task,state,permission_mode,budgets,session_token,toolsets,sandbox_provider,started_at,user_id,cpus,memory_mb)
+      values (${id},${s.repo_url ?? null},${s.branch},${s.provider_id},${s.model_id},${s.task},'created',${s.permission_mode},${JSON.stringify(s.budgets)},${s.session_token},${JSON.stringify(s.toolsets ?? null)},${s.sandbox_provider ?? null},${utcNow()},${s.user_id ?? null},${s.cpus ?? null},${s.memory_mb ?? null})`;
     return id;
   }
 
@@ -259,6 +262,16 @@ export class PgStore {
   // ---- Billing methods (task 1 of 5) ----
   async getUserPlan(userId: string): Promise<any> {
     const [row] = await this.sql`select * from user_plan where user_id = ${userId}`;
+    return row ?? null;
+  }
+
+  async getUserPlanBySubscriptionId(subscriptionId: string): Promise<any> {
+    const [row] = await this.sql`select * from user_plan where stripe_subscription_id = ${subscriptionId}`;
+    return row ?? null;
+  }
+
+  async getUserPlanByCustomerId(customerId: string): Promise<any> {
+    const [row] = await this.sql`select * from user_plan where stripe_customer_id = ${customerId}`;
     return row ?? null;
   }
 

@@ -4,7 +4,7 @@ import { formatRelTime } from "../lib.ts";
 import { Button, Badge, Skeleton, useToast } from "@atelier/ui";
 import type { BadgeTone } from "@atelier/ui";
 import { StateMessage } from "../components/StateMessage.tsx";
-import { humanizeApiError, humanizeToast } from "./humanize.ts";
+import { humanizeApiError, humanizeToast, parseBillingError } from "./humanize.ts";
 import "./sessions-list.css";
 
 export function SessionsList({ onOpen }: { onOpen: (id: string) => void }) {
@@ -88,6 +88,7 @@ function QuickStart({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [upgradeUrl, setUpgradeUrl] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -122,6 +123,7 @@ function QuickStart({
     if (!canSend) return;
     setSending(true);
     setErr(null);
+    setUpgradeUrl(null);
     try {
       const res = await api.createSession({
         repo_url: repoUrl.trim() || undefined,
@@ -132,7 +134,13 @@ function QuickStart({
       setText("");
       onCreated(res.id);
     } catch (e) {
-      setErr(humanizeApiError(e).message);
+      const billing = parseBillingError(e);
+      if (billing?.upgrade_url) {
+        setErr(billing.message);
+        setUpgradeUrl(billing.upgrade_url);
+      } else {
+        setErr(humanizeApiError(e).message);
+      }
       toast.push(humanizeToast(e), "error");
     } finally {
       setSending(false);
@@ -219,7 +227,19 @@ function QuickStart({
           </label>
         </div>
       )}
-      {err && <div className="qs-error">{err}</div>}
+      {err && (
+        <div className="qs-error">
+          {err}
+          {upgradeUrl && (
+            <>
+              {" "}
+              <a href={upgradeUrl} className="qs-upgrade-link">
+                Upgrade
+              </a>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -95,11 +95,25 @@ export type { Event };
 
 // ponytail: mirrors the literal GET /account return shape (apps/api/src/index.ts).
 // If that handler changes, update these fields to match.
+export type Billing = {
+  product: "sandbox" | "vps";
+  tier: string;
+  status: "active" | "trialing" | "canceled" | "past_due";
+  trial_end: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  usage_hours: number;
+  included_hours: number | null;
+};
+
 export type Account = {
   user: { id: string; login: string; name: string | null; avatar_url: string | null; github_connected: boolean };
   plan: { id: string; name: string; byok: boolean; compute: string };
   usage: { sessions: number; billed_seconds: number };
   compute: { byoc_provider: string | null };
+  billing: Billing;
 };
 
 export type ComputeProvider = "e2b" | "daytona";
@@ -152,6 +166,16 @@ export const api = {
   listBranches: (owner: string, repo: string) =>
     req<BranchSummary[]>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`),
   getAccount: () => req<Account>("/account"),
+  checkout: (product: Billing["product"], tier?: string, size?: string) =>
+    req<{ url: string }>("/billing/checkout", {
+      method: "POST",
+      body: JSON.stringify({ product, ...(tier ? { tier } : {}), ...(size ? { size } : {}) }),
+    }),
+  billingPortal: (customerId: string) =>
+    req<{ url: string }>("/billing/portal", {
+      method: "POST",
+      body: JSON.stringify({ customerId }),
+    }),
   setCompute: (provider: ComputeProvider, api_key: string) =>
     req<{ ok: boolean }>("/account/compute", { method: "PUT", body: JSON.stringify({ provider, api_key }) }),
   clearCompute: () => req<{ ok: boolean }>("/account/compute", { method: "DELETE" }),

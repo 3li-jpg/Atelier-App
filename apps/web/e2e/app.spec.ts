@@ -345,6 +345,18 @@ test.describe("Settings view", () => {
         plan: { id: "free", name: "Free", byok: true, compute: "byoc" },
         usage: { sessions: 5, billed_seconds: 5400 },
         compute: { byoc_provider: null },
+        billing: {
+          product: "sandbox",
+          tier: "Free",
+          status: "active",
+          trial_end: null,
+          current_period_start: null,
+          current_period_end: null,
+          stripe_customer_id: null,
+          stripe_subscription_id: null,
+          usage_hours: 0,
+          included_hours: 10,
+        },
       },
     });
     await page.setViewportSize({ width: 1280, height: 800 });

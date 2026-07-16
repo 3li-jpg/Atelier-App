@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type Account, type ComputeProvider } from "../api.ts";
-import { Button, Input, Select, useToast } from "@atelier/ui";
+import { api, type Account, type Billing, type ComputeProvider } from "../api.ts";
+import { Badge, Button, Input, Select, useToast } from "@atelier/ui";
 import { humanizeApiError } from "./humanize.ts";
 import "./settings.css";
 
@@ -119,17 +119,7 @@ export function Settings({ onLogout }: { onLogout: () => void }) {
       </section>
 
       {/* PLAN */}
-      {account && (
-        <section className="st-section">
-          <div className="st-section-title">Plan</div>
-          <div className="st-account-login">{account.plan.name}</div>
-          <div className="st-note">Bring your own key + your own compute.</div>
-          <div className="st-note">
-            Paid hosted-compute plans are coming soon. Today Atelier is
-            bring-your-own-key and bring-your-own-compute.
-          </div>
-        </section>
-      )}
+      {account && <PlanSection account={account} />}
 
       {/* COMPUTE (BYOC) */}
       {account && (
@@ -214,5 +204,131 @@ export function Settings({ onLogout }: { onLogout: () => void }) {
         </Button>
       </section>
     </div>
+  );
+}
+
+const STATUS_TONE: Record<Billing["status"], "ok" | "warn" | "bad" | "accent"> = {
+  active: "ok",
+  trialing: "accent",
+  past_due: "warn",
+  canceled: "bad",
+};
+
+const SANDBOX_TIERS = ["Free", "Plus", "Pro", "Max"];
+const VPS_SIZES = ["Small", "Medium", "Large"];
+
+function formatDate(iso: string | null): string | null {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return null;
+  }
+}
+
+function PlanSection({ account }: { account: Account }) {
+  const toast = useToast();
+  const billing = account.billing;
+  const [busy, setBusy] = useState(false);
+  const [choice, setChoice] = useState(
+    billing.product === "sandbox" ? billing.tier : billing.product === "vps" ? billing.tier : "",
+  );
+
+  const onCheckout = async () => {
+    if (!choice || choice === billing.tier) {
+      toast.push("Choose a different plan first", "info");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res =
+        billing.product === "sandbox"
+          ? await api.checkout("sandbox", choice)
+          : await api.checkout("vps", undefined, choice);
+      window.location.href = res.url;
+    } catch (e) {
+      toast.push(humanizeApiError(e).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onPortal = async () => {
+    if (!billing.stripe_customer_id) return;
+    setBusy(true);
+    try {
+      const res = await api.billingPortal(billing.stripe_customer_id);
+      window.location.href = res.url;
+    } catch (e) {
+      toast.push(humanizeApiError(e).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="st-section">
+      <div className="st-section-title">Plan</div>
+      <div className="st-plan-row">
+        <span className="st-account-login">{account.plan.name}</span>
+        <Badge tone={STATUS_TONE[billing.status]}>{billing.status}</Badge>
+      </div>
+      <div className="st-note">
+        {billing.product === "vps" ? "Hosted VPS" : "Sandbox"} · {billing.tier}
+        {billing.status === "trialing" && billing.trial_end && (
+          <> · trial ends {formatDate(billing.trial_end)}</>
+        )}
+        {billing.current_period_end && billing.status !== "trialing" && (
+          <> · renews {formatDate(billing.current_period_end)}</>
+        )}
+      </div>
+      {billing.product === "sandbox" && billing.included_hours != null && (
+        <div className="st-note">
+          Usage: {billing.usage_hours.toFixed(1)} / {billing.included_hours} hours
+        </div>
+      )}
+      {billing.product === "vps" && (
+        <div className="st-note">Flat monthly VPS plan</div>
+      )}
+
+      <div className="st-plan-actions">
+        {billing.product === "sandbox" ? (
+          <Select
+            label="Choose tier"
+            value={choice}
+            onChange={(e) => setChoice(e.target.value)}
+          >
+            {SANDBOX_TIERS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <Select
+            label="Choose size"
+            value={choice}
+            onChange={(e) => setChoice(e.target.value)}
+          >
+            {VPS_SIZES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        )}
+        <Button variant="primary" onClick={onCheckout} loading={busy} disabled={busy}>
+          Upgrade
+        </Button>
+      </div>
+
+      {billing.stripe_customer_id && (
+        <div className="st-plan-manage">
+          <Button variant="ghost" onClick={onPortal} loading={busy} disabled={busy}>
+            Manage billing
+          </Button>
+        </div>
+      )}
+    </section>
   );
 }

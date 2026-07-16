@@ -32,17 +32,60 @@ function setup() {
   return { store, app };
 }
 
-function mockStripe(checkoutUrl = "https://checkout.stripe.test/session", portalUrl = "https://billing.stripe.test/portal") {
+function mockStripe(checkoutUrl = "https://checkout.stripe.test/session", portalUrl = "https://billing.stripe.test/portal", eventOverride?: any) {
   const calls: any[] = [];
   const client = {
     checkout: { sessions: { create: async (params: any) => { calls.push({ method: "checkout.sessions.create", params }); return { url: checkoutUrl, id: "cs_test_123" }; } } },
     billingPortal: { sessions: { create: async (params: any) => { calls.push({ method: "billingPortal.sessions.create", params }); return { url: portalUrl }; } } },
-    webhooks: { constructEvent: (body: any, signature: any, secret: any) => { calls.push({ method: "webhooks.constructEvent", body, signature, secret }); return { type: "invoice.paid", data: { object: {} } }; } },
+    webhooks: {
+      constructEvent: (body: any, signature: any, secret: any) => {
+        calls.push({ method: "webhooks.constructEvent", body, signature, secret });
+        return eventOverride ?? { type: "invoice.paid", data: { object: {} } };
+      },
+    },
   };
   billing.setStripeClient(client);
   process.env.STRIPE_SECRET_KEY = "sk_test_mock";
   process.env.STRIPE_WEBHOOK_SECRET = "whsec_mock";
   return { client, calls };
+}
+
+function postWebhook(app: any, type: string, object: any) {
+  const body = JSON.stringify({ id: `evt_${type}`, type, data: { object } });
+  return app.request("/billing/webhook", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "stripe-signature": "sig_123" },
+    body,
+  });
+}
+
+function makeVpsSession(userId: string, size = "medium") {
+  return {
+    id: "cs_test_vps",
+    customer: "cus_vps",
+    subscription: {
+      id: "sub_vps",
+      status: "trialing",
+      trial_end: 1767225600,
+      current_period_start: 1764806400,
+      current_period_end: 1767225600,
+      metadata: { user_id: userId },
+    },
+    metadata: { user_id: userId, product: "vps", size },
+  };
+}
+
+function makeSubscription(userId: string, status: string, overrides: any = {}) {
+  return {
+    id: "sub_vps",
+    customer: "cus_vps",
+    metadata: { user_id: userId },
+    status,
+    trial_end: 1767225600,
+    current_period_start: 1764816000,
+    current_period_end: 1767225600,
+    ...overrides,
+  };
 }
 
 test("checkout route returns a Stripe URL", async () => {
@@ -183,4 +226,152 @@ test("getUserUsage for VPS has no hour usage", async () => {
   assert.equal(usage.used_hours, 0);
   assert.equal(usage.remaining_hours, null);
   assert.equal(usage.included_hours, null);
+});
+
+// ---- Task 4: VPS billing lifecycle ----
+
+test("checkout.session.completed for VPS creates a trialing user_plan row", async () => {
+  const { store, app } = setup();
+  const uid = store.upsertUser(101, "vps-user", null, null);
+  const session = makeVpsSession(uid, "large");
+  mockStripe(undefined, undefined, { type: "checkout.session.completed", data: { object: session } });
+
+  const res = await postWebhook(app, "checkout.session.completed", session);
+  assert.equal(res.status, 200);
+
+  const plan = store.getUserPlan(uid);
+  assert.ok(plan);
+  assert.equal(plan.product, "vps");
+  assert.equal(plan.tier, "large");
+  assert.equal(plan.status, "trialing");
+  assert.equal(plan.stripe_customer_id, "cus_vps");
+  assert.equal(plan.stripe_subscription_id, "sub_vps");
+  assert.equal(plan.trial_end, "2026-01-01 00:00:00");
+  assert.equal(plan.current_period_start, "2025-12-04 00:00:00");
+  assert.equal(plan.current_period_end, "2026-01-01 00:00:00");
+  assert.equal(store.getTrialCount(), 1);
+});
+
+test("customer.subscription.updated flips status to active", async () => {
+  const { store, app } = setup();
+  const uid = store.upsertUser(102, "vps-active", null, null);
+  store.setUserPlan(uid, {
+    product: "vps", tier: "medium", status: "trialing",
+    stripe_customer_id: "cus_vps", stripe_subscription_id: "sub_vps",
+    current_period_start: "2026-01-01 00:00:00", current_period_end: "2026-02-01 00:00:00",
+  });
+
+  const subscription = makeSubscription(uid, "active", {
+    trial_end: null,
+    current_period_start: 1767225600,
+    current_period_end: 1769904000,
+  });
+  mockStripe(undefined, undefined, { type: "customer.subscription.updated", data: { object: subscription } });
+
+  const res = await postWebhook(app, "customer.subscription.updated", subscription);
+  assert.equal(res.status, 200);
+
+  const plan = store.getUserPlan(uid);
+  assert.equal(plan.status, "active");
+  assert.equal(plan.trial_end, null);
+  assert.equal(plan.current_period_start, "2026-01-01 00:00:00");
+  assert.equal(plan.current_period_end, "2026-02-01 00:00:00");
+});
+
+test("invoice.paid advances the billing period by one month", async () => {
+  const { store, app } = setup();
+  const uid = store.upsertUser(103, "vps-paid", null, null);
+  store.setUserPlan(uid, {
+    product: "vps", tier: "medium", status: "active",
+    stripe_customer_id: "cus_vps", stripe_subscription_id: "sub_vps",
+    current_period_start: "2026-01-01 00:00:00", current_period_end: "2026-02-01 00:00:00",
+  });
+
+  const invoice = {
+    id: "in_1",
+    customer: "cus_vps",
+    subscription: "sub_vps",
+    lines: { data: [{ period: { start: 1767225600, end: 1769904000 } }] },
+  };
+  mockStripe(undefined, undefined, { type: "invoice.paid", data: { object: invoice } });
+
+  const res = await postWebhook(app, "invoice.paid", invoice);
+  assert.equal(res.status, 200);
+
+  const plan = store.getUserPlan(uid);
+  assert.equal(plan.current_period_start, "2026-02-01 00:00:00");
+  assert.equal(plan.current_period_end, "2026-03-01 00:00:00");
+});
+
+test("invoice.payment_failed flips status to past_due", async () => {
+  const { store, app } = setup();
+  const uid = store.upsertUser(104, "vps-due", null, null);
+  store.setUserPlan(uid, {
+    product: "vps", tier: "small", status: "active",
+    stripe_customer_id: "cus_vps", stripe_subscription_id: "sub_vps",
+  });
+
+  const invoice = { id: "in_failed", customer: "cus_vps", subscription: "sub_vps" };
+  mockStripe(undefined, undefined, { type: "invoice.payment_failed", data: { object: invoice } });
+
+  const res = await postWebhook(app, "invoice.payment_failed", invoice);
+  assert.equal(res.status, 200);
+
+  const plan = store.getUserPlan(uid);
+  assert.equal(plan.status, "past_due");
+});
+
+test("customer.subscription.deleted flips status to canceled and clears vm_ref/region", async () => {
+  const { store, app } = setup();
+  const uid = store.upsertUser(105, "vps-canceled", null, null);
+  store.setUserPlan(uid, {
+    product: "vps", tier: "medium", status: "active",
+    stripe_customer_id: "cus_vps", stripe_subscription_id: "sub_vps",
+    vm_ref: "vm-abc", region: "ewr",
+  });
+
+  const subscription = makeSubscription(uid, "canceled");
+  mockStripe(undefined, undefined, { type: "customer.subscription.deleted", data: { object: subscription } });
+
+  const res = await postWebhook(app, "customer.subscription.deleted", subscription);
+  assert.equal(res.status, 200);
+
+  const plan = store.getUserPlan(uid);
+  assert.equal(plan.status, "canceled");
+  assert.equal(plan.vm_ref, null);
+  assert.equal(plan.region, null);
+});
+
+test("/account returns billing info when a plan exists", async () => {
+  process.env.SESSION_SECRET = "test-session-secret";
+  const { store, app } = setup();
+  const uid = store.upsertUser(106, "vps-account", null, null);
+  store.setUserPlan(uid, { product: "vps", tier: "large", status: "trialing" });
+
+  const res = await app.request("/account", {
+    headers: { Cookie: `atelier_session=${signSession(uid)}` },
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.billing.product, "vps");
+  assert.equal(body.billing.tier, "large");
+  assert.equal(body.billing.status, "trialing");
+  assert.ok(body.billing.usage);
+
+  delete process.env.SESSION_SECRET;
+});
+
+test("/account omits billing info when no plan exists", async () => {
+  process.env.SESSION_SECRET = "test-session-secret";
+  const { store, app } = setup();
+  const uid = store.upsertUser(107, "no-plan", null, null);
+
+  const res = await app.request("/account", {
+    headers: { Cookie: `atelier_session=${signSession(uid)}` },
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.billing, null);
+
+  delete process.env.SESSION_SECRET;
 });

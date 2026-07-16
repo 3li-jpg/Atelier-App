@@ -1,6 +1,6 @@
 import { canTransition, type SessionState } from "@atelier/schema";
 import { E2BProvider, DaytonaProvider, LocalSandboxProvider } from "@atelier/sandbox";
-import type { SandboxProvider } from "@atelier/sandbox";
+import type { SandboxProvider, SandboxCreateConfig } from "@atelier/sandbox";
 import type { AnyStore } from "./pg-store.ts";
 import { decryptKey, sealConfig, type SealedConfig } from "./secrets.ts";
 
@@ -121,7 +121,7 @@ export class Orchestrator {
 
     // Secrets never enter machine env — the supervisor fetches them via the
     // sealed-box handshake (guide §2.6, POST /internal/sessions/:id/handshake).
-    const ref = await sandbox.create({
+    const cfg: SandboxCreateConfig = {
       name: `ses-${sessionId.slice(0, 8)}`,
       image: RUNNER_IMAGE,
       env: {
@@ -131,7 +131,10 @@ export class Orchestrator {
         SESSION_TOKEN: s.session_token,
       },
       metadata: { atelier_session: sessionId },
-    }).catch(async (err) => {
+    };
+    if (s.cpus != null) cfg.cpus = s.cpus;
+    if (s.memory_mb != null) cfg.memory_mb = s.memory_mb;
+    const ref = await sandbox.create(cfg).catch(async (err) => {
       await this.store.appendEvent(sessionId, { ts: new Date().toISOString(), type: "error", payload: { message: String(err) } });
       await this.transition(sessionId, "failed");
       throw err;

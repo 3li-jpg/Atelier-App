@@ -3,7 +3,7 @@
 // Sandbox enforcement and VPS lifecycle are intentionally left as stubs — they are
 // wired by the specialized agents in tasks 2-5.
 
-import type { AnyStore } from "./store.ts";
+import type { AnyStore } from "./pg-store.ts";
 import { getTier, getVpsSize } from "./plans.ts";
 
 let stripeClient: any = null;
@@ -73,7 +73,7 @@ export async function createCheckoutSession(input: CheckoutInput): Promise<Check
       metadata: {
         user_id: input.userId,
         product: input.product,
-        tier: input.tier ?? input.size ?? "",
+        ...(input.product === "vps" ? { size: input.size ?? "" } : { tier: input.tier ?? "" }),
       },
     },
     success_url: `${publicUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -92,7 +92,7 @@ export async function createBillingPortalSession(input: PortalInput): Promise<Po
   return { url: session.url };
 }
 
-export async function handleWebhook(input: WebhookInput): Promise<WebhookResult> {
+export async function handleWebhook(input: WebhookInput, store?: AnyStore): Promise<WebhookResult> {
   const client = await stripe();
   if (!client) throw new Error("Stripe is not configured");
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -100,19 +100,19 @@ export async function handleWebhook(input: WebhookInput): Promise<WebhookResult>
   const event = client.webhooks.constructEvent(input.body, input.signature, secret);
   switch (event.type) {
     case "checkout.session.completed":
-      await onCheckoutSessionCompleted(event.data.object);
+      await onCheckoutSessionCompleted(event.data.object, store);
       break;
     case "customer.subscription.updated":
-      await onSubscriptionUpdated(event.data.object);
+      await onSubscriptionUpdated(event.data.object, store);
       break;
     case "invoice.paid":
-      await onInvoicePaid(event.data.object);
+      await onInvoicePaid(event.data.object, store);
       break;
     case "invoice.payment_failed":
-      await onInvoicePaymentFailed(event.data.object);
+      await onInvoicePaymentFailed(event.data.object, store);
       break;
     case "customer.subscription.deleted":
-      await onSubscriptionDeleted(event.data.object);
+      await onSubscriptionDeleted(event.data.object, store);
       break;
   }
   return { ok: true, event: event.type };
@@ -160,24 +160,144 @@ function publicUrl(): string {
   return (process.env.PUBLIC_WEB_URL ?? process.env.PUBLIC_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
 
-// ---- Webhook handler stubs (tasks 2-5 will wire lifecycle) ----
+// ---- Webhook handlers (Task 4: VPS billing lifecycle) ----
 
-async function onCheckoutSessionCompleted(_session: any): Promise<void> {
-  // stub: other agents set status trialing + provision VPS
+function toUtcText(ts: number | null | undefined): string | null {
+  if (ts == null) return null;
+  return new Date(ts * 1000).toISOString().slice(0, 19).replace("T", " ");
 }
 
-async function onSubscriptionUpdated(_subscription: any): Promise<void> {
-  // stub: trialing -> active transition
+function userIdFromMetadata(obj: any): string | null {
+  const m = obj?.metadata ?? {};
+  return m.user_id ?? null;
 }
 
-async function onInvoicePaid(_invoice: any): Promise<void> {
-  // stub: roll period + reset sandbox usage
+async function planForInvoice(invoice: any, store: AnyStore | undefined): Promise<{ userId: string; plan: any } | null> {
+  if (!store) return null;
+  let plan: any = null;
+  const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
+  if (subscriptionId) plan = await store.getUserPlanBySubscriptionId(subscriptionId);
+  if (!plan) {
+    const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
+    if (customerId) plan = await store.getUserPlanByCustomerId(customerId);
+  }
+  if (!plan) return null;
+  return { userId: plan.user_id, plan };
 }
 
-async function onInvoicePaymentFailed(_invoice: any): Promise<void> {
-  // stub: past_due -> dunning
+async function onCheckoutSessionCompleted(session: any, store?: AnyStore): Promise<void> {
+  if (!store) return;
+  const userId = userIdFromMetadata(session);
+  if (!userId) {
+    console.error("checkout.session.completed: missing user_id in metadata");
+    return;
+  }
+  const metadata = session.metadata ?? {};
+  if (metadata.product !== "vps") return;
+
+  const tier = metadata.size ?? "";
+  const sub = typeof session.subscription === "object" && session.subscription ? session.subscription : null;
+  const subscriptionId = sub?.id ?? session.subscription ?? null;
+  const customerId = session.customer ?? null;
+
+  const existing = await store.getUserPlan(userId);
+  const wasTrialing = existing?.status === "trialing";
+  await store.setUserPlan(userId, {
+    product: "vps",
+    tier,
+    status: "trialing",
+    stripe_customer_id: customerId,
+    stripe_subscription_id: subscriptionId,
+    trial_end: toUtcText(sub?.trial_end),
+    current_period_start: toUtcText(sub?.current_period_start),
+    current_period_end: toUtcText(sub?.current_period_end),
+  });
+  if (!wasTrialing) await store.incrementTrialCount(userId);
 }
 
-async function onSubscriptionDeleted(_subscription: any): Promise<void> {
-  // stub: canceled -> teardown
+async function onSubscriptionUpdated(subscription: any, store?: AnyStore): Promise<void> {
+  if (!store) return;
+  const userId = userIdFromMetadata(subscription);
+  if (!userId) {
+    console.error("customer.subscription.updated: missing user_id in metadata");
+    return;
+  }
+
+  await store.setUserPlan(userId, {
+    product: (await store.getUserPlan(userId))?.product ?? "vps",
+    tier: (await store.getUserPlan(userId))?.tier ?? "",
+    status: subscription.status,
+    stripe_customer_id: subscription.customer ?? null,
+    stripe_subscription_id: subscription.id ?? null,
+    trial_end: toUtcText(subscription.trial_end),
+    current_period_start: toUtcText(subscription.current_period_start),
+    current_period_end: toUtcText(subscription.current_period_end),
+  });
+}
+
+async function onInvoicePaid(invoice: any, store?: AnyStore): Promise<void> {
+  if (!store) return;
+  const found = await planForInvoice(invoice, store);
+  if (!found) return;
+  const { userId, plan } = found;
+
+  const currentEnd = plan.current_period_end;
+  const oldEnd = currentEnd ? new Date(currentEnd + "Z") : null;
+  if (!oldEnd || isNaN(oldEnd.getTime())) return;
+
+  const newStart = new Date(oldEnd.getTime());
+  const newEnd = new Date(oldEnd.getTime());
+  newEnd.setUTCMonth(newEnd.getUTCMonth() + 1);
+
+  await store.setUserPlan(userId, {
+    product: plan.product,
+    tier: plan.tier,
+    status: plan.status,
+    stripe_customer_id: plan.stripe_customer_id,
+    stripe_subscription_id: plan.stripe_subscription_id,
+    trial_end: plan.trial_end,
+    current_period_start: newStart.toISOString().slice(0, 19).replace("T", " "),
+    current_period_end: newEnd.toISOString().slice(0, 19).replace("T", " "),
+  });
+}
+
+async function onInvoicePaymentFailed(invoice: any, store?: AnyStore): Promise<void> {
+  if (!store) return;
+  const found = await planForInvoice(invoice, store);
+  if (!found) return;
+  const { userId, plan } = found;
+
+  await store.setUserPlan(userId, {
+    product: plan.product,
+    tier: plan.tier,
+    status: "past_due",
+    stripe_customer_id: plan.stripe_customer_id,
+    stripe_subscription_id: plan.stripe_subscription_id,
+    trial_end: plan.trial_end,
+    current_period_start: plan.current_period_start,
+    current_period_end: plan.current_period_end,
+  });
+}
+
+async function onSubscriptionDeleted(subscription: any, store?: AnyStore): Promise<void> {
+  if (!store) return;
+  const userId = userIdFromMetadata(subscription);
+  if (!userId) {
+    console.error("customer.subscription.deleted: missing user_id in metadata");
+    return;
+  }
+
+  const plan = await store.getUserPlan(userId);
+  await store.setUserPlan(userId, {
+    product: plan?.product ?? "vps",
+    tier: plan?.tier ?? "",
+    status: "canceled",
+    stripe_customer_id: subscription.customer ?? null,
+    stripe_subscription_id: subscription.id ?? null,
+    trial_end: toUtcText(subscription.trial_end),
+    current_period_start: toUtcText(subscription.current_period_start),
+    current_period_end: toUtcText(subscription.current_period_end),
+    vm_ref: null,
+    region: null,
+  });
 }
