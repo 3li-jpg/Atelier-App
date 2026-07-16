@@ -777,6 +777,27 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     return c.json({ ok: true });
   });
 
+  // ---- Privacy: DSAR export (no secrets ever leave the store) ----
+  app.get("/account/export", async (c) => {
+    const uid = uidOf(c);
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    const account = await store.getAccount(uid);
+    const providers = await store.listProviders(uid);
+    const sessions = await store.listSessions(uid);
+    const plan = await store.getUserPlan(uid);
+    const acceptances = await store.currentAcceptances(uid);
+    // ponytail: events per session — fine for a personal export; paginate if a
+    // user has hundreds of sessions.
+    const events: Record<string, unknown> = {};
+    for (const s of sessions) events[s.id] = await store.eventsAfter(s.id, 0);
+    return c.json({
+      exported_at: new Date().toISOString(),
+      account: account ? { login: account.login, email: account.email, created_at: account.created_at } : null,
+      providers, sessions, events,
+      billing: plan, acceptances,
+    });
+  });
+
   // ---- Billing (task 1 of 5) ----
   app.post("/billing/checkout", async (c) => {
     const uid = uidOf(c);
