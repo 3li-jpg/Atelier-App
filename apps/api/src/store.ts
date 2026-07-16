@@ -410,4 +410,8 @@ export class Store {
     this.db.prepare(`insert into audit_log (ts, actor, action, target, meta) values (datetime('now'),?,?,?,?)`)
       .run(e.actor, e.action, e.target, JSON.stringify(e.meta ?? {}));
   }
+
+  async anonymizeUser(userId: string): Promise<void> {
+    this.db.prepare("update users set login='deleted', email=null, github_token_ciphertext=null, compute_key_ciphertext=null, password_hash=null where id=?").run(userId);
+  }
 }

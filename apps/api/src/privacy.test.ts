@@ -17,6 +17,30 @@ function setup() {
   return { store, app: buildApp(store, orch) };
 }
 
+test("POST /account/delete cascades: cancels sessions, drops keys, anonymizes user", async () => {
+  const { store, app } = setup();
+  const uid = store.createEmailUser("a@b.co", "hashhashhash");
+  await store.createProvider({ name: "T", base_url: "https://t", dialect: "openai-chat", key_ciphertext: Buffer.from("x"), models: [], user_id: uid });
+  await store.recordAcceptance(uid, "terms", "1.0", "1.1.1.1", "ua");
+  await store.setUserPlan(uid, { product: "vps", tier: "medium", status: "active" });
+
+  const res = await app.request("/account/delete", {
+    method: "POST", headers: { Cookie: `atelier_session=${signSession(uid)}` },
+  });
+  assert.equal(res.status, 202);
+
+  // providers gone
+  assert.equal((await store.listProviders(uid)).length, 0);
+  // acceptances gone
+  assert.equal(Object.keys(await store.currentAcceptances(uid)).length, 0);
+  // user anonymized (tombstone)
+  const u = store.getUser(uid);
+  assert.equal(u.login, "deleted");
+  // audit log recorded the deletion
+  const auditRows: any[] = (store as any).db.prepare("select * from audit_log where action = 'account_deleted'").all();
+  assert.equal(auditRows.length, 1);
+});
+
 test("GET /account/export returns a bundle without secrets", async () => {
   const { store, app } = setup();
   const uid = store.createEmailUser("a@b.co", "hashhashhash");

@@ -19,9 +19,10 @@ import {
   authConfigured, oauthEnabled, OWNER_ID, SESSION_COOKIE, hashPassword, verifyPassword,
 } from "./auth.ts";
 import { supabaseAdmin } from "./supabase.ts";
-import { createCheckoutSession, createBillingPortalSession, handleWebhook } from "./billing.ts";
+import { createCheckoutSession, createBillingPortalSession, handleWebhook, cancelSubscription } from "./billing.ts";
 import { getTier } from "./plans.ts";
 import { LEGAL_DOCS, getDocBody, requireAcceptances } from "./legal.ts";
+import { audit } from "./audit.ts";
 
 const uidOf = (c: any): string | undefined => c.get("userId") as string | undefined;
 
@@ -796,6 +797,44 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
       providers, sessions, events,
       billing: plan, acceptances,
     });
+  });
+
+  // ---- Privacy: account deletion cascade ----
+  // Best-effort across every subsystem: cancel live sessions, destroy the VPS,
+  // cancel Stripe, drop keys/tokens/sessions/acceptances, null the plan, then
+  // anonymize the user to a tombstone (kept for audit/billing retention).
+  app.post("/account/delete", async (c) => {
+    const uid = uidOf(c);
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    // 1. cancel active sessions (drives sandbox destroy via orch.cancel)
+    for (const s of await store.listSessions(uid)) {
+      if (!["completed", "failed", "cancelled"].includes(s.state)) {
+        await orch.cancel(s.id).catch(() => {});
+      }
+    }
+    // 2. destroy VPS + cancel Stripe subscription
+    await orch.destroyVps(uid).catch(() => {});
+    const plan = await store.getUserPlan(uid);
+    if (plan?.stripe_subscription_id) await cancelSubscription(plan.stripe_subscription_id);
+    // 3. delete providers + compute key + github token (via anonymize below)
+    for (const p of await store.listProviders(uid)) await store.deleteProvider(p.id);
+    await store.clearCompute(uid);
+    // 4. delete sessions + events
+    for (const s of await store.listSessions(uid)) await store.deleteSession(s.id);
+    // 5. delete acceptances
+    await store.deleteAcceptances(uid);
+    // 6. null user_plan
+    if (plan) await store.setUserPlan(uid, {
+      product: plan.product ?? "vps", tier: plan.tier ?? "", status: "canceled",
+      stripe_customer_id: null, stripe_subscription_id: null, trial_end: null,
+      current_period_start: null, current_period_end: null, vm_ref: null, region: null,
+    });
+    // 7. anonymize the user (tombstone for audit/billing retention)
+    await store.anonymizeUser(uid);
+    // 8. audit + clear cookie
+    await audit(store, { actor: uid, action: "account_deleted", target: `user:${uid}`, meta: {} });
+    deleteCookie(c, SESSION_COOKIE, { path: "/" });
+    return c.json({ ok: true, job_id: uid }, 202);
   });
 
   // ---- Billing (task 1 of 5) ----

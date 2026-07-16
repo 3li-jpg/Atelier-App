@@ -319,6 +319,17 @@ export class Orchestrator {
     await this.reap(sessionId);
   }
 
+  // Destroy a user's VPS if one exists. VPS = vm_ref in user_plan; the compute
+  // provider destroy is best-effort (the VM may already be gone). Logs nothing
+  // sensitive. ponytail: no VPS-destroy primitive existed before — this fills
+  // the gap the deletion cascade + retention job expose.
+  async destroyVps(userId: string): Promise<void> {
+    const plan = await this.store.getUserPlan(userId);
+    if (!plan?.vm_ref) return;
+    const ref = { id: plan.vm_ref, provider: "fly" }; // ponytail: VPS provider inferred as fly; generalize if multi-VPS-provider lands
+    await this.sandbox.destroy(ref).catch(() => {});
+  }
+
   private async reap(sessionId: string): Promise<void> {
     this.clearBudget(sessionId);
     const s = await this.store.getSession(sessionId);

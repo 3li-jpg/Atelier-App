@@ -291,6 +291,10 @@ export class PgStore {
       values (${utcNow()}, ${e.actor}, ${e.action}, ${e.target}, ${JSON.stringify(e.meta ?? {})})`;
   }
 
+  async anonymizeUser(userId: string): Promise<void> {
+    await this.sql`update users set login='deleted', email=null, github_token_ciphertext=null, compute_key_ciphertext=null, password_hash=null where id=${userId}`;
+  }
+
   // ---- Billing methods (task 1 of 5) ----
   async getUserPlan(userId: string): Promise<any> {
     const [row] = await this.sql`select * from user_plan where user_id = ${userId}`;

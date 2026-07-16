@@ -92,6 +92,14 @@ export async function createBillingPortalSession(input: PortalInput): Promise<Po
   return { url: session.url };
 }
 
+// Cancel a Stripe subscription. No-op when Stripe isn't configured (self-hosted).
+// Best-effort: a failed cancel must not break the account-deletion cascade.
+export async function cancelSubscription(subscriptionId: string): Promise<void> {
+  const client = await stripe();
+  if (!client) return; // no Stripe configured (self-hosted) — nothing to cancel
+  await client.subscriptions.cancel(subscriptionId).catch(() => {});
+}
+
 export async function handleWebhook(input: WebhookInput, store?: AnyStore): Promise<WebhookResult> {
   const client = await stripe();
   if (!client) throw new Error("Stripe is not configured");
