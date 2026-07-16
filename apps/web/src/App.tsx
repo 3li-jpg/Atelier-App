@@ -8,6 +8,9 @@ import { AppShell, type ShellView } from "./components/AppShell.tsx";
 import { PageHeader } from "./components/PageHeader.tsx";
 
 // Code-split heavy views so the initial bundle stays small.
+const CloudAgents = lazy(() =>
+  import("./views/CloudAgents.tsx").then((m) => ({ default: m.CloudAgents })),
+);
 const SessionsList = lazy(() =>
   import("./views/SessionsList.tsx").then((m) => ({ default: m.SessionsList })),
 );
@@ -26,35 +29,45 @@ const Onboarding = lazy(() =>
 const LandingView = lazy(() =>
   import("./views/LandingView.tsx").then((m) => ({ default: m.LandingView })),
 );
+// ponytail: legal doc viewer — public (backend /legal routes are public), no AppShell.
+const Legal = lazy(() =>
+  import("./views/Legal.tsx").then((m) => ({ default: m.Legal })),
+);
 
 type View =
-  | { kind: "list" }
+  | { kind: "sandboxes" }
+  | { kind: "cloudAgents" }
   | { kind: "repos" }
   | { kind: "providers" }
   | { kind: "settings" }
   | { kind: "session"; id: string }
   | { kind: "onboarding" }
-  | { kind: "landing" };
+  | { kind: "landing" }
+  | { kind: "legal"; docId: string };
 
 const ONBOARDED_KEY = "atelier:onboarded";
 
 type AuthState = "checking" | "authed" | "guest";
 
 // ── Hash routing ──────────────────────────────────────────────────────────
-// Views ↔ hashes: #/workspaces (default), #/repos, #/providers, #/settings,
-// #/w/<id> (session). Onboarding keeps no hash — it precedes routing entirely.
-// `history.pushState` drives nav; `popstate`/`hashchange` sync Back/Forward.
-// The session id is encoded into the path segment; `encodeURIComponent` keeps
-// slashes / special chars out of the hash. `decodeURIComponent` + a fallback
-// to `list` keep malformed hashes from crashing the app.
+// Views ↔ hashes: #/sandboxes, #/cloud-agents (default), #/repos,
+// #/providers, #/settings, #/w/<id> (session). Onboarding keeps no hash
+// — it precedes routing entirely. `history.pushState` drives nav;
+// `popstate`/`hashchange` sync Back/Forward. The session id is encoded into
+// the path segment; `encodeURIComponent` keeps slashes / special chars out
+// of the hash. `decodeURIComponent` + a fallback to `cloudAgents` keep
+// malformed hashes from crashing the app. Legacy #/workspaces and #/vms
+// redirect to #/cloud-agents.
 
 function viewToHash(view: View): string | null {
   switch (view.kind) {
-    case "list": return "#/workspaces";
+    case "sandboxes": return "#/sandboxes";
+    case "cloudAgents": return "#/cloud-agents";
     case "repos": return "#/repos";
     case "providers": return "#/providers";
     case "settings": return "#/settings";
     case "session": return `#/w/${encodeURIComponent(view.id)}`;
+    case "legal": return `#/legal/${encodeURIComponent(view.docId)}`;
     // onboarding owns the URL (no hash) until it completes.
     case "onboarding": return null;
     case "landing": return "#/landing";
@@ -64,7 +77,9 @@ function viewToHash(view: View): string | null {
 function hashToView(hash: string): View {
   // Strip leading '#'.
   const path = hash.replace(/^#/, "");
-  if (path === "/workspaces" || path === "/") return { kind: "list" };
+  if (path === "/sandboxes") return { kind: "sandboxes" };
+  // Legacy #/workspaces + root → cloudAgents (the default landing tab).
+  if (path === "/cloud-agents" || path === "/vms" || path === "/workspaces" || path === "/") return { kind: "cloudAgents" };
   if (path === "/repos") return { kind: "repos" };
   if (path === "/providers") return { kind: "providers" };
   if (path === "/settings") return { kind: "settings" };
@@ -74,16 +89,21 @@ function hashToView(hash: string): View {
     const id = decodeURIComponent(sessionMatch[1]);
     if (id) return { kind: "session", id };
   }
-  // Unknown hash → list (the documented fallback).
-  return { kind: "list" };
+  const legalMatch = path.match(/^\/legal\/(.+)$/);
+  if (legalMatch) {
+    const docId = decodeURIComponent(legalMatch[1]);
+    if (docId) return { kind: "legal", docId };
+  }
+  // Unknown hash → cloudAgents (the documented fallback).
+  return { kind: "cloudAgents" };
 }
 
 export function App() {
   const [view, setView] = useState<View>(() => {
-    // ponytail: #/landing is a public marketing page — it bypasses onboarding
-    // precedence so a brand-new browser (no `atelier:onboarded`) can still view it.
+    // ponytail: #/landing + #/legal/* are public pages — they bypass onboarding
+    // precedence so a brand-new browser (no `atelier:onboarded`) can still view them.
     const initial = hashToView(window.location.hash);
-    if (initial.kind === "landing") return initial;
+    if (initial.kind === "landing" || initial.kind === "legal") return initial;
     // Onboarding takes precedence: a not-yet-onboarded browser shows onboarding
     // regardless of the hash (the hash is read after onboarding completes).
     try {
@@ -157,7 +177,7 @@ export function App() {
       <MotionConfig reducedMotion="user">
         <div key="session" className="view-fade" style={{ height: "100%" }}>
           <Suspense fallback={null}>
-            <SessionView id={view.id} onBack={() => setView({ kind: "list" })} onOpenSession={(id) => setView({ kind: "session", id })} />
+            <SessionView id={view.id} onBack={() => setView({ kind: "cloudAgents" })} onOpenSession={(id) => setView({ kind: "session", id })} />
           </Suspense>
         </div>
       </MotionConfig>
@@ -176,7 +196,7 @@ export function App() {
                 }}
                 onSkip={() => {
                   try { localStorage.setItem(ONBOARDED_KEY, "1"); } catch { /* private mode */ }
-                  setView({ kind: "list" });
+                  setView({ kind: "cloudAgents" });
                 }}
               />
           </Suspense>
@@ -192,7 +212,21 @@ export function App() {
       <MotionConfig reducedMotion="user">
         <div key="landing" className="view-fade" style={{ height: "100%" }}>
           <Suspense fallback={null}>
-            <LandingView onBack={() => setView({ kind: "list" })} />
+            <LandingView onBack={() => setView({ kind: "cloudAgents" })} />
+          </Suspense>
+        </div>
+      </MotionConfig>
+    );
+  }
+
+  // ponytail: legal viewer is public + back relies on browser history (popstate
+  // already wired); no chrome added — Legal({ docId }) has no onBack prop.
+  if (view.kind === "legal") {
+    return (
+      <MotionConfig reducedMotion="user">
+        <div key="legal" className="view-fade" style={{ height: "100%" }}>
+          <Suspense fallback={null}>
+            <Legal docId={view.docId} />
           </Suspense>
         </div>
       </MotionConfig>
@@ -227,11 +261,11 @@ export function App() {
     );
   }
 
-  // authed — session/onboarding are early-returned above, so view is list/repos/providers/settings.
+  // authed — session/onboarding are early-returned above, so view is sandboxes/cloudAgents/repos/providers/settings.
   const shellView: ShellView =
-    view.kind === "list" || view.kind === "repos" || view.kind === "providers" || view.kind === "settings"
+    view.kind === "sandboxes" || view.kind === "cloudAgents" || view.kind === "repos" || view.kind === "providers" || view.kind === "settings"
       ? view
-      : { kind: "list" };
+      : { kind: "cloudAgents" };
 
   return (
     <MotionConfig reducedMotion="user">
@@ -241,14 +275,20 @@ export function App() {
         user={user}
         onLogout={logout}
       >
-        {view.kind === "list" && <PageHeader title="Workspaces" subtitle="Your chat workspaces" />}
+        {view.kind === "sandboxes" && <PageHeader title="Sandboxes" subtitle="Workspaces running on your machine" />}
+        {view.kind === "cloudAgents" && <PageHeader title="Cloud Agents" subtitle="Hosted agents you can launch from the browser" />}
         {view.kind === "repos" && <PageHeader title="Repos" subtitle="Import a repo to start a workspace" />}
         {view.kind === "providers" && <PageHeader title="Providers" subtitle="Model providers and API keys" />}
         {view.kind === "settings" && <PageHeader title="Settings" subtitle="Account, plan, and compute" />}
         <div key={view.kind} className="view-fade">
-          {view.kind === "list" && (
+          {view.kind === "sandboxes" && (
             <Suspense fallback={null}>
-              <SessionsList onOpen={(id) => setView({ kind: "session", id })} />
+              <SessionsList kind="local" onOpen={(id) => setView({ kind: "session", id })} />
+            </Suspense>
+          )}
+          {view.kind === "cloudAgents" && (
+            <Suspense fallback={null}>
+              <CloudAgents onOpen={(id) => setView({ kind: "session", id })} />
             </Suspense>
           )}
           {view.kind === "repos" && (
@@ -295,6 +335,7 @@ function SignInCard({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(initialError);
   const [submitting, setSubmitting] = useState(false);
+  const [consented, setConsented] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -304,6 +345,13 @@ function SignInCard({
       const res = mode === "login"
         ? await api.login(email, password)
         : await api.signup(email, password);
+      // ponytail: record consent for new signups; best-effort, never blocks the just-succeeded auth.
+      if (mode === "signup") {
+        await Promise.all([
+          api.acceptLegal("terms", "1.0").catch(() => {}),
+          api.acceptLegal("privacy", "1.0").catch(() => {}),
+        ]);
+      }
       onSuccess(res.user, res.session_token);
     } catch {
       setError(mode === "login" ? "Wrong email or password" : "Couldn't sign up — try again");
@@ -329,9 +377,15 @@ function SignInCard({
             Password
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete={mode === "login" ? "current-password" : "new-password"} />
           </label>
+          {mode === "signup" && (
+            <label className="signup-consent" style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "0.85rem" }}>
+              <input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} style={{ marginTop: "2px" }} />
+              <span>I agree to the <a href="#/legal/terms">Terms</a> and <a href="#/legal/privacy">Privacy Policy</a></span>
+            </label>
+          )}
           {error && <div className="auth-error">{error}</div>}
           <div className="form-actions">
-            <button type="submit" className="primary" disabled={submitting}>
+            <button type="submit" className="primary" disabled={submitting || (mode === "signup" && !consented)}>
               {mode === "login" ? "Log in" : "Sign up"}
             </button>
           </div>

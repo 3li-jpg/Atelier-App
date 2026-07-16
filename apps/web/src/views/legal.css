@@ -1,0 +1,22 @@
+.legal-wrap {
+  max-width: 720px;
+  margin: auto;
+  padding: 32px 24px;
+  color: var(--text);
+}
+
+.legal-wrap h1 {
+  margin-bottom: 24px;
+}
+
+.legal-body {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text);
+  background: transparent;
+  margin: 0;
+  padding: 0;
+}

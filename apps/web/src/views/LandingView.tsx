@@ -421,8 +421,10 @@ function Footer({ onBack }: { onBack: () => void }) {
               </div>
               <div>
                 <p className="footer__col-title">Legal / Meta</p>
+                <a href="#/legal/terms">Terms</a>
+                <a href="#/legal/privacy">Privacy Policy</a>
+                <a href="#/legal/ip-policy">IP Policy</a>
                 <a href={GITHUB_URL} target="_blank" rel="noreferrer">MIT License</a>
-                <a href="#top">© 2026 Atelier</a>
               </div>
             </div>
           </Reveal>
