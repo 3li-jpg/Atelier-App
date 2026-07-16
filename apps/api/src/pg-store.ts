@@ -56,6 +56,36 @@ export class PgStore {
       alter table providers add column if not exists headers text;
       alter table sessions add column if not exists sandbox_provider text;
       alter table sessions add column if not exists toolsets text;
+
+      -- Billing: user_plan (task 1 of 5)
+      create table if not exists user_plan (
+        user_id text primary key,
+        product text,
+        tier text,
+        status text,
+        stripe_customer_id text,
+        stripe_subscription_id text,
+        trial_end text,
+        current_period_start text,
+        current_period_end text,
+        vm_ref text,
+        region text
+      );
+      alter table user_plan add column if not exists product text;
+      alter table user_plan add column if not exists tier text;
+      alter table user_plan add column if not exists status text;
+      alter table user_plan add column if not exists stripe_customer_id text;
+      alter table user_plan add column if not exists stripe_subscription_id text;
+      alter table user_plan add column if not exists trial_end text;
+      alter table user_plan add column if not exists current_period_start text;
+      alter table user_plan add column if not exists current_period_end text;
+      alter table user_plan add column if not exists vm_ref text;
+      alter table user_plan add column if not exists region text;
+
+      create table if not exists trial_counter (
+        user_id text primary key,
+        count integer default 0
+      );
     `);
     return this;
   }
@@ -224,5 +254,97 @@ export class PgStore {
   async deleteSession(id: string): Promise<void> {
     await this.sql`delete from events where session_id = ${id}`;
     await this.sql`delete from sessions where id = ${id}`;
+  }
+
+  // ---- Billing methods (task 1 of 5) ----
+  async getUserPlan(userId: string): Promise<any> {
+    const [row] = await this.sql`select * from user_plan where user_id = ${userId}`;
+    return row ?? null;
+  }
+
+  async setUserPlan(
+    userId: string,
+    plan: {
+      product: string;
+      tier: string;
+      status: string;
+      stripe_customer_id?: string | null;
+      stripe_subscription_id?: string | null;
+      trial_end?: string | null;
+      current_period_start?: string | null;
+      current_period_end?: string | null;
+      vm_ref?: string | null;
+      region?: string | null;
+    },
+  ): Promise<void> {
+    const [existing] = await this.sql`select user_id from user_plan where user_id = ${userId}`;
+    if (existing) {
+      await this.sql`update user_plan set
+        product = ${plan.product}, tier = ${plan.tier}, status = ${plan.status},
+        stripe_customer_id = ${plan.stripe_customer_id ?? null},
+        stripe_subscription_id = ${plan.stripe_subscription_id ?? null},
+        trial_end = ${plan.trial_end ?? null},
+        current_period_start = ${plan.current_period_start ?? null},
+        current_period_end = ${plan.current_period_end ?? null},
+        vm_ref = ${plan.vm_ref ?? null},
+        region = ${plan.region ?? null}
+        where user_id = ${userId}`;
+    } else {
+      await this.sql`insert into user_plan
+        (user_id, product, tier, status, stripe_customer_id, stripe_subscription_id,
+         trial_end, current_period_start, current_period_end, vm_ref, region)
+        values (${userId}, ${plan.product}, ${plan.tier}, ${plan.status},
+          ${plan.stripe_customer_id ?? null}, ${plan.stripe_subscription_id ?? null},
+          ${plan.trial_end ?? null}, ${plan.current_period_start ?? null},
+          ${plan.current_period_end ?? null}, ${plan.vm_ref ?? null}, ${plan.region ?? null})`;
+    }
+  }
+
+  async getUserUsage(userId: string): Promise<any> {
+    const plan = await this.getUserPlan(userId);
+    if (!plan) return null;
+    const { product, tier } = plan;
+    const { getTier, getVpsSize } = await import("./plans.ts");
+    const spec = product === "sandbox" ? getTier(tier) : getVpsSize(tier);
+    if (!spec) return null;
+
+    if (product === "vps") {
+      return {
+        product,
+        tier,
+        included_hours: null,
+        used_hours: 0,
+        remaining_hours: null,
+        status: plan.status,
+        trial_end: plan.trial_end,
+      };
+    }
+
+    const includedHours = (spec as any).included_hours ?? 0;
+    const periodStart = plan.current_period_start;
+    const [{ s }] = await this.sql`
+      select coalesce(sum(billed_seconds),0) as s from sessions
+      where user_id = ${userId} and (started_at >= ${periodStart} or ${periodStart} is null)`;
+    const usedHours = Number(s ?? 0) / 3600;
+    return {
+      product,
+      tier,
+      included_hours: includedHours,
+      used_hours: usedHours,
+      remaining_hours: Math.max(0, includedHours - usedHours),
+      status: plan.status,
+      trial_end: plan.trial_end,
+    };
+  }
+
+  async getTrialCount(): Promise<number> {
+    const [{ c }] = await this.sql`select coalesce(sum(count),0) as c from trial_counter`;
+    return Number(c ?? 0);
+  }
+
+  async incrementTrialCount(userId: string): Promise<void> {
+    await this.sql`
+      insert into trial_counter (user_id, count) values (${userId}, 1)
+      on conflict (user_id) do update set count = trial_counter.count + 1`;
   }
 }

@@ -5,6 +5,7 @@ import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import type { Event, SessionState } from "@atelier/schema";
 import { encryptKey, decryptKey } from "./secrets.ts";
+import { getTier, getVpsSize } from "./plans.ts";
 
 export const bus = new EventEmitter(); // in-process fan-out; Redis Streams when >1 instance
 bus.setMaxListeners(0);
@@ -45,6 +46,42 @@ export class Store {
     safeAlter(this.db, "alter table sessions add column sandbox_provider text");
     safeAlter(this.db, "alter table sessions add column toolsets text");
     safeAlter(this.db, "alter table providers add column headers text");
+
+    // ---- Billing: user_plan (task 1 of 5) ----
+    this.db.exec(`
+      create table if not exists user_plan (
+        user_id text primary key,
+        product text,
+        tier text,
+        status text,
+        stripe_customer_id text,
+        stripe_subscription_id text,
+        trial_end text,
+        current_period_start text,
+        current_period_end text,
+        vm_ref text,
+        region text
+      );
+    `);
+    // safeAlter for every column/table so existing DBs migrate.
+    safeAlter(this.db, "alter table user_plan add column product text");
+    safeAlter(this.db, "alter table user_plan add column tier text");
+    safeAlter(this.db, "alter table user_plan add column status text");
+    safeAlter(this.db, "alter table user_plan add column stripe_customer_id text");
+    safeAlter(this.db, "alter table user_plan add column stripe_subscription_id text");
+    safeAlter(this.db, "alter table user_plan add column trial_end text");
+    safeAlter(this.db, "alter table user_plan add column current_period_start text");
+    safeAlter(this.db, "alter table user_plan add column current_period_end text");
+    safeAlter(this.db, "alter table user_plan add column vm_ref text");
+    safeAlter(this.db, "alter table user_plan add column region text");
+
+    // Abuse-guard: per-user trial counter.
+    this.db.exec(`
+      create table if not exists trial_counter (
+        user_id text primary key,
+        count integer default 0
+      );
+    `);
   }
 
   upsertUser(githubId: number, login: string, name: string | null, avatarUrl: string | null): string {
@@ -197,6 +234,111 @@ export class Store {
   addBilled(sessionId: string, ms: number): void {
     this.db.prepare("update sessions set billed_seconds = billed_seconds + ? where id = ?")
       .run(Math.max(0, Math.round(ms / 1000)), sessionId);
+  }
+
+  // ---- Billing methods (task 1 of 5) ----
+  getUserPlan(userId: string): any {
+    return this.db.prepare("select * from user_plan where user_id = ?").get(userId) ?? null;
+  }
+
+  setUserPlan(
+    userId: string,
+    plan: {
+      product: string;
+      tier: string;
+      status: string;
+      stripe_customer_id?: string | null;
+      stripe_subscription_id?: string | null;
+      trial_end?: string | null;
+      current_period_start?: string | null;
+      current_period_end?: string | null;
+      vm_ref?: string | null;
+      region?: string | null;
+    },
+  ): void {
+    const existing = this.db.prepare("select user_id from user_plan where user_id = ?").get(userId);
+    if (existing) {
+      this.db.prepare(`update user_plan set
+        product = ?, tier = ?, status = ?,
+        stripe_customer_id = ?, stripe_subscription_id = ?,
+        trial_end = ?, current_period_start = ?, current_period_end = ?,
+        vm_ref = ?, region = ?
+        where user_id = ?`).run(
+        plan.product, plan.tier, plan.status,
+        plan.stripe_customer_id ?? null,
+        plan.stripe_subscription_id ?? null,
+        plan.trial_end ?? null,
+        plan.current_period_start ?? null,
+        plan.current_period_end ?? null,
+        plan.vm_ref ?? null,
+        plan.region ?? null,
+        userId,
+      );
+    } else {
+      this.db.prepare(`insert into user_plan
+        (user_id, product, tier, status, stripe_customer_id, stripe_subscription_id,
+         trial_end, current_period_start, current_period_end, vm_ref, region)
+        values (?,?,?,?,?,?,?,?,?,?,?)`).run(
+        userId,
+        plan.product,
+        plan.tier,
+        plan.status,
+        plan.stripe_customer_id ?? null,
+        plan.stripe_subscription_id ?? null,
+        plan.trial_end ?? null,
+        plan.current_period_start ?? null,
+        plan.current_period_end ?? null,
+        plan.vm_ref ?? null,
+        plan.region ?? null,
+      );
+    }
+  }
+
+  getUserUsage(userId: string): any {
+    const plan = this.getUserPlan(userId);
+    if (!plan) return null;
+    const product = plan.product;
+    const tier = plan.tier;
+    const spec = product === "sandbox" ? getTier(tier) : getVpsSize(tier);
+    if (!spec) return null;
+
+    if (product === "vps") {
+      return {
+        product,
+        tier,
+        included_hours: null,
+        used_hours: 0,
+        remaining_hours: null,
+        status: plan.status,
+        trial_end: plan.trial_end,
+      };
+    }
+
+    const includedHours = (spec as any).included_hours ?? 0;
+    const periodStart = plan.current_period_start;
+    const usedSeconds = this.db.prepare(
+      "select coalesce(sum(billed_seconds),0) as s from sessions where user_id = ? and (started_at >= ? or ? is null)",
+    ).get(userId, periodStart, periodStart) as { s: number };
+    const usedHours = (usedSeconds?.s ?? 0) / 3600;
+    return {
+      product,
+      tier,
+      included_hours: includedHours,
+      used_hours: usedHours,
+      remaining_hours: Math.max(0, includedHours - usedHours),
+      status: plan.status,
+      trial_end: plan.trial_end,
+    };
+  }
+
+  getTrialCount(): number {
+    const row: any = this.db.prepare("select coalesce(sum(count),0) as c from trial_counter").get();
+    return row?.c ?? 0;
+  }
+
+  incrementTrialCount(userId: string): void {
+    this.db.prepare(`insert into trial_counter (user_id, count) values (?,1)
+      on conflict(user_id) do update set count = count + 1`).run(userId);
   }
 
   appendEvent(sessionId: string, e: Omit<Event, "seq" | "session_id">): Event {

@@ -19,6 +19,7 @@ import {
   authConfigured, oauthEnabled, OWNER_ID, SESSION_COOKIE, hashPassword, verifyPassword,
 } from "./auth.ts";
 import { supabaseAdmin } from "./supabase.ts";
+import { createCheckoutSession, createBillingPortalSession, handleWebhook } from "./billing.ts";
 
 const uidOf = (c: any): string | undefined => c.get("userId") as string | undefined;
 
@@ -47,7 +48,7 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
   // Only API data paths are guarded — /auth/*, /internal/* (supervisor
   // bearer), /health, and the static SPA bundle stay reachable so the
   // login page can load at all.
-  const GUARDED = /^\/(sessions|providers|repos|account)(\/|$)/;
+  const GUARDED = /^\/(sessions|providers|repos|account|billing)(\/|$)/;
   app.use("*", async (c, next) => {
     if (!GUARDED.test(c.req.path)) return next();
 
@@ -665,6 +666,47 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     if (!uid) return c.json({ error: "unauthorized" }, 401);
     await store.clearCompute(uid);
     return c.json({ ok: true });
+  });
+
+  // ---- Billing (task 1 of 5) ----
+  app.post("/billing/checkout", async (c) => {
+    const uid = uidOf(c);
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    const body = await c.req.json().catch(() => null) as { product?: string; tier?: string; size?: string } | null;
+    if (!body) return c.json({ error: "invalid json" }, 400);
+    if (body.product !== "sandbox" && body.product !== "vps") return c.json({ error: "product must be sandbox or vps" }, 400);
+    if (body.product === "sandbox" && !body.tier) return c.json({ error: "tier required for sandbox" }, 400);
+    if (body.product === "vps" && !body.size) return c.json({ error: "size required for vps" }, 400);
+    const user = await store.getUser(uid);
+    const result = await createCheckoutSession({
+      product: body.product,
+      tier: body.tier,
+      size: body.size,
+      userId: uid,
+      email: user?.email ?? undefined,
+    });
+    return c.json({ url: result.url });
+  });
+
+  app.post("/billing/portal", async (c) => {
+    const uid = uidOf(c);
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    const body = await c.req.json().catch(() => null) as { customerId?: string } | null;
+    if (!body?.customerId) return c.json({ error: "customerId required" }, 400);
+    const result = await createBillingPortalSession({ customerId: body.customerId });
+    return c.json({ url: result.url });
+  });
+
+  app.post("/billing/webhook", async (c) => {
+    const signature = c.req.header("stripe-signature") ?? "";
+    const body = await c.req.text();
+    try {
+      const result = await handleWebhook({ body, signature });
+      return c.json(result);
+    } catch (e) {
+      console.error("billing webhook error", e);
+      return c.json({ error: "webhook rejected" }, 400);
+    }
   });
 
   // ---- Internal: supervisor endpoints (guide §2.5–2.6) ----
