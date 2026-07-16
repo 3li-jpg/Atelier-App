@@ -99,6 +99,10 @@ export class PgStore {
       create table if not exists audit_log (
         id bigserial primary key, ts text, actor text,
         action text, target text, meta text);
+
+      create table if not exists abuse_reports (
+        id text primary key, type text, target_ref text, reporter_email text,
+        reporter_name text, details text, status text default 'open', created_at text);
     `);
     return this;
   }
@@ -289,6 +293,27 @@ export class PgStore {
   async appendAudit(e: { actor: string; action: string; target: string; meta: object }): Promise<void> {
     await this.sql`insert into audit_log (ts, actor, action, target, meta)
       values (${utcNow()}, ${e.actor}, ${e.action}, ${e.target}, ${JSON.stringify(e.meta ?? {})})`;
+  }
+
+  async createAbuseReport(r: { type: string; target_ref: string; reporter_email: string; reporter_name: string; details: string }): Promise<string> {
+    const id = randomUUID();
+    await this.sql`insert into abuse_reports (id,type,target_ref,reporter_email,reporter_name,details,status,created_at)
+      values (${id},${r.type},${r.target_ref},${r.reporter_email},${r.reporter_name},${r.details},'open',${utcNow()})`;
+    return id;
+  }
+  async actionAbuseReport(id: string, status: string): Promise<void> {
+    await this.sql`update abuse_reports set status = ${status} where id = ${id}`;
+  }
+  async getAbuseReport(id: string): Promise<any> {
+    const [row] = await this.sql`select * from abuse_reports where id = ${id}`;
+    return row ?? null;
+  }
+  async strikeCount(userId: string): Promise<number> {
+    const [{ c }] = await this.sql`select count(*) as c from abuse_reports where target_ref = ${"user:" + userId} and status = 'actioned'`;
+    return Number(c ?? 0);
+  }
+  async setUserRole(userId: string, role: string): Promise<void> {
+    await this.sql`update users set role = ${role} where id = ${userId}`;
   }
 
   async anonymizeUser(userId: string): Promise<void> {

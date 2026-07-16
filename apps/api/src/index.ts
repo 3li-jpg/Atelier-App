@@ -22,9 +22,20 @@ import { supabaseAdmin } from "./supabase.ts";
 import { createCheckoutSession, createBillingPortalSession, handleWebhook, cancelSubscription } from "./billing.ts";
 import { getTier } from "./plans.ts";
 import { LEGAL_DOCS, getDocBody, requireAcceptances } from "./legal.ts";
-import { audit } from "./audit.ts";
+import { audit, notify } from "./audit.ts";
+import { randomUUID } from "node:crypto";
 
 const uidOf = (c: any): string | undefined => c.get("userId") as string | undefined;
+
+// Suspended accounts (role='suspended' from an abuse action) are blocked from
+// every guarded data path. OWNER_ID is never suspended (it's the static-token
+// backdoor identity, not a DB row). ponytail: a store hit per authed request —
+// fine for the alpha; cache user role in the session/cookie if throughput matters.
+async function notSuspended(store: AnyStore, uid: string): Promise<boolean> {
+  if (uid === OWNER_ID) return true;
+  const u = await store.getUser(uid);
+  return u?.role !== "suspended";
+}
 
 // Verify a Supabase JWT access token and return the user's UUID.
 // Uses the supabaseAdmin client to getUser() — validates the JWT signature
@@ -75,6 +86,56 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     return c.json({ ok: true });
   });
 
+  // ---- Abuse / takedown (public report + admin action) ----
+  app.post("/abuse/report", async (c) => {
+    const body = await c.req.json().catch(() => null) as { type?: string; target_ref?: string; reporter_email?: string; reporter_name?: string; details?: string } | null;
+    if (!body?.type || !body.target_ref || !body.reporter_email || !body.details) {
+      return c.json({ error: "type, target_ref, reporter_email, details required" }, 400);
+    }
+    const id = await store.createAbuseReport(body);
+    await notify("ip@studioatelier.ca", `Abuse report: ${body.type}`, JSON.stringify(body, null, 2));
+    return c.json({ id }, 201);
+  });
+
+  app.post("/admin/abuse/:id/action", async (c) => {
+    // /admin isn't in the guarded set (it's a POST-only action path), so resolve
+    // the uid from the cookie here — same as /legal/accept.
+    const uid = uidOf(c) ?? verifySession(getCookie(c, SESSION_COOKIE));
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    const user = uid === OWNER_ID ? { role: "admin" } : await store.getUser(uid);
+    if (user?.role !== "admin") return c.json({ error: "forbidden" }, 403);
+    const report = await store.getAbuseReport(c.req.param("id"));
+    if (!report) return c.json({ error: "not found" }, 404);
+    const body = await c.req.json().catch(() => null) as { action?: string } | null;
+    const action = body?.action;
+    if (!["suspend_session", "suspend_vps", "suspend_account", "dismiss"].includes(action ?? "")) {
+      return c.json({ error: "invalid action" }, 400);
+    }
+    if (action === "suspend_session") {
+      const sid = report.target_ref.replace(/^session:/, "");
+      if (report.target_ref.startsWith("session:")) await orch.cancel(sid).catch(() => {});
+    } else if (action === "suspend_vps") {
+      const userId = report.target_ref.replace(/^user:/, "");
+      if (report.target_ref.startsWith("user:")) {
+        await orch.destroyVps(userId).catch(() => {});
+        const p = await store.getUserPlan(userId);
+        if (p) await store.setUserPlan(userId, { product: p.product, tier: p.tier, status: "suspended",
+          stripe_customer_id: p.stripe_customer_id, stripe_subscription_id: p.stripe_subscription_id,
+          trial_end: p.trial_end, current_period_start: p.current_period_start, current_period_end: p.current_period_end, vm_ref: null, region: p.region });
+      }
+    } else if (action === "suspend_account") {
+      const userId = report.target_ref.replace(/^user:/, "");
+      if (report.target_ref.startsWith("user:")) {
+        await store.setUserRole(userId, "suspended");
+        for (const s of await store.listSessions(userId)) if (!["completed","failed","cancelled"].includes(s.state)) await orch.cancel(s.id).catch(() => {});
+        await orch.destroyVps(userId).catch(() => {});
+      }
+    }
+    await store.actionAbuseReport(c.req.param("id"), action === "dismiss" ? "dismissed" : "actioned");
+    await audit(store, { actor: uid, action: `abuse_${action}`, target: report.target_ref, meta: { report_id: c.req.param("id") } });
+    return c.json({ ok: true });
+  });
+
   // --- Auth (handoff T3): session cookie (GitHub OAuth) OR static bearer
   // AUTH_TOKEN (owner/admin backdoor) OR open when nothing is configured.
   // Only API data paths are guarded — /auth/*, /internal/* (supervisor
@@ -85,7 +146,10 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     if (!GUARDED.test(c.req.path)) return next();
 
     const uid = verifySession(getCookie(c, SESSION_COOKIE));
-    if (uid) { c.set("userId", uid); return next(); }
+    if (uid) {
+      if (!(await notSuspended(store, uid))) return c.json({ error: "account suspended" }, 401);
+      c.set("userId", uid); return next();
+    }
     // Static AUTH_TOKEN via cookie: the embedded opencode iframe can't send a
     // Bearer header, so the opencode proxy mints a scoped atelier_session
     // cookie holding the static owner token. Honor it here (owner backdoor).
@@ -111,12 +175,14 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
       // Then check if it's a signed session token (custom auth)
       const sessionUid = verifySession(bearerToken);
       if (sessionUid) {
+        if (!(await notSuspended(store, sessionUid))) return c.json({ error: "account suspended" }, 401);
         c.set("userId", sessionUid);
         return next();
       }
       // Finally, check if it's a Supabase JWT access token
       const supabaseUid = await verifySupabaseToken(bearerToken);
       if (supabaseUid) {
+        if (!(await notSuspended(store, supabaseUid))) return c.json({ error: "account suspended" }, 401);
         c.set("userId", supabaseUid);
         return next();
       }
@@ -133,11 +199,13 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
       }
       const sessionUid = verifySession(queryToken);
       if (sessionUid) {
+        if (!(await notSuspended(store, sessionUid))) return c.json({ error: "account suspended" }, 401);
         c.set("userId", sessionUid);
         return next();
       }
       const supabaseUid = await verifySupabaseToken(queryToken);
       if (supabaseUid) {
+        if (!(await notSuspended(store, supabaseUid))) return c.json({ error: "account suspended" }, 401);
         c.set("userId", supabaseUid);
         return next();
       }

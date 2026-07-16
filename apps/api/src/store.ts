@@ -99,6 +99,12 @@ export class Store {
         id integer primary key autoincrement, ts text, actor text,
         action text, target text, meta text);
     `);
+
+    this.db.exec(`
+      create table if not exists abuse_reports (
+        id text primary key, type text, target_ref text, reporter_email text,
+        reporter_name text, details text, status text default 'open', created_at text);
+    `);
   }
 
   upsertUser(githubId: number, login: string, name: string | null, avatarUrl: string | null): string {
@@ -409,6 +415,26 @@ export class Store {
   async appendAudit(e: { actor: string; action: string; target: string; meta: object }): Promise<void> {
     this.db.prepare(`insert into audit_log (ts, actor, action, target, meta) values (datetime('now'),?,?,?,?)`)
       .run(e.actor, e.action, e.target, JSON.stringify(e.meta ?? {}));
+  }
+
+  async createAbuseReport(r: { type: string; target_ref: string; reporter_email: string; reporter_name: string; details: string }): Promise<string> {
+    const id = randomUUID();
+    this.db.prepare(`insert into abuse_reports (id,type,target_ref,reporter_email,reporter_name,details,status,created_at)
+      values (?,?,?,?,?,?,'open',datetime('now'))`).run(id, r.type, r.target_ref, r.reporter_email, r.reporter_name, r.details);
+    return id;
+  }
+  async actionAbuseReport(id: string, status: string): Promise<void> {
+    this.db.prepare("update abuse_reports set status = ? where id = ?").run(status, id);
+  }
+  async getAbuseReport(id: string): Promise<any> {
+    return this.db.prepare("select * from abuse_reports where id = ?").get(id) ?? null;
+  }
+  async strikeCount(userId: string): Promise<number> {
+    const row: any = this.db.prepare("select count(*) as c from abuse_reports where target_ref = ? and status = 'actioned'").get(`user:${userId}`);
+    return row?.c ?? 0;
+  }
+  async setUserRole(userId: string, role: string): Promise<void> {
+    this.db.prepare("update users set role = ? where id = ?").run(role, userId);
   }
 
   async anonymizeUser(userId: string): Promise<void> {
