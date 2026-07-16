@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import { getAuthToken } from "../../api.ts";
 
 // The right rail is now a single Browser preview pane. opencode's own web UI
@@ -77,8 +78,30 @@ export function RightRail({
 function BrowserPane({ sessionId }: { sessionId: string }) {
   const [path, setPath] = useState("");
   const [nonce, setNonce] = useState(0);
+  const [ready, setReady] = useState(false);
   const token = getAuthToken();
   const src = `/sessions/${encodeURIComponent(sessionId)}/preview/${path.replace(/^\/+/, "")}?n=${nonce}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
+  // Only mount the iframe once the preview endpoint answers 200 — before that
+  // it serves a raw JSON error body ('no preview — workspace not ready') that
+  // would render as unstyled text. Re-probe on refresh; poll every 5s while
+  // not ready. ponytail: onLoad can't tell an error page from a real one.
+  useEffect(() => {
+    setReady(false);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const probe = async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch(src, { method: "GET" });
+        if (cancelled) return;
+        if (res.ok) { setReady(true); return; }
+      } catch { /* keep polling */ }
+      timer = setTimeout(probe, 5000);
+    };
+    probe();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
   return (
     <div className="ws-browser">
       <div className="ws-browser-bar">
@@ -99,13 +122,21 @@ function BrowserPane({ sessionId }: { sessionId: string }) {
           onKeyDown={(e) => { if (e.key === "Enter") setNonce((n) => n + 1); }}
         />
       </div>
-      <iframe
-        key={nonce}
-        src={src}
-        className="ws-browser-frame"
-        title="Preview"
-        sandbox="allow-scripts allow-same-origin"
-      />
+      <div className="ws-browser-frame-wrap">
+        {ready ? (
+          <iframe
+            key={nonce}
+            src={src}
+            className="ws-browser-frame"
+            title="Preview"
+            sandbox="allow-scripts allow-same-origin"
+          />
+        ) : (
+          <div className="ws-browser-placeholder" role="status">
+            Browser preview — your app will appear here when it serves a port.
+          </div>
+        )}
+      </div>
     </div>
   );
 }

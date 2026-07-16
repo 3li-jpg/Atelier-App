@@ -44,41 +44,55 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 0.6rem;
-  padding: 2.5rem 1.5rem;
+  gap: 10px;
+  padding: 40px 20px;
   max-width: 400px;
   margin: 0 auto;
 }
 .state-message-icon {
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.7;
-  margin-bottom: 0.3rem;
+  border-radius: var(--radius-full);
+  opacity: 0.9;
 }
-.state-empty .state-message-icon { color: var(--muted); }
-.state-error .state-message-icon { color: var(--bad); }
-.state-info .state-message-icon { color: var(--accent); }
+.state-empty .state-message-icon {
+  color: var(--muted);
+  background: var(--panel-2);
+}
+.state-error .state-message-icon {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+.state-info .state-message-icon {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
 
 .state-message-body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  gap: 4px;
 }
 .state-message-title {
-  font-size: 0.95rem;
-  font-weight: 550;
+  font-size: 14px;
+  font-weight: 600;
   margin: 0;
   color: var(--text);
 }
 .state-message-desc {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.55;
+  max-width: 340px;
   margin: 0;
-  line-height: 1.45;
   word-break: break-word;
 }
 .state-message-action {
-  margin-top: 0.5rem;
+  margin-top: 8px;
 }
 
 /* ── Error boundary (full-screen crash fallback) ──────────────── */

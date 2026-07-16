@@ -212,12 +212,12 @@ test.describe("SessionView workspace shell", () => {
     // Task title (in the topbar h1)
     await expect(page.locator(".ws-topbar h1")).toContainText("Add JWT authentication middleware");
 
-    // Live dot for an active session
-    await expect(page.locator(".ws-live-dot")).toBeVisible();
-
-    // State badge shows "<model> · <state>".
-    await expect(page.locator(".ws-badge")).toBeVisible();
-    await expect(page.locator(".ws-badge")).toContainText("claude-sonnet-4-20250514 · running");
+    // State chip for an active session: a .ws-state-dot inside a .ws-state-chip
+    // whose text reads "<model> · <state>".
+    const chip = page.locator(".ws-state-chip");
+    await expect(chip).toBeVisible();
+    await expect(chip.locator(".ws-state-dot")).toBeVisible();
+    await expect(chip).toContainText("claude-sonnet-4-20250514 · running");
   });
 
   test("topbar overflow menu has finish and cancel actions for active session", async ({ page }) => {

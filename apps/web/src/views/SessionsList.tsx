@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type SessionSummary, type ProviderSummary } from "../api.ts";
 import { formatRelTime } from "../lib.ts";
-import { Button, Badge, Skeleton, useToast } from "@atelier/ui";
-import type { BadgeTone } from "@atelier/ui";
+import { Button, Skeleton, useToast } from "@atelier/ui";
 import { StateMessage } from "../components/StateMessage.tsx";
 import { humanizeApiError, humanizeToast, parseBillingError } from "./humanize.ts";
 import "./sessions-list.css";
@@ -56,7 +55,7 @@ export function SessionsList({ onOpen }: { onOpen: (id: string) => void }) {
         <StateMessage
           kind="empty"
           title="No workspaces yet"
-          description="Type above to start a chat, or import a repo from the Repos tab."
+          description="Describe a task in the composer above, or import a repo from Repos."
         />
       ) : (
         <ul className="session-list">
@@ -177,56 +176,69 @@ function QuickStart({
           rows={1}
           aria-label="Start a new workspace"
         />
-        <button
-          type="button"
-          className="qs-send"
-          onClick={send}
-          disabled={!canSend}
-          aria-label="Start workspace"
-        >
-          {sending ? "…" : "→"}
-        </button>
-      </div>
-      <div className="qs-meta">
-        <button
-          type="button"
-          className="qs-toggle"
-          onClick={() => setShowOpts((v) => !v)}
-          aria-expanded={showOpts}
-        >
-          {showOpts ? "Hide options" : "Options"}
-        </button>
-        <span className="qs-summary">
-          {selectedProvider?.name ?? "—"} · {modelId || "no model"}
-          {repoUrl ? ` · ${repoLabel(repoUrl)}` : " · blank workspace"}
-        </span>
-      </div>
-      {showOpts && (
-        <div className="qs-opts">
-          <label className="qs-field">
-            <span>Provider</span>
-            <select className="atelier-select" value={providerId} onChange={(e) => { setProviderId(e.target.value); setModelId(""); }}>
-              {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </label>
-          <label className="qs-field">
-            <span>Model</span>
-            <select className="atelier-select" value={modelId} onChange={(e) => setModelId(e.target.value)}>
-              <option value="">select…</option>
-              {selectedProvider?.models.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
-            </select>
-          </label>
-          <label className="qs-field qs-field-wide">
-            <span>Repo URL (optional)</span>
-            <input
-              className="atelier-input"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/owner/repo — leave empty for a blank workspace"
-            />
-          </label>
+        <div className="qs-bar">
+          <div className="qs-bar-left">
+            <button
+              type="button"
+              className="qs-chip qs-chip--btn"
+              onClick={() => setShowOpts((v) => !v)}
+              aria-expanded={showOpts}
+            >
+              <span>Options</span>
+              <svg className="qs-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            <span className="qs-chip">
+              {selectedProvider?.name ?? "—"} · {modelId || "no model"}
+            </span>
+            <span className="qs-chip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              </svg>
+              <span>{repoUrl ? repoLabel(repoUrl) : "blank workspace"}</span>
+            </span>
+          </div>
+          <button
+            type="button"
+            className="qs-send"
+            onClick={send}
+            disabled={!canSend}
+            aria-label="Start workspace"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="12" y1="19" x2="12" y2="5" />
+              <polyline points="5 12 12 5 19 12" />
+            </svg>
+          </button>
         </div>
-      )}
+        {showOpts && (
+          <div className="qs-opts">
+            <label className="qs-field">
+              <span>Provider</span>
+              <select className="atelier-select" value={providerId} onChange={(e) => { setProviderId(e.target.value); setModelId(""); }}>
+                {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            <label className="qs-field">
+              <span>Model</span>
+              <select className="atelier-select" value={modelId} onChange={(e) => setModelId(e.target.value)}>
+                <option value="">select…</option>
+                {selectedProvider?.models.map((m) => <option key={m.id} value={m.id}>{m.id}</option>)}
+              </select>
+            </label>
+            <label className="qs-field qs-field-wide">
+              <span>Repo URL (optional)</span>
+              <input
+                className="atelier-input"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/owner/repo — leave empty for a blank workspace"
+              />
+            </label>
+          </div>
+        )}
+      </div>
       {err && (
         <div className="qs-error">
           {err}
@@ -258,7 +270,7 @@ function SessionCard({
   const [deleting, setDeleting] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const terminal = s.state === "completed" || s.state === "failed" || s.state === "cancelled";
-  const { tone, pulse } = statusBadge(s.state);
+  const pulse = statusDot(s.state).live;
   const clearTimer = () => {
     if (timer.current) {
       clearTimeout(timer.current);
@@ -293,14 +305,23 @@ function SessionCard({
   };
   return (
     <div className="session-card-wrap">
-      <Button variant="ghost" onClick={() => onOpen(s.id)} className={`session-card${pulse ? " pulse" : ""}`}>
+      <Button variant="ghost" onClick={() => onOpen(s.id)} className="session-card">
         <span className="session-top">
-          <Badge tone={tone}>{s.state}</Badge>
-          <span className="session-time muted small">{formatRelTime(s.started_at)}</span>
+          <span className="session-task">{s.task}</span>
+          <span className="session-time">{formatRelTime(s.started_at)}</span>
         </span>
-        <span className="session-repo muted small">{s.repo_url ? repoLabel(s.repo_url) : "blank workspace"}</span>
-        <span className="session-task">{s.task}</span>
-        <span className="session-model muted small">{s.model_id}</span>
+        <span className="session-meta">
+          <span className="session-status">
+            <span className={`session-status-dot${pulse ? " is-live" : ""}`} style={statusDotColor(s.state)} />
+            <span className="session-status-label">{s.state}</span>
+          </span>
+          <svg className="session-repo-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          </svg>
+          <span className="session-repo">{s.repo_url ? repoLabel(s.repo_url) : "blank workspace"}</span>
+          <span className="session-dot-sep">·</span>
+          <span className="session-model">{s.model_id}</span>
+        </span>
       </Button>
       {terminal &&
         (confirming ? (
@@ -321,9 +342,9 @@ function SessionCard({
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
               aria-hidden="true"
             >
               <polyline points="3 6 5 6 21 6" />
@@ -338,30 +359,36 @@ function SessionCard({
   );
 }
 
-// Explicit status table — stateTone() mis-maps some of these (e.g. cancelled,
-// queued). Pulse only for live states.
-function statusBadge(state: string): { tone: BadgeTone; pulse: boolean } {
+// Explicit status table — returns the status-dot color and whether the dot
+// should pulse (live states only). Pulse moved off the whole-card box-shadow
+// onto the dot itself.
+function statusDot(state: string): { color: string; live: boolean } {
   switch (state) {
     case "running":
     case "starting":
-    case "queued":
     case "active":
     case "spawning":
-      return { tone: "accent", pulse: true };
+      return { color: "var(--accent)", live: true };
+    case "queued":
+      return { color: "var(--warn)", live: false };
     case "completed":
     case "done":
-      return { tone: "ok", pulse: false };
+      return { color: "var(--ok)", live: false };
     case "failed":
     case "error":
-      return { tone: "bad", pulse: false };
+      return { color: "var(--bad)", live: false };
     case "cancelled":
-      return { tone: "idle", pulse: false };
+      return { color: "var(--muted)", live: false };
     case "awaiting_user":
     case "hibernated":
-      return { tone: "warn", pulse: false };
+      return { color: "var(--warn)", live: false };
     default:
-      return { tone: "default", pulse: false };
+      return { color: "var(--muted)", live: false };
   }
+}
+
+function statusDotColor(state: string): React.CSSProperties {
+  return { background: statusDot(state).color };
 }
 
 // Strip trailing .git and leading github.com host; non-github URLs fall back

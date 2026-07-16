@@ -80,10 +80,10 @@ export function StepAuth({ status, onDone }: {
           </motion.button>
           <div className="onb-auth-mode-toggle">
             <motion.button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}
-              variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+              whileTap={{ scale: 0.97 }}
             >Sign up</motion.button>
             <motion.button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}
-              variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+              whileTap={{ scale: 0.97 }}
             >Log in</motion.button>
           </div>
         </>
@@ -92,10 +92,10 @@ export function StepAuth({ status, onDone }: {
       {!status?.oauth && (
         <div className="onb-auth-mode-toggle">
           <motion.button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}
-            variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+            whileTap={{ scale: 0.97 }}
           >Sign up</motion.button>
           <motion.button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}
-            variants={tapScale} initial="rest" whileHover="hover" whileTap="pressed"
+            whileTap={{ scale: 0.97 }}
           >Log in</motion.button>
         </div>
       )}

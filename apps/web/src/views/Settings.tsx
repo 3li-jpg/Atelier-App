@@ -4,6 +4,13 @@ import { Badge, Button, Input, Select, useToast } from "@atelier/ui";
 import { humanizeApiError } from "./humanize.ts";
 import "./settings.css";
 
+// Real /account payloads can return `billing: null` on self-hosted / local dev
+// servers with no Stripe wired up. api.ts types billing as non-null (a lie that
+// crashes PlanSection), so narrow it here. We can only edit these two files,
+// hence the local override rather than fixing api.ts. ponytail: local type
+// narrowing — promote to api.ts as `billing: Billing | null` when allowed.
+type AccountMaybeBilling = Omit<Account, "billing"> & { billing: Billing | null };
+
 // humanizeSeconds: billed_seconds -> "Xh Ym". 0 / sub-minute -> "0m".
 // ponytail: floor math beats a duration lib; switch if we ever need days/weeks.
 function humanizeSeconds(s: number): string {
@@ -27,7 +34,7 @@ function providerName(slug: string): string {
 
 export function Settings({ onLogout }: { onLogout: () => void }) {
   const toast = useToast();
-  const [account, setAccount] = useState<Account | null>(null);
+  const [account, setAccount] = useState<AccountMaybeBilling | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -40,7 +47,7 @@ export function Settings({ onLogout }: { onLogout: () => void }) {
     api
       .getAccount()
       .then((a) => {
-        setAccount(a);
+        setAccount(a as AccountMaybeBilling);
         setErr(null);
       })
       .catch((e) => setErr(humanizeApiError(e).message))
@@ -88,32 +95,38 @@ export function Settings({ onLogout }: { onLogout: () => void }) {
     <div className="st-wrap">
       {/* ACCOUNT */}
       <section className="st-section">
-        <div className="st-section-title">Account</div>
+        <header className="st-section-head">
+          <h2 className="st-section-title">Account</h2>
+          <p className="st-section-desc">Your identity and sign-in connection.</p>
+        </header>
         {loading ? (
           <div className="st-note">Loading…</div>
         ) : err ? (
           <div className="st-error">{err}</div>
         ) : account ? (
           <div className="st-account-row">
-            {account.user.avatar_url ? (
-              <img
-                src={account.user.avatar_url}
-                className="st-avatar"
-                alt=""
-              />
-            ) : (
-              <div className="st-avatar st-avatar-fallback">{initials}</div>
-            )}
-            <span className="st-account-login">{account.user.login}</span>
-            {account.user.github_connected ? (
-              <span className="st-chip ok">GitHub connected</span>
-            ) : (
-              <span className="st-chip bad">
-                GitHub not connected
-                {" · "}
-                <a href="/auth/github/login">Connect GitHub</a>
-              </span>
-            )}
+            <div className="st-avatar-wrap">
+              {account.user.avatar_url ? (
+                <img
+                  src={account.user.avatar_url}
+                  className="st-avatar"
+                  alt=""
+                />
+              ) : (
+                <div className="st-avatar st-avatar-fallback">{initials}</div>
+              )}
+            </div>
+            <div className="st-account-meta">
+              <span className="st-account-login">{account.user.login}</span>
+              {account.user.github_connected ? (
+                <Badge tone="ok">GitHub connected</Badge>
+              ) : (
+                <Badge tone="idle">
+                  GitHub not connected{" · "}
+                  <a href="/auth/github/login">Connect</a>
+                </Badge>
+              )}
+            </div>
           </div>
         ) : null}
       </section>
@@ -124,18 +137,27 @@ export function Settings({ onLogout }: { onLogout: () => void }) {
       {/* COMPUTE (BYOC) */}
       {account && (
         <section className="st-section">
-          <div className="st-section-title">Compute</div>
+          <header className="st-section-head">
+            <h2 className="st-section-title">Compute</h2>
+            <p className="st-section-desc">
+              Bring your own cloud — keys are encrypted at rest.
+            </p>
+          </header>
           {byoc ? (
-            <>
-              <span className="st-chip ok">
-                {providerName(byoc)} configured
-              </span>
-              <div>
+            <div className="st-compute-active">
+              <div className="st-row">
+                <span className="st-row-label">Provider</span>
+                <span className="st-row-value">
+                  {providerName(byoc)}
+                  <Badge tone="ok">configured</Badge>
+                </span>
+              </div>
+              <div className="st-row-actions">
                 <Button variant="ghost" onClick={removeCompute}>
                   Remove
                 </Button>
               </div>
-            </>
+            </div>
           ) : (
             <>
               <div className="st-form">
@@ -181,7 +203,10 @@ export function Settings({ onLogout }: { onLogout: () => void }) {
       {/* USAGE */}
       {account && (
         <section className="st-section">
-          <div className="st-section-title">Usage</div>
+          <header className="st-section-head">
+            <h2 className="st-section-title">Usage</h2>
+            <p className="st-section-desc">Workspaces and metered compute time.</p>
+          </header>
           <div className="st-stat-row">
             <div className="st-stat">
               <div className="st-stat-value">{account.usage.sessions}</div>
@@ -198,10 +223,16 @@ export function Settings({ onLogout }: { onLogout: () => void }) {
       )}
 
       {/* SIGN OUT */}
-      <section className="st-section">
-        <Button variant="ghost" onClick={onLogout}>
-          Sign out
-        </Button>
+      <section className="st-section st-danger">
+        <header className="st-section-head">
+          <h2 className="st-section-title">Session</h2>
+          <p className="st-section-desc">End your current session on this device.</p>
+        </header>
+        <div className="st-row-actions">
+          <Button variant="ghost" onClick={onLogout}>
+            Sign out
+          </Button>
+        </div>
       </section>
     </div>
   );
@@ -214,8 +245,14 @@ const STATUS_TONE: Record<Billing["status"], "ok" | "warn" | "bad" | "accent"> =
   canceled: "bad",
 };
 
-const SANDBOX_TIERS = ["Free", "Plus", "Pro", "Max"];
-const VPS_SIZES = ["Small", "Medium", "Large"];
+const SANDBOX_TIERS: [string, string][] = [
+  ["free", "Free"], ["plus", "Plus"], ["pro", "Pro"], ["max", "Max"],
+];
+const VPS_SIZES: [string, string][] = [
+  ["small", "Small"], ["medium", "Medium"], ["large", "Large"],
+];
+
+const titleCase = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -226,13 +263,34 @@ function formatDate(iso: string | null): string | null {
   }
 }
 
-function PlanSection({ account }: { account: Account }) {
+function PlanSection({ account }: { account: AccountMaybeBilling }) {
   const toast = useToast();
   const billing = account.billing;
+  // Hooks must run unconditionally — init from billing?.tier so the early
+  // return for null billing doesn't break rules-of-hooks. ponytail: the
+  // choice state simply goes unused on the null-billing path.
   const [busy, setBusy] = useState(false);
-  const [choice, setChoice] = useState(
-    billing.product === "sandbox" ? billing.tier : billing.product === "vps" ? billing.tier : "",
-  );
+  const [choice, setChoice] = useState(billing?.tier ?? "");
+
+  // billing === null: self-hosted / local dev with no Stripe. Render a calm,
+  // null-safe card and bail before touching any billing.* field.
+  if (!billing) {
+    return (
+      <section className="st-section">
+        <header className="st-section-head">
+          <h2 className="st-section-title">Plan</h2>
+          <p className="st-section-desc">Your current subscription tier.</p>
+        </header>
+        <div className="st-row">
+          <span className="st-row-label">Plan</span>
+          <span className="st-row-value">
+            <Badge tone="accent">{account.plan.name}</Badge>
+          </span>
+        </div>
+        <div className="st-note">Billing is not configured on this server.</div>
+      </section>
+    );
+  }
 
   const onCheckout = async () => {
     if (!choice || choice === billing.tier) {
@@ -268,27 +326,36 @@ function PlanSection({ account }: { account: Account }) {
 
   return (
     <section className="st-section">
-      <div className="st-section-title">Plan</div>
-      <div className="st-plan-row">
-        <span className="st-account-login">{account.plan.name}</span>
-        <Badge tone={STATUS_TONE[billing.status]}>{billing.status}</Badge>
+      <header className="st-section-head">
+        <h2 className="st-section-title">Plan</h2>
+        <p className="st-section-desc">Your current subscription tier.</p>
+      </header>
+      <div className="st-row">
+        <span className="st-row-label">Plan</span>
+        <span className="st-row-value">
+          {account.plan.name}
+          <Badge tone={STATUS_TONE[billing.status]}>{billing.status}</Badge>
+        </span>
       </div>
-      <div className="st-note">
-        {billing.product === "vps" ? "Hosted VPS" : "Sandbox"} · {billing.tier}
-        {billing.status === "trialing" && billing.trial_end && (
-          <> · trial ends {formatDate(billing.trial_end)}</>
-        )}
-        {billing.current_period_end && billing.status !== "trialing" && (
-          <> · renews {formatDate(billing.current_period_end)}</>
-        )}
+      <div className="st-row">
+        <span className="st-row-label">Type</span>
+        <span className="st-row-value">
+          {billing.product === "vps" ? "Hosted VPS" : "Sandbox"} · {titleCase(billing.tier)}
+          {billing.status === "trialing" && billing.trial_end && (
+            <> · trial ends {formatDate(billing.trial_end)}</>
+          )}
+          {billing.current_period_end && billing.status !== "trialing" && (
+            <> · renews {formatDate(billing.current_period_end)}</>
+          )}
+        </span>
       </div>
       {billing.product === "sandbox" && billing.included_hours != null && (
-        <div className="st-note">
-          Usage: {billing.usage_hours.toFixed(1)} / {billing.included_hours} hours
+        <div className="st-row">
+          <span className="st-row-label">Usage</span>
+          <span className="st-row-value">
+            {billing.usage_hours.toFixed(1)} / {billing.included_hours} hours
+          </span>
         </div>
-      )}
-      {billing.product === "vps" && (
-        <div className="st-note">Flat monthly VPS plan</div>
       )}
 
       <div className="st-plan-actions">
@@ -298,9 +365,9 @@ function PlanSection({ account }: { account: Account }) {
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
           >
-            {SANDBOX_TIERS.map((t) => (
-              <option key={t} value={t}>
-                {t}
+            {SANDBOX_TIERS.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
               </option>
             ))}
           </Select>
@@ -310,9 +377,9 @@ function PlanSection({ account }: { account: Account }) {
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
           >
-            {VPS_SIZES.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {VPS_SIZES.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
               </option>
             ))}
           </Select>

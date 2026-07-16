@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../api.ts";
 import { StepAuth } from "./StepAuth.tsx";
@@ -56,92 +56,94 @@ export function Onboarding({ onComplete, onSkip }: {
 
   return (
     <div className="onboarding">
-      {/* Progress indicator */}
-      <div className="onb-progress">
-        {STEP_LABELS.map((label, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            {i > 0 && <div className="onb-step-bar" />}
-            <motion.div
-              className={`onb-step-dot ${i === step ? "active" : ""} ${i < step ? "done" : ""}`}
-              animate={i === step ? { scale: [1, 1.08, 1] } : { scale: 1 }}
-              transition={i === step ? { duration: 0.4, ease: "easeInOut" } : { duration: 0.2 }}
-            >
-              <span className="dot" />
-              <span>{label}</span>
-            </motion.div>
+      <div className="onb-card">
+        {/* Compact segmented progress */}
+        <div className="onb-progress" aria-label={`Step ${step + 1} of ${STEP_LABELS.length}: ${STEP_LABELS[step]}`}>
+          <div className="onb-progress-meta">
+            Step {step + 1} of {STEP_LABELS.length} · {STEP_LABELS[step]}
           </div>
-        ))}
-      </div>
-
-      {/* Steps — animated with directional slide */}
-      <AnimatePresence mode="wait" custom={direction}>
-        <motion.div
-          key={step}
-          custom={direction}
-          variants={stepTransition}
-          initial="enter"
-          animate="center"
-          exit="exit"
-          style={{ flex: 1, display: "flex", flexDirection: "column" }}
-        >
-          {step === 0 && (
-            <StepAuth
-              status={authStatus}
-              onDone={() => {
-                // Refresh auth status after login/signup.
-                api.getAuthStatus().then(setAuthStatus).catch(() => {});
-                goForward(1);
-              }}
-            />
-          )}
-
-          {step === 1 && (
-            <StepProvider
-              onBack={() => goBack(0)}
-              onDone={(pid) => {
-                setProviderId(pid);
-                goForward(2);
-              }}
-            />
-          )}
-
-          {step === 2 && (
-            <StepRepo
-              onBack={() => goBack(1)}
-              onDone={(url, br) => {
-                setRepoUrl(url);
-                setBranch(br);
-                goForward(3);
-              }}
-            />
-          )}
-
-          {step === 3 && (
-            <StepTask
-              providerId={providerId}
-              repoUrl={repoUrl}
-              branch={branch}
-              onBack={() => goBack(2)}
-              onDone={(sessionId) => onComplete(sessionId)}
-            />
-          )}
-        </motion.div>
-      </AnimatePresence>
-
-      {/* Skip link — lets existing users bail to the main app */}
-      {step <= 1 && (
-        <div className="onb-nav" style={{ justifyContent: "center" }}>
-          <motion.button
-            className="onb-skip ghost"
-            onClick={onSkip}
-            variants={hoverLift}
-            initial="rest"
-            whileHover="hover"
-          >
-            Skip setup →
-          </motion.button>
+          <div className="onb-progress-track">
+            {STEP_LABELS.map((_, i) => (
+              <Fragment key={i}>
+                {i > 0 && <div className="onb-bar" />}
+                <div
+                  className={`onb-dot ${i === step ? "active" : ""} ${i < step ? "done" : ""}`}
+                />
+              </Fragment>
+            ))}
+          </div>
         </div>
-      )}
+
+        {/* Steps — animated with directional slide */}
+        <AnimatePresence mode="wait" custom={direction}>
+          <motion.div
+            key={step}
+            custom={direction}
+            variants={stepTransition}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            style={{ flex: 1, display: "flex", flexDirection: "column" }}
+          >
+            {step === 0 && (
+              <StepAuth
+                status={authStatus}
+                onDone={() => {
+                  // Refresh auth status after login/signup.
+                  api.getAuthStatus().then(setAuthStatus).catch(() => {});
+                  goForward(1);
+                }}
+              />
+            )}
+
+            {step === 1 && (
+              <StepProvider
+                onBack={() => goBack(0)}
+                onDone={(pid) => {
+                  setProviderId(pid);
+                  goForward(2);
+                }}
+              />
+            )}
+
+            {step === 2 && (
+              <StepRepo
+                onBack={() => goBack(1)}
+                onDone={(url, br) => {
+                  setRepoUrl(url);
+                  setBranch(br);
+                  goForward(3);
+                }}
+              />
+            )}
+
+            {step === 3 && (
+              <StepTask
+                providerId={providerId}
+                repoUrl={repoUrl}
+                branch={branch}
+                onBack={() => goBack(2)}
+                onDone={(sessionId) => onComplete(sessionId)}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Skip link — lets existing users bail to the main app */}
+        {step <= 1 && (
+          <div className="onb-card-footer">
+            <motion.button
+              className="onb-skip-link"
+              onClick={onSkip}
+              variants={hoverLift}
+              initial="rest"
+              whileHover="hover"
+            >
+              Skip setup →
+            </motion.button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,14 +1,16 @@
 /* Settings view — scoped styles. All classes prefixed st-.
    Glass surfaces use global tokens; collapsed to solid under
-   no-backdrop-filter / prefers-reduced-transparency. */
+   no-backdrop-filter / prefers-reduced-transparency.
+   Typography discipline: nothing exceeds 15px here (tokens cap --text-base).
+   Spacing on the 8px grid (8/12/16/24). */
 
 .st-wrap {
-  max-width: var(--maxw);
-  margin: 0 auto;
-  padding: 0.5rem;
+  max-width: 760px;
+  margin-inline: auto;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 16px;
 }
 
 .st-section {
@@ -17,28 +19,48 @@
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  padding: 0.9rem 1rem;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 10px;
+}
+
+/* Section title row: 14px / 600 title + 12.5px muted description. */
+.st-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .st-section-title {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+  letter-spacing: -0.1px;
 }
 
+.st-section-desc {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* Account row ----------------------------------------------------- */
 .st-account-row {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 12px;
+}
+
+.st-avatar-wrap {
+  flex-shrink: 0;
 }
 
 .st-avatar {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   object-fit: cover;
   border: 1px solid var(--border);
@@ -51,21 +73,39 @@
   background: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--accent-fg);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 13px;
+}
+
+.st-account-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .st-account-login {
+  font-size: 13.5px;
   font-weight: 500;
+  color: var(--text);
 }
 
+.st-account-meta a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.st-account-meta a:hover {
+  text-decoration: underline;
+}
+
+/* Legacy chip classes kept for any external use; Badges preferred now. */
 .st-chip {
-  font-size: 0.72rem;
-  padding: 0.15rem 0.45rem;
+  font-size: 12px;
+  padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid var(--border);
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 4px;
 }
 
 .st-chip.ok {
@@ -84,15 +124,53 @@
   color: var(--muted);
 }
 
+/* Definition-list rows: label left, value right, 1px dividers. */
+.st-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.st-section .st-row:first-of-type {
+  border-top: none;
+  padding-top: 4px;
+}
+
+.st-row-label {
+  font-size: 13px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.st-row-value {
+  font-size: 13.5px;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.st-row-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* Notes / muted copy ---------------------------------------------- */
 .st-note {
-  font-size: 0.78rem;
+  font-size: 12.5px;
   color: var(--muted);
   line-height: 1.45;
 }
 
+/* Stats ----------------------------------------------------------- */
 .st-stat-row {
   display: flex;
-  gap: 0.6rem;
+  gap: 12px;
 }
 
 .st-stat {
@@ -100,56 +178,66 @@
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.7rem;
+  padding: 12px;
 }
 
 .st-stat-value {
-  font-size: 1.15rem;
+  font-size: 15px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
 .st-stat-label {
-  font-size: 0.72rem;
+  font-size: 12px;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  margin-top: 2px;
 }
 
+/* Errors ---------------------------------------------------------- */
 .st-error {
   color: var(--bad);
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 
+/* Forms ----------------------------------------------------------- */
 .st-form {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem; /* 4px grid: 12px between fields */
+  gap: 12px;
 }
 
 .st-form-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 8px;
 }
 
-.st-plan-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-
+/* Plan actions ---------------------------------------------------- */
 .st-plan-actions {
   display: flex;
   align-items: flex-end;
-  gap: 0.5rem;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-top: 0.25rem;
+  margin-top: 4px;
 }
 
 .st-plan-actions .atelier-input-wrap { flex: 1; min-width: 8rem; }
 
 .st-plan-manage { display: flex; }
+
+/* Compute active state ------------------------------------------- */
+.st-compute-active {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Danger zone stays calm: ghost buttons, --bad text on hover. */
+.st-danger .st-row-actions .atelier-btn.atelier-btn-ghost:hover {
+  color: var(--bad);
+}
 
 /* GLASS FALLBACK (MANDATORY) */
 @supports not (backdrop-filter: blur(1px)) {

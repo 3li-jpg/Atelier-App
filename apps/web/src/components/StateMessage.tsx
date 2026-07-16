@@ -39,7 +39,7 @@ export function StateMessage({
 
 function EmptyIcon() {
   return (
-    <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+    <svg width="18" height="18" viewBox="0 0 48 48" fill="none">
       <rect
         x="10" y="8" width="28" height="22" rx="3"
         stroke="currentColor" strokeWidth="2" opacity="0.4"
@@ -59,7 +59,7 @@ function EmptyIcon() {
 
 function ErrorIcon() {
   return (
-    <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+    <svg width="18" height="18" viewBox="0 0 48 48" fill="none">
       <circle cx="24" cy="24" r="18" stroke="currentColor" strokeWidth="2" opacity="0.4" />
       <path
         d="M24 14v12"
@@ -72,7 +72,7 @@ function ErrorIcon() {
 
 function InfoIcon() {
   return (
-    <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+    <svg width="18" height="18" viewBox="0 0 48 48" fill="none">
       <circle cx="24" cy="24" r="18" stroke="currentColor" strokeWidth="2" opacity="0.4" />
       <path
         d="M24 21v10"

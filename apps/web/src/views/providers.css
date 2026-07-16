@@ -1,11 +1,16 @@
 /* Providers view — scoped styles. All classes prefixed pv-.
-   Glass surfaces use global tokens; tokens.css collapses glass to
-   --glass-solid under no-backdrop-filter / prefers-reduced-transparency. */
+   Flat neutral surfaces per design tokens; list-first with a collapsed
+   "+ Add provider" entry point that expands the editor inline. */
 
 .pv-shell {
+  max-width: 860px;
+  width: 100%;
+  margin-inline: auto;
+  padding: 24px 20px;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  box-sizing: border-box;
 }
 
 /* ---- Provider list ---- */
@@ -18,40 +23,49 @@
   gap: 0.5rem;
 }
 
+/* flat configured-provider card: name+dialect / base_url / model chips */
 .pv-card {
-  background: var(--glass);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  border: 1px solid var(--glass-border);
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 0.8rem 0.95rem;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  transition: border-color var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
+  gap: 0.45rem;
+  transition: border-color var(--duration-fast) var(--ease-out);
 }
-.pv-card:hover { border-color: color-mix(in srgb, var(--glass-border) 60%, #fff 8%); }
+.pv-card:hover { border-color: var(--border-strong); }
 
-.pv-row-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
-.pv-row-top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+.pv-row-top strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pv-base-url {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.76rem;
+  font-size: 12px;
   letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.pv-models { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.pv-models { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 
 /* model chip = id + role tag + tool dot, one inline cluster */
 .pv-model-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  font-size: 0.72rem;
-  padding: 0.15rem 0.45rem;
+  font-size: 11.5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0.15rem 0.5rem;
 }
 .pv-model-id { font-family: var(--font-mono); }
 .pv-model-role { font-size: 0.64rem; padding: 0.05rem 0.3rem; border-radius: 999px; opacity: 0.85; }
@@ -77,71 +91,105 @@
 /* ---- Loading skeletons ---- */
 .pv-skeletons { display: flex; flex-direction: column; gap: 0.5rem; }
 
+/* ---- Collapsed "+ Add provider" entry point ---- */
+.pv-add-entry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 13px 16px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.pv-add-entry:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 /* ---- Editor (shared Add + Edit) ---- */
 .pv-editor {
-  background: var(--glass);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  border: 1px solid var(--glass-border);
+  background: var(--panel-solid);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   border-radius: var(--radius-lg);
-  padding: 0.9rem;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.7rem;
 }
-.pv-editor.in-card { border: 1px solid var(--glass-accent-border); background: var(--glass-accent); }
+.pv-editor.in-card { border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
 
 .pv-editor-title {
-  font-size: 0.82rem; font-weight: 600; color: var(--muted);
-  letter-spacing: 0.02em; text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 /* preset grid (radio group) */
 .pv-preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.4rem; }
 .pv-preset-card {
-  display: flex; flex-direction: column; gap: 0.15rem;
-  background: var(--glass-thin);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
+  display: flex; flex-direction: column; gap: 0.2rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 0.55rem 0.7rem;
   cursor: pointer; text-align: left; font: inherit; color: inherit;
-  transition: transform var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
 }
-.pv-preset-card:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--glass-border)); transform: translateY(-1px); }
+.pv-preset-card:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border-strong)); }
 .pv-preset-card:active { transform: scale(0.98); }
 .pv-preset-card.selected {
   border-color: var(--accent);
-  background: var(--glass-accent);
+  background: var(--accent-soft);
 }
-.pv-preset-label { font-weight: 600; font-size: 0.88rem; }
-.pv-preset-desc { font-size: 0.74rem; color: var(--muted); }
+.pv-preset-label { font-weight: 600; font-size: 13px; }
+.pv-preset-desc {
+  font-size: 11.5px;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
 /* ---- Row editors (headers + models) ---- */
 .pv-section-head { display: flex; justify-content: space-between; align-items: center; }
 .pv-section-label {
-  font-size: 0.72rem; font-weight: 600; color: var(--muted);
-  letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  letter-spacing: 0.05em; text-transform: uppercase;
 }
 .pv-rows { display: flex; flex-direction: column; gap: 0.35rem; }
 .pv-row { display: flex; gap: 0.35rem; align-items: center; }
 .pv-row .atelier-input { flex: 1; min-width: 0; }
 .pv-row select.atelier-select { width: auto; min-width: 5.5rem; flex: 0 0 auto; }
 
+/* editor inputs — 13.5px, tightened */
+.pv-editor .atelier-input { font-size: 13.5px; }
+.pv-editor .atelier-input-label { font-size: var(--text-label); color: var(--muted); }
+
 /* tools toggle inside model row */
 .pv-tools-toggle {
   display: inline-flex; align-items: center; gap: 0.3rem;
   font-size: 0.74rem; color: var(--muted);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 0.3rem 0.45rem;
   background: transparent; cursor: pointer;
   transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 .pv-tools-toggle:hover { border-color: var(--accent); }
-.pv-tools-toggle.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--glass-border)); }
+.pv-tools-toggle.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--border-strong)); }
 .pv-tools-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--muted); transition: background var(--duration-fast) var(--ease-out); }
 .pv-tools-toggle.on .pv-tools-dot { background: var(--ok); }
 
@@ -156,10 +204,8 @@
 
 /* ---- Empty hero ---- */
 .pv-hero {
-  background: var(--glass);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  border: 1px solid var(--glass-border);
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   padding: 1.4rem 1.2rem;
   display: flex; flex-direction: column; gap: 0.8rem;
@@ -167,3 +213,11 @@
 }
 .pv-hero h3 { margin: 0; font-size: 1.1rem; }
 .pv-hero p { margin: 0; color: var(--muted); font-size: 0.86rem; }
+
+/* ---- Mobile ≤480px ---- */
+@media (max-width: 480px) {
+  .pv-shell { padding: 16px 12px; }
+  .pv-preset-grid { grid-template-columns: repeat(2, 1fr); }
+  .pv-preset-card { padding: 12px; }
+  .pv-card { padding: 12px; }
+}

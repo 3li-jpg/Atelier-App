@@ -49,61 +49,64 @@
 }
 
 :root {
-  /* ---- Raw Colors (warm dark-violet IDE palette) ---- */
-  --color-near-black: #1a1713;
-  --color-almost-white: #d8cfc4;
-  --color-soft-white: #c9bfb2;
-  --color-steel: #a99e90;
-  --color-graphite: #2a251f;
-  --color-iron: #221c26;
-  --color-ash: #8a7f72;
+  /* ---- Raw Colors (pure neutral scale + violet accent) ---- */
+  --color-near-black: #101010;
+  --color-almost-white: #ededed;
+  --color-soft-white: #d4d4d4;
+  --color-steel: #8f8f8f;
+  --color-graphite: #242424;
+  --color-iron: #1c1c1c;
+  --color-ash: #6e6e6e;
   --color-signal-violet: #8b45e6;
   --color-lavender-mist: #b79bff;
 
-  /* ---- Semantic Tokens (dark = default, warm dark-violet IDE) ---- */
+  /* ---- Semantic Tokens (dark = default, pure neutral) ---- */
   --bg: var(--color-near-black);
-  --panel: rgba(216, 207, 196, 0.03);
-  --panel-2: rgba(216, 207, 196, 0.06);
-  --panel-solid: #161310;
-  --border: rgba(216, 207, 196, 0.12);
-  --border-strong: rgba(216, 207, 196, 0.2);
+  --bg-deep: #080808;
+  --bg-panel: #161616;
+  --bg-contrast: #242424;
+  --panel: rgba(255, 255, 255, 0.03);
+  --panel-2: rgba(255, 255, 255, 0.06);
+  --panel-solid: #161616;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
   --text: var(--color-almost-white);
   --text-muted: var(--color-steel);
   --muted: var(--color-steel);
   --accent: var(--color-signal-violet);
-  --accent-hover: #5f2ba8;
+  --accent-hover: #7638cc;
   --accent-fg: var(--color-almost-white);
   --accent-soft: rgba(139, 69, 230, 0.12);
-  --ok: #7fbf6a;
-  --warn: #e0b04f;
-  --bad: #e08f6a;
-  --bubble: rgba(216, 207, 196, 0.04);
+  --ok: #2eaf5a;
+  --warn: #e7af36;
+  --bad: #e5484d;
+  --bubble: rgba(255, 255, 255, 0.04);
   --user: rgba(139, 69, 230, 0.14);
 
-  /* ---- IDE surface tokens (warm dark-violet chat/code surface) ---- */
-  --ide-sidebar: #151210;
-  --ide-terminal: #131110;
-  --ide-dimmest: #6f655a;
-  --ide-lineno: #5b5248;
+  /* ---- IDE surface tokens (neutral dark code/chat surface) ---- */
+  --ide-sidebar: #101010;
+  --ide-terminal: #0c0c0c;
+  --ide-dimmest: #6e6e6e;
+  --ide-lineno: #555;
   --ide-violet-tint: rgba(139, 69, 230, 0.14);
   --ide-violet-border: rgba(139, 69, 230, 0.4);
   --ide-violet-glow: 0 0 16px rgba(139, 69, 230, 0.28);
-  --ide-input-bg: #211b26;
+  --ide-input-bg: #1c1c1c;
 
   /* ---- Syntax highlighting tokens (code/diff rendering) ---- */
   --syn-kw: #c77dff;
   --syn-fn: #7fc4e0;
-  --syn-type: #e0b04f;
-  --syn-str: #e08f6a;
-  --syn-num: #7fbf6a;
-  --syn-op: #8a7f72;
-  --syn-comment: #5b5248;
-  --syn-add-bg: rgba(127, 191, 106, 0.10);
-  --syn-add-border: #7fbf6a;
+  --syn-type: #e7af36;
+  --syn-str: #f2994a;
+  --syn-num: #2eaf5a;
+  --syn-op: #8f8f8f;
+  --syn-comment: #6e6e6e;
+  --syn-add-bg: rgba(46, 175, 90, 0.1);
+  --syn-add-border: #2eaf5a;
 
   /* ---- Typography ---- */
   --font-sans: 'Inter', -apple-system, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
   --font-serif: 'Instrument Serif', serif;
   --font-hand: 'Delicious Handrawn', cursive;
   --font-display: 'Instrument Serif', serif;
@@ -164,22 +167,27 @@
   --maxw: 760px;
 
   /* ---- Glass materials (liquid glass system) ----
-     Translucent surfaces stacked over the near-black canvas. Each weight
+     Translucent neutral surfaces stacked over the near-black canvas. Each weight
      pairs an rgba background with a matching backdrop-filter. --glass-border
      is the shared 1px inner seam. See docs/design-brief.md. */
-  --glass-thin: rgba(26, 23, 19, 0.45);
+  --glass-thin: rgba(16, 16, 16, 0.45);
   --glass-thin-blur: blur(12px) saturate(1.4);
-  --glass: rgba(26, 23, 19, 0.6);
+  --glass: rgba(16, 16, 16, 0.6);
   --glass-blur: blur(20px) saturate(1.4);
-  --glass-thick: rgba(26, 23, 19, 0.75);
+  --glass-thick: rgba(16, 16, 16, 0.75);
   --glass-thick-blur: blur(32px) saturate(1.4);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-border-strong: rgba(255, 255, 255, 0.25);
   /* Solid fallback surface used when translucency is unsupported/disabled. */
-  --glass-solid: #1a1713;
+  --glass-solid: #161616;
   /* Tinted violet glass for active nav pills / accents. */
-  --glass-accent: rgba(139, 69, 230, 0.16);
+  --glass-accent: rgba(139, 69, 230, 0.14);
   --glass-accent-border: rgba(139, 69, 230, 0.4);
+
+  /* ---- Elevation (opencode v2 dark shadows) ---- */
+  --elevation-elements: 0px 0.5px 0.5px 0px rgba(0, 0, 0, 0.4);
+  --elevation-floating: 0px 8px 16px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 0px rgba(0, 0, 0, 0.3), 0px 0px 0px 0.5px rgba(255, 255, 255, 0.16), 0px -0.5px 0px 0px rgba(255, 255, 255, 0.06);
+  --elevation-overlay: 0px 8px 16px 0px rgba(0, 0, 0, 0.3), 0px 4px 8px 0px rgba(0, 0, 0, 0.3), 0px 0px 0px 0.5px rgba(255, 255, 255, 0.16), 0px -0.5px 0px 0px rgba(255, 255, 255, 0.06);
 
   /* ---- Motion ---- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -197,52 +205,55 @@
 /* ---- Light theme override ---- */
 @media (prefers-color-scheme: light) {
   :root {
-    /* ---- Raw Colors (warm paper) ---- */
-    --color-near-black: #faf8f4;
-    --color-almost-white: #1a1713;
-    --color-soft-white: #2a251f;
-    --color-steel: #6f6a61;
-    --color-graphite: #efeae1;
-    --color-iron: #f4f1eb;
-    --color-ash: #6f6a61;
+    /* ---- Raw Colors (neutral paper) ---- */
+    --color-near-black: #fafafa;
+    --color-almost-white: #1a1a1a;
+    --color-soft-white: #2e2e2e;
+    --color-steel: #6e6e6e;
+    --color-graphite: #eee;
+    --color-iron: #f4f4f4;
+    --color-ash: #6e6e6e;
     --color-signal-violet: #8b45e6;
     --color-lavender-mist: #5f2ba8;
 
     /* ---- Semantic Tokens ---- */
     --bg: var(--color-near-black);
-    --panel: rgba(26, 23, 19, 0.03);
-    --panel-2: rgba(26, 23, 19, 0.06);
-    --panel-solid: #fffdf9;
-    --border: rgba(26, 23, 19, 0.12);
-    --border-strong: rgba(26, 23, 19, 0.2);
+    --bg-deep: #fafafa;
+    --bg-panel: #fff;
+    --bg-contrast: #fff;
+    --panel: rgba(0, 0, 0, 0.03);
+    --panel-2: rgba(0, 0, 0, 0.06);
+    --panel-solid: #fff;
+    --border: rgba(0, 0, 0, 0.1);
+    --border-strong: rgba(0, 0, 0, 0.2);
     --text: var(--color-almost-white);
     --text-muted: var(--color-steel);
     --muted: var(--color-steel);
     --accent: var(--color-signal-violet);
     --accent-hover: #5f2ba8;
-    --accent-fg: #fffdf9;
+    --accent-fg: #fff;
     --accent-soft: rgba(139, 69, 230, 0.1);
-    --ok: #6a9e58;
-    --warn: #b8943a;
-    --bad: #b87355;
-    --bubble: rgba(26, 23, 19, 0.04);
+    --ok: #198b43;
+    --warn: #cb9f34;
+    --bad: #b82d35;
+    --bubble: rgba(0, 0, 0, 0.04);
     --user: rgba(139, 69, 230, 0.1);
 
     /* ---- IDE surfaces (light) ---- */
-    --ide-sidebar: #f4f1eb;
-    --ide-terminal: #efeae1;
-    --ide-input-bg: #f4f1eb;
+    --ide-sidebar: #f4f4f4;
+    --ide-terminal: #efefef;
+    --ide-input-bg: #f4f4f4;
 
     /* ---- Syntax (light-readable) ---- */
-    --syn-comment: #6f6a61;
+    --syn-comment: #6e6e6e;
 
-    /* Light glass: translucent warm-white surfaces over the paper canvas. */
-    --glass-thin: rgba(255, 253, 249, 0.55);
-    --glass: rgba(255, 253, 249, 0.7);
-    --glass-thick: rgba(255, 253, 249, 0.82);
-    --glass-border: rgba(26, 23, 19, 0.08);
-    --glass-border-strong: rgba(26, 23, 19, 0.25);
-    --glass-solid: #fffdf9;
+    /* Light glass: translucent white surfaces over the paper canvas. */
+    --glass-thin: rgba(255, 255, 255, 0.55);
+    --glass: rgba(255, 255, 255, 0.7);
+    --glass-thick: rgba(255, 255, 255, 0.82);
+    --glass-border: rgba(0, 0, 0, 0.08);
+    --glass-border-strong: rgba(0, 0, 0, 0.25);
+    --glass-solid: #fff;
     --glass-accent: rgba(139, 69, 230, 0.12);
     --glass-accent-border: rgba(139, 69, 230, 0.4);
   }

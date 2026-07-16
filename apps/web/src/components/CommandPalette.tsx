@@ -54,7 +54,10 @@ function fuzzyScore(query: string, target: string): number {
 // labels matching TABS. Since we can't modify App.tsx, we navigate by
 // clicking the corresponding nav button in the DOM.
 function clickNavButton(label: string): boolean {
-  const buttons = document.querySelectorAll<HTMLButtonElement>(".nav button");
+  // Desktop sidebar items + mobile tab bar (whichever is rendered).
+  const buttons = document.querySelectorAll<HTMLButtonElement>(
+    ".shell-nav-item, .shell-tab",
+  );
   for (const btn of buttons) {
     if (btn.textContent?.trim().toLowerCase() === label.toLowerCase()) {
       btn.click();
@@ -71,22 +74,22 @@ export function useDefaultCommands(onClose: () => void): Command[] {
   return useMemo(
     () => [
       {
-        id: "go-sessions",
-        label: "Go to Sessions",
+        id: "go-workspaces",
+        label: "Go to Workspaces",
         group: "Navigate",
-        keywords: "sessions list home",
+        keywords: "workspaces sessions list home chat",
         perform: () => {
-          clickNavButton("Sessions");
+          clickNavButton("Workspaces");
           onClose();
         },
       },
       {
-        id: "go-new",
-        label: "Go to New Task",
+        id: "go-repos",
+        label: "Go to Repos",
         group: "Navigate",
-        keywords: "new task create session",
+        keywords: "repos repositories github import",
         perform: () => {
-          clickNavButton("New");
+          clickNavButton("Repos");
           onClose();
         },
       },
@@ -97,6 +100,16 @@ export function useDefaultCommands(onClose: () => void): Command[] {
         keywords: "providers api keys models",
         perform: () => {
           clickNavButton("Providers");
+          onClose();
+        },
+      },
+      {
+        id: "go-settings",
+        label: "Go to Settings",
+        group: "Navigate",
+        keywords: "settings account plan billing compute",
+        perform: () => {
+          clickNavButton("Settings");
           onClose();
         },
       },

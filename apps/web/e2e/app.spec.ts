@@ -216,7 +216,7 @@ test.describe("Workspaces (SessionsList)", () => {
     await expect(page.locator(".shell-sidebar")).toBeVisible({ timeout: 10_000 });
 
     await expect(page.getByText("No workspaces yet")).toBeVisible();
-    await expect(page.getByText(/Import a repo from the Repos tab/)).toBeVisible();
+    await expect(page.getByText(/import a repo from Repos/)).toBeVisible();
   });
 
   test("terminal card delete confirm removes the workspace", async ({ page }) => {
@@ -367,10 +367,12 @@ test.describe("Settings view", () => {
 
     // Account login.
     await expect(page.locator(".st-account-login").first()).toHaveText("ali@studioatelier.ca");
-    // GitHub connected chip.
-    await expect(page.locator(".st-chip.ok").filter({ hasText: "GitHub connected" })).toBeVisible();
-    // Plan name.
-    await expect(page.locator(".st-section").filter({ hasText: "Plan" }).locator(".st-account-login")).toHaveText("Free");
+    // GitHub connected chip (Badge tone="ok" → .atelier-badge-ok).
+    await expect(page.locator(".atelier-badge-ok").filter({ hasText: "GitHub connected" })).toBeVisible();
+    // Plan name + status live in the Plan section's first .st-row-value.
+    const planRow = page.locator(".st-section").filter({ hasText: "Plan" }).locator(".st-row").first();
+    await expect(planRow.locator(".st-row-value")).toContainText("Free");
+    await expect(planRow.locator(".atelier-badge-ok")).toHaveText("active");
     // Usage: 5 workspaces, 5400s = 1h 30m.
     await expect(page.locator(".st-stat-value").nth(0)).toHaveText("5");
     await expect(page.locator(".st-stat-value").nth(1)).toHaveText("1h 30m");
@@ -528,15 +530,19 @@ test.describe("Onboarding", () => {
     await page.addInitScript(() => localStorage.clear());
     await mockApi(page, { auth: AUTHED_STATUS });
     await page.goto("/");
-    // Onboarding renders its progress dots and step labels.
+    // Onboarding renders its centered card.
     await expect(page.locator(".onboarding")).toBeVisible({ timeout: 10_000 });
-    // Step labels live in the progress indicator (scoped to avoid matching
-    // the model/preset text elsewhere in the onboarding steps).
-    const progress = page.locator(".onb-progress");
-    await expect(progress.getByText("Account", { exact: true })).toBeVisible();
-    await expect(progress.getByText("Model", { exact: true })).toBeVisible();
-    await expect(progress.getByText("Repo", { exact: true })).toBeVisible();
-    await expect(progress.getByText("Task", { exact: true })).toBeVisible();
+    await expect(page.locator(".onb-card")).toBeVisible();
+    // The authed owner auto-advances from Account (step 1) to Model (step 2),
+    // so the step indicator reads "Step 2 of 4 · Model" — the four step labels
+    // (Account/Model/Repo/Task) are never all visible at once anymore; the
+    // current one rides in this one-line meta string.
+    await expect(page.locator(".onb-progress-meta")).toContainText("Step 2 of 4 · Model");
+    // Pill dots track progress (one active, one done at step 2).
+    await expect(page.locator(".onb-dot.active")).toHaveCount(1);
+    await expect(page.locator(".onb-dot.done")).toHaveCount(1);
+    // The Model step (step 2) title copy.
+    await expect(page.locator(".onb-step-title")).toHaveText("Connect your model");
     // Skip link lets an existing user bail to the dashboard.
     await expect(page.getByRole("button", { name: /Skip setup/ })).toBeVisible();
   });

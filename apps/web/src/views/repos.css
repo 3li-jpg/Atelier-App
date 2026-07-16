@@ -1,114 +1,163 @@
 /* Repos view — scoped styles. All classes prefixed rp-.
-   Glass surfaces collapse to solid #141418 when backdrop-filter is unsupported
-   or the user prefers reduced transparency (design-brief). */
+   Solid neutral surfaces (opencode/Cursor-style). No glass, no gradients. */
 
 .rp-wrap {
-  padding: 0.5rem;
-  max-width: var(--maxw);
-  margin: 0 auto;
+  max-width: 1080px;
+  width: 100%;
+  margin-inline: auto;
+  padding: 24px 20px;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 12px;
 }
 
+/* ---- search ---- */
+.rp-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.rp-search-icon {
+  position: absolute;
+  left: 9px;
+  color: var(--muted);
+  pointer-events: none;
+}
 .rp-search {
   width: 100%;
-  padding: 0.5rem 0.7rem;
-  background: var(--panel);
+  height: 32px;
+  padding: 0 10px 0 30px;
+  background: var(--panel-solid);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   color: var(--text);
   font: inherit;
+  font-size: 13px;
 }
-.rp-search:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.rp-search::placeholder { color: var(--muted); }
+.rp-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
 
+/* ---- list + rows ---- */
 .rp-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 2px;
 }
-.rp-list > li { display: flex; flex-direction: column; gap: 0.4rem; }
+.rp-list > li { display: flex; flex-direction: column; }
 
 .rp-repo {
   width: 100%;
   text-align: left;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.8rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
   color: var(--text);
   cursor: pointer;
   font: inherit;
   display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
 }
-.rp-repo:hover { border-color: var(--accent); background: var(--panel-2); }
-.rp-repo.selected { border-color: var(--accent); }
-.rp-repo-name { font-weight: 500; }
-.rp-repo-meta { display: flex; gap: 0.5rem; align-items: center; }
-.rp-repo-default { color: var(--muted); font-size: 0.78rem; }
+.rp-repo:hover { background: var(--panel-2); }
+.rp-repo.selected {
+  background: var(--panel-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.rp-repo-name {
+  font-size: 13.5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-repo-owner { color: var(--muted); }
+.rp-repo-basename { color: var(--text); font-weight: 500; }
+
+.rp-repo-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.rp-repo-default {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.rp-branch-icon { flex-shrink: 0; }
 
 .rp-badge {
-  font-size: 0.65rem;
-  padding: 0.1rem 0.35rem;
-  border-radius: 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 4px;
   border: 1px solid var(--border);
   color: var(--muted);
-  text-transform: uppercase;
+  line-height: 1.4;
 }
 .rp-badge.rp-badge-private {
   color: var(--warn, #fbbf24);
   border-color: color-mix(in srgb, var(--warn, #fbbf24) 40%, transparent);
 }
-.rp-badge.rp-badge-public {
-  color: var(--ok, #34d399);
-  border-color: color-mix(in srgb, var(--ok, #34d399) 40%, transparent);
-}
 
+/* ---- sheet ---- */
 .rp-sheet {
-  margin-top: 0.4rem;
-  padding: 0.8rem;
-  background: var(--glass-thin);
-  backdrop-filter: var(--glass-thin-blur);
-  -webkit-backdrop-filter: var(--glass-thin-blur);
-  border: 1px solid var(--glass-border);
+  margin-top: 4px;
+  padding: 16px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 12px;
 }
-.rp-sheet-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.rp-sheet-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .rp-sheet-row > * { flex: 1 1 200px; }
 
 .rp-field {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 4px;
   min-width: 0;
 }
 .rp-field-label {
-  font-size: 0.78rem;
+  font-size: 12px;
   color: var(--muted);
 }
 .rp-field-hint {
-  font-size: 0.72rem;
+  font-size: 11px;
   color: var(--muted);
 }
 .rp-textarea {
   width: 100%;
-  padding: 0.5rem 0.7rem;
+  padding: 8px 10px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   color: var(--text);
   font: inherit;
+  font-size: 13px;
   resize: vertical;
 }
-.rp-textarea:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.rp-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
 
 .rp-toolsets { /* <details> */ }
 .rp-toolsets > summary {
@@ -116,61 +165,72 @@
   list-style: none;
 }
 .rp-toolsets > summary::-webkit-details-marker { display: none; }
-.rp-toolsets-label { font-size: 0.78rem; color: var(--muted); }
+.rp-toolsets-label { font-size: 12px; color: var(--muted); }
 .rp-toolset-grid {
-  margin-top: 0.35rem;
+  margin-top: 6px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 0.35rem;
+  gap: 6px;
 }
 .rp-toolset {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.85rem;
+  gap: 6px;
+  font-size: 13px;
   cursor: pointer;
 }
 .rp-toolset input { accent-color: var(--accent); }
 
-.rp-hint { color: var(--muted); font-size: 0.82rem; }
+.rp-hint { color: var(--muted); font-size: 12px; }
 
-.rp-actions { display: flex; gap: 0.5rem; align-items: center; }
-.rp-error { color: var(--bad); font-size: 0.82rem; }
-.rp-empty { padding: 1rem; color: var(--muted); text-align: center; }
+.rp-actions { display: flex; gap: 8px; align-items: center; }
+.rp-error { color: var(--bad); font-size: 12px; }
+.rp-empty { padding: 24px 12px; color: var(--muted); text-align: center; font-size: 13px; }
 .rp-loading { padding: 1rem; color: var(--muted); }
 
+/* ---- connect ---- */
 .rp-connect {
-  max-width: 440px;
-  margin: 1.5rem auto;
-  padding: 1.5rem;
-  background: var(--glass);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
-  text-align: center;
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+}
+.rp-connect-card {
+  max-width: 400px;
+  width: 100%;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 28px 24px;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
   align-items: center;
+  gap: 12px;
+  text-align: center;
 }
-.rp-connect h3 { margin: 0; font-size: 1.05rem; }
-.rp-connect p { margin: 0; color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
+.rp-connect-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+.rp-connect-card h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.rp-connect-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.rp-connect-btn { width: 100%; }
+.rp-connect-note {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
 
-/* Glass fallback: solid surfaces when backdrop-filter is unsupported
-   or the user prefers reduced transparency (design-brief). */
-@supports not (backdrop-filter: blur(1px)) {
-  .rp-sheet { background: #141418; }
-  .rp-connect { background: #141418; }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .rp-sheet,
-  .rp-connect {
-    background: #141418;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-}
-@media (prefers-contrast: more) {
-  .rp-repo { border-color: color-mix(in srgb, var(--border) 70%, #fff 30%); }
+/* ---- mobile ---- */
+@media (max-width: 640px) {
+  .rp-connect-card { padding: 20px 16px; }
+  .rp-repo { min-height: 44px; }
 }

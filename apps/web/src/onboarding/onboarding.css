@@ -1,68 +1,77 @@
-/* Onboarding flow styles — midnight terminal violet.
-   Imported as a separate stylesheet so styles.css is untouched.
-   Uses the same CSS custom properties from styles.css (:root tokens). */
+/* Onboarding flow styles — neutral card shell + segmented progress.
+   Scoped to .onboarding so styles.css is untouched.
+   All type ≤16px, all spacing on the 8px grid. */
 
+/* ---- Page shell: center the whole flow in the viewport ---- */
 .onboarding {
-  max-width: var(--maxw);
-  margin: 0 auto;
-  min-height: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: var(--space-4);          /* 16px */
+}
+
+/* ---- Single card ---- */
+.onb-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);  /* 16px */
+  padding: 28px;
+  box-shadow: var(--elevation-floating);
   display: flex;
   flex-direction: column;
 }
 
-/* Desktop: center the card vertically + horizontally and don't stretch.
-   Mobile stays top-aligned and scrollable if tall. */
-@media (min-width: 640px) {
-  .onboarding {
-    justify-content: center;
-    padding: 1.5rem 1rem;
-  }
-}
-
-/* ---- Progress indicator ---- */
+/* ---- Compact segmented progress ---- */
 .onb-progress {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 1.2rem 1rem 0.8rem;
+  flex-direction: column;
+  gap: var(--space-2);  /* 8px */
+  margin-bottom: var(--space-6);   /* 24px */
 }
-.onb-step-dot {
+.onb-progress-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+.onb-progress-track {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.72rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  transition: color 0.2s var(--ease-out, ease);
+  gap: 0;
 }
-.onb-step-dot.active { color: var(--accent); font-weight: 600; }
-.onb-step-dot.done { color: var(--ok); }
-.onb-step-dot .dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  border: 1.5px solid currentColor;
-  transition: background 0.2s ease;
+.onb-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--border);
+  flex: 0 0 auto;
+  transition: background var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
 }
-.onb-step-dot.active .dot { background: var(--accent); }
-.onb-step-dot.done .dot { background: var(--ok); }
-.onb-step-bar {
-  width: 24px; height: 1px; background: var(--border);
+.onb-dot.done { background: var(--accent); }
+.onb-dot.active {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);  /* soft ring */
+}
+.onb-bar {
+  width: 16px;
+  height: 1px;
+  background: var(--border);
+  flex: 0 0 auto;
 }
 
 /* ---- Step container ---- */
 .onb-step {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  padding: 0.5rem 1rem 1rem;
-  max-width: 420px;
-  width: 100%;
-  margin: 0 auto;
-  animation: onb-fade-in 0.3s var(--ease-out, ease);
+  animation: onb-fade-in var(--duration-normal) var(--ease-out);
 }
 @keyframes onb-fade-in {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -70,83 +79,113 @@
 }
 
 .onb-step-title {
-  font-size: 1.15rem;
+  font-size: 16px;
   font-weight: 600;
-  margin: 0 0 0.3rem;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  margin: 0 0 var(--space-2);  /* 8px */
 }
 .onb-step-sub {
-  font-size: 0.85rem;
+  font-size: 13px;
   color: var(--muted);
-  margin: 0 0 1.2rem;
+  line-height: 1.55;
+  margin: 0 0 var(--space-6);  /* 24px */
 }
 
-/* ---- Auth step ---- */
+/* ---- Auth segmented control ---- */
 .onb-auth-mode-toggle {
   display: flex;
-  gap: 0.25rem;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid var(--border);
+  gap: 2px;
+  margin-bottom: var(--space-4);  /* 16px */
+  padding: 3px;
+  background: var(--panel-2);
+  border-radius: var(--radius-md);
 }
 .onb-auth-mode-toggle button {
   flex: 1;
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: 0.5rem;
+  border-radius: calc(var(--radius-md) - 2px);
+  padding: 7px 0;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 13px;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
 }
 .onb-auth-mode-toggle button.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: var(--bg-contrast);
+  color: var(--text);
+  box-shadow: var(--elevation-elements);
 }
 
+/* OAuth button inherits .primary; constrain height/width */
 .onb-oauth-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
   width: 100%;
-  padding: 0.6rem;
-  margin-bottom: 0.8rem;
+  height: 36px;
+  margin-bottom: var(--space-4);  /* 16px */
 }
+
+/* ---- Form fields (override global .form for this flow) ---- */
+.onb-step .form { gap: var(--space-4); }   /* 16px between fields */
+.onb-step .form label {
+  font-size: 12px;
+  color: var(--muted);
+  gap: 6px;
+}
+.onb-step .form input,
+.onb-step .form select,
+.onb-step .form textarea {
+  font-size: 13.5px;
+  height: 36px;
+  padding: 0 10px;
+  line-height: 36px;
+}
+.onb-step .form textarea {
+  height: auto;
+  min-height: 88px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  resize: vertical;
+}
+.onb-step .field-err { font-size: 11.5px; }
 
 /* ---- Provider presets ---- */
 .onb-preset-grid {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: var(--space-2);  /* 8px */
+  margin-bottom: var(--space-4);  /* 16px */
 }
 .onb-preset-card {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 2px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
 }
 .onb-preset-card:hover { border-color: var(--accent); }
 .onb-preset-card.selected {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  background: var(--accent-soft);
 }
-.onb-preset-card .preset-label { font-weight: 550; font-size: 0.9rem; }
-.onb-preset-card .preset-desc { font-size: 0.78rem; color: var(--muted); }
+.onb-preset-card .preset-label { font-weight: 550; font-size: 13px; }
+.onb-preset-card .preset-desc { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
 
-/* ---- Validate result (reused pattern from Providers.tsx) ---- */
+/* ---- Validate result ---- */
 .onb-validate-result {
   border: 1px solid;
-  border-radius: 8px;
-  padding: 0.5rem 0.7rem;
-  margin-bottom: 0.5rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: 12px;
+  line-height: 1.45;
 }
 .onb-validate-result.ok { border-color: var(--ok); color: var(--ok); }
 .onb-validate-result.bad { border-color: var(--bad); color: var(--bad); }
@@ -155,11 +194,12 @@
 .onb-repo-search {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--text);
-  padding: 0.5rem 0.6rem;
+  padding: 8px 10px;
   font: inherit;
-  margin-bottom: 0.5rem;
+  font-size: 13.5px;
+  margin-bottom: var(--space-2);
   width: 100%;
 }
 .onb-repo-search:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
@@ -169,7 +209,7 @@
   margin: 0; padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 6px;
   max-height: 300px;
   overflow-y: auto;
 }
@@ -178,105 +218,150 @@
   text-align: left;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color var(--duration-fast) var(--ease-out);
 }
 .onb-repo-item:hover { border-color: var(--accent); }
 .onb-repo-item.selected {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  background: var(--accent-soft);
 }
-.onb-repo-item .repo-name { font-weight: 500; font-size: 0.88rem; }
-.onb-repo-item .repo-branch { font-size: 0.75rem; color: var(--muted); }
+.onb-repo-item .repo-name { font-weight: 500; font-size: 13px; }
+.onb-repo-item .repo-branch { font-size: 11.5px; color: var(--muted); }
 
 .onb-repo-toggle {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.8rem;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 .onb-repo-toggle button {
   flex: 1;
-  font-size: 0.8rem;
-  padding: 0.35rem;
+  font-size: 12px;
+  padding: 6px;
 }
 
 /* ---- Task step ---- */
 .onb-task-examples {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  margin-bottom: 1rem;
+  gap: 6px;
+  margin-bottom: var(--space-4);
 }
 .onb-task-example {
   width: 100%;
   text-align: left;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--muted);
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
 }
 .onb-task-example:hover {
   border-color: var(--accent);
   color: var(--text);
 }
 
+/* ---- Summary card ---- */
+.onb-summary {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.onb-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.onb-summary-row .label { color: var(--muted); }
+.onb-summary-row .value { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ---- Nav buttons ---- */
 .onb-nav {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
 }
-.onb-nav button { flex: 1; }
-.onb-nav .onb-skip {
+.onb-nav button {
+  height: 36px;
+  font-size: 13.5px;
+  font-weight: 600;
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.onb-nav .ghost {
   flex: 0 0 auto;
   background: transparent;
   border-color: transparent;
   color: var(--muted);
+  font-weight: 500;
 }
 
 /* Subtle skip-to-blank-workspace action under the primary nav row. */
 .onb-skip-blank {
   align-self: center;
-  margin-top: 0.5rem;
+  margin-top: var(--space-2);
   background: transparent;
   border: none;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.8rem;
+  padding: 6px 8px;
+  font-size: 12px;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.15s var(--ease-out, ease);
+  transition: color var(--duration-fast) var(--ease-out);
 }
 .onb-skip-blank:hover:not(:disabled) { color: var(--text); }
 .onb-skip-blank:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
 }
 .onb-skip-blank:disabled { opacity: 0.5; cursor: default; }
 
-/* ---- Summary card (final review before launch) ---- */
-.onb-summary {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.8rem;
-  margin-bottom: 1rem;
+/* ---- Card footer: skip setup ghost link ---- */
+.onb-card-footer {
+  margin-top: var(--space-6);
   display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+  justify-content: flex-end;
 }
-.onb-summary-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-size: 0.85rem;
+.onb-skip-link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out);
 }
-.onb-summary-row .label { color: var(--muted); }
-.onb-summary-row .value { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onb-skip-link:hover { color: var(--text); }
+.onb-skip-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ---- Mobile (≤375px): full-width card, no horizontal scroll ---- */
+@media (max-width: 480px) {
+  .onboarding {
+    padding: var(--space-4);          /* 16px */
+    justify-content: flex-start;
+  }
+  .onb-card {
+    max-width: 100%;
+    padding: var(--space-5);         /* 20px */
+  }
+}

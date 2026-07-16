@@ -14,7 +14,7 @@ type MobileTab = "workspace" | "browser";
 export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack: () => void; onOpenSession?: (id: string) => void }) {
   const toast = useToast();
   const [session, setSession] = useState<SessionDetail | null>(null);
-  const { events, live } = useEventStream(id);
+  const { events } = useEventStream(id);
   const [cancelling, setCancelling] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("workspace");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -72,6 +72,44 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
   }, [events, session]);
 
   const terminal = TERMINAL_STATES.has(state);
+
+  // The opencode web UI is served by the session's opencode web process and
+  // proxied at /sessions/:id/opencode/. Same-origin through the API proxy so
+  // its SSE + fetch calls work without CORS. The token goes in the URL once so
+  // the proxy can mint a session cookie for the iframe's subsequent calls
+  // (iframes can't set Authorization headers). key on id so a session switch
+  // remounts a fresh iframe (opencode holds session state in-memory).
+  const ocSrc = `/sessions/${encodeURIComponent(id)}/opencode/${getAuthToken() ? `?token=${encodeURIComponent(getAuthToken())}` : ""}`;
+
+  // ── Readiness gate: don't mount the opencode iframe until the workspace
+  // endpoint responds 200. Before that it serves raw JSON
+  // '{"error":"workspace not ready"}' as unstyled text. Poll the iframe src
+  // (GET) every ~2.5s up to ~2min; abort on unmount, readiness, or terminal.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (terminal || ready) return;
+    let cancelled = false;
+    const deadline = Date.now() + 120000;
+    const tick = async () => {
+      if (cancelled || terminal || ready) return;
+      if (Date.now() > deadline) return;
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 5000);
+      try {
+        const res = await fetch(ocSrc, { method: "GET", signal: ctrl.signal });
+        clearTimeout(to);
+        if (!cancelled && res.ok) setReady(true);
+      } catch {
+        clearTimeout(to);
+        /* network error / abort — keep polling */
+      }
+      if (!cancelled && !ready && Date.now() < deadline) {
+        setTimeout(tick, 2500);
+      }
+    };
+    tick();
+    return () => { cancelled = true; };
+  }, [ocSrc, terminal, ready]);
 
   // ── Terminal: spin up a fresh workspace on this repo, reusing this
   // session's own provider/model/branch/toolsets. budgets/toolsets are JSON
@@ -138,44 +176,28 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
 
   const modelId = session?.model_id ?? "";
 
-  // The opencode web UI is served by the session's opencode web process and
-  // proxied at /sessions/:id/opencode/. Same-origin through the API proxy so
-  // its SSE + fetch calls work without CORS. The token goes in the URL once so
-  // the proxy can mint a session cookie for the iframe's subsequent calls
-  // (iframes can't set Authorization headers). key on id so a session switch
-  // remounts a fresh iframe (opencode holds session state in-memory).
-  const ocSrc = `/sessions/${encodeURIComponent(id)}/opencode/${getAuthToken() ? `?token=${encodeURIComponent(getAuthToken())}` : ""}`;
-
   return (
     <div className="ws view-fade" role="application" aria-label="Session workspace">
-      {/* ── Top bar: IDE chrome (dots + titlebar + active badge) ── */}
+      {/* ── Top bar: back · task · model+state chip · autonomy · overflow ── */}
       <header className="ws-topbar" role="banner">
         <button className="ws-back" onClick={onBack} aria-label="Back to sessions list" title="Back">
           ←
         </button>
-        <span className="ws-chrome-dots" aria-hidden="true">
-          <span className="ws-dot red" />
-          <span className="ws-dot yellow" />
-          <span className="ws-dot green" />
-        </span>
         <h1 className="ws-title ellipsis" title={session?.task ?? id} aria-label={`Session: ${session?.task ?? id.slice(0, 8)}`}>
           {session?.task ?? id.slice(0, 8)}
         </h1>
         {!terminal && (
           <span
-            className={`ws-badge tone-${stateTone(state)}`}
+            className="ws-state-chip"
+            role="status"
             title={`${modelId || session?.model_id || "model"} · ${state}`}
+            aria-label={`${modelId || session?.model_id || "model"} ${state}`}
           >
+            <span
+              className={`ws-state-dot tone-${stateTone(state)} ${state === "running" || state === "streaming" ? "live" : ""}`}
+            />
             {modelId || session?.model_id || "model"} · {state}
           </span>
-        )}
-        {!terminal && (
-          <span
-            className={`ws-live-dot ${live ? "" : "off"}`}
-            title={live ? "live" : "reconnecting"}
-            role="status"
-            aria-label={live ? "Stream live" : "Stream reconnecting"}
-          />
         )}
         {!terminal && session && (
           <div className="ws-mode-toggle" role="group" aria-label="Autonomy mode">
@@ -199,7 +221,7 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
         {!terminal && (
           <div className="ws-overflow">
             <button
-              className="ws-back"
+              className="ws-overflow-btn"
               onClick={() => setMenuOpen((o) => !o)}
               aria-label="Session actions menu"
               aria-expanded={menuOpen}
@@ -255,14 +277,10 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
           role="region"
           aria-label="opencode workspace"
         >
-          <iframe
-            key={id}
-            src={ocSrc}
-            className="ws-opencode-frame"
-            title="opencode workspace"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          />
-          {terminal && (
+          {/* Ended before the pane ever loaded → full-pane card. If the iframe
+              was already up, keep it mounted so the final chat/diffs stay
+              visible, with the ended bar overlaid (original behavior). */}
+          {terminal && !ready ? (
             <div className="ws-opencode-ended" role="status" aria-label="Workspace ended">
               <span className="ws-endbar-text">This workspace has ended.</span>
               <button
@@ -274,6 +292,35 @@ export function SessionView({ id, onBack, onOpenSession }: { id: string; onBack:
                 {creating ? "starting…" : "New workspace on this repo"}
               </button>
             </div>
+          ) : !ready ? (
+            <div className="ws-opencode-loading" role="status" aria-label="Starting workspace">
+              <span className="ws-spinner" aria-hidden="true" />
+              <span className="ws-loading-title">Starting workspace…</span>
+              <span className="ws-loading-sub">Cloning your repo and booting the agent sandbox.</span>
+            </div>
+          ) : (
+            <>
+              <iframe
+                key={id}
+                src={ocSrc}
+                className="ws-opencode-frame"
+                title="opencode workspace"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              />
+              {terminal && (
+                <div className="ws-opencode-ended" role="status" aria-label="Workspace ended">
+                  <span className="ws-endbar-text">This workspace has ended.</span>
+                  <button
+                    className="ws-endbar-cta"
+                    onClick={newSessionOnRepo}
+                    disabled={creating || !session}
+                    aria-label="New workspace on this repo"
+                  >
+                    {creating ? "starting…" : "New workspace on this repo"}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 

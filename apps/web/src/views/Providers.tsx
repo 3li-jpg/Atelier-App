@@ -27,6 +27,8 @@ export function Providers() {
   const [err, setErr] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Add editor is collapsed by default; list comes first.
+  const [showAdd, setShowAdd] = useState(false);
 
   const load = () => {
     setErr(null);
@@ -39,7 +41,7 @@ export function Providers() {
 
   const retry = () => setRetryCount((n) => n + 1);
 
-  const onSaved = () => { setEditingId(null); load(); };
+  const onSaved = () => { setEditingId(null); setShowAdd(false); load(); };
 
   return (
     <div className="pv-shell">
@@ -60,7 +62,18 @@ export function Providers() {
         <EmptyHero onSaved={onSaved} />
       ) : (
         <>
-          <ProviderEditor mode="add" onSaved={onSaved} />
+          {showAdd ? (
+            <ProviderEditor mode="add" onSaved={onSaved} onCancel={() => setShowAdd(false)} />
+          ) : (
+            <button
+              type="button"
+              className="pv-add-entry"
+              onClick={() => setShowAdd(true)}
+              aria-label="Add provider"
+            >
+              + Add provider
+            </button>
+          )}
           <ul className="pv-list">
             {providers.map((p) => (
               <li key={p.id}>
@@ -495,9 +508,7 @@ function ProviderEditor({
       )}
 
       <div className="pv-editor-actions">
-        {isEdit && (
-          <Button variant="ghost" onClick={cancel} disabled={busy}>Cancel</Button>
-        )}
+        <Button variant="ghost" onClick={cancel} disabled={busy}>Cancel</Button>
         <Button
           variant="ghost"
           onClick={test}

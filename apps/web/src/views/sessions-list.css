@@ -1,109 +1,191 @@
-/* SessionsList dashboard — all layout lives here. Mobile-first (375px). */
+/* SessionsList dashboard — hero composer + refined session list.
+   Centered 1080px column, glass materials, mobile-first (375px). */
 
 .sessions-loading {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.5rem;
+  /* ponytail: matches .sessions-wrap column so skeletons align. */
+  max-width: 1080px;
+  margin-inline: auto;
+  padding: 24px 20px 0;
 }
 
 .sessions-wrap {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.75rem;
+  max-width: 1080px;
+  margin-inline: auto;
+  padding-inline: 20px;
+  padding-top: 24px;
 }
 
-/* QuickStart — chat-first composer. Mirrors the ws-composer look so the entry
-   feels continuous with the in-session chat. */
+/* ---- QuickStart — hero glass composer (Cursor-like) ---- */
 .qs-wrap {
-  padding: 0.5rem;
+  /* ponytail: parent .sessions-wrap owns the 1080px column + gutters; auto
+     margins on a flex cross-axis were collapsing this to fit-content. */
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
+
 .qs-composer {
   display: flex;
-  align-items: flex-end;
-  gap: 0.4rem;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.5rem;
-  transition: border-color var(--duration-fast) var(--ease-out);
+  flex-direction: column;
+  gap: 0;
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 14px 16px;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
-.qs-composer:focus-within { border-color: var(--accent); }
+.qs-composer:focus-within {
+  border-color: var(--glass-accent-border);
+  box-shadow: 0 0 0 3px rgba(139, 69, 230, 0.15);
+}
+
 .qs-textarea {
-  flex: 1;
+  width: 100%;
+  /* ponytail: field-sizing auto-grows in Chromium/modern engines; elsewhere it
+     falls back to a fixed 56px box with scroll — no JS auto-grow needed. */
   resize: none;
+  field-sizing: content;
+  min-height: 56px;
+  max-height: 200px;
   border: none;
   background: transparent;
   color: var(--text);
   font: inherit;
-  line-height: 1.4;
-  max-height: 160px;
+  font-size: 15px;
+  line-height: 1.45;
+  padding: 2px 0;
   outline: none;
-  padding: 0.2rem 0;
 }
-.qs-textarea::placeholder { color: var(--muted); }
-.qs-send {
-  flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
-  border-radius: var(--radius);
-  border: none;
-  background: var(--accent);
-  color: var(--bg);
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+.qs-textarea::placeholder {
+  color: var(--muted);
 }
-.qs-send:hover:not(:disabled) { background: var(--accent-hover); }
-.qs-send:active:not(:disabled) { transform: scale(0.92); }
-.qs-send:disabled { opacity: 0.35; cursor: default; }
-.qs-meta {
+
+/* Bottom control row inside the card: chips on the left, send on the right. */
+.qs-bar {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0 0.2rem;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
 }
-.qs-toggle {
-  background: none;
-  border: none;
-  color: var(--muted);
-  font: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  padding: 0;
+.qs-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
-.qs-toggle:hover { color: var(--text); }
-.qs-summary {
-  font-size: 0.78rem;
-  color: var(--muted);
+
+.qs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
+.qs-chip > svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+.qs-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qs-chip--btn {
+  cursor: pointer;
+  color: var(--text);
+  transition: border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+.qs-chip--btn:hover {
+  border-color: var(--glass-border-strong);
+  background: var(--glass);
+}
+.qs-chip--btn .qs-chevron {
+  transition: transform var(--duration-fast) var(--ease-out);
+  opacity: 0.7;
+}
+.qs-chip--btn[aria-expanded="true"] .qs-chevron {
+  transform: rotate(180deg);
+}
+
+.qs-send {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.qs-send:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.qs-send:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.qs-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Options grid — lives inside the card footer when expanded. */
 .qs-opts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.4rem 0.2rem 0;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--glass-border);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
 }
 .qs-field {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  font-size: 0.75rem;
-  color: var(--muted);
-  flex: 1 1 8rem;
+  gap: 4px;
 }
-.qs-field-wide { flex: 1 1 100%; }
+.qs-field > span {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.qs-field-wide {
+  grid-column: 1 / -1;
+}
+
 .qs-empty {
   padding: 0.7rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background: var(--glass-thin);
   color: var(--muted);
   font-size: 0.85rem;
 }
@@ -117,18 +199,21 @@
   text-decoration: underline;
   font-weight: 500;
 }
-.qs-upgrade-link:hover { color: var(--accent-hover); }
+.qs-upgrade-link:hover {
+  color: var(--accent-hover);
+}
 
+/* ---- Session list ---- */
 .session-list {
   list-style: none;
   margin: 0;
-  padding: 0.5rem;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 8px;
 }
 
-/* The whole card is a ghost Button; override its default look so it reads as a
+/* The whole card is a ghost Button; override its look so it reads as a glass
    card (left-aligned, column, padded, bordered) rather than an inline button. */
 .session-list .session-card,
 .session-list .session-card.atelier-btn {
@@ -136,102 +221,197 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.3rem;
-  padding: 0.7rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel);
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-thin-blur);
+  -webkit-backdrop-filter: var(--glass-thin-blur);
   color: var(--text);
   text-align: left;
   justify-content: flex-start;
   text-decoration: none;
   cursor: pointer;
+  transition: transform 0.15s var(--ease-out),
+    border-color 0.15s var(--ease-out), background 0.15s var(--ease-out),
+    box-shadow 0.15s var(--ease-out);
 }
-
 .session-list .session-card:hover {
-  background: var(--panel-2);
-  border-color: var(--accent);
+  background: var(--glass);
+  border-color: var(--glass-border-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px -8px rgba(0, 0, 0, 0.5);
 }
 
 .session-top {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 8px;
 }
-
-.session-time {
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.session-repo {
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .session-task {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 550;
   line-height: 1.35;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
+.session-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.session-status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.session-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.session-status-dot.is-live {
+  background: var(--accent);
+  animation: status-dot-pulse 1.8s ease-in-out infinite;
+}
+.session-status-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.session-repo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-meta .session-repo-icon {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+.session-meta .session-dot-sep {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
 .session-model {
-  font-size: 0.75rem;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Soft violet box-shadow pulse for live states. */
-@keyframes session-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
-  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+@keyframes status-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+    opacity: 0.7;
+  }
 }
-
-.session-card.pulse {
-  animation: session-pulse 1.8s ease-in-out infinite;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .session-card.pulse {
+  .session-status-dot.is-live {
     animation: none;
   }
 }
 
-.session-card-wrap { position: relative; }
+.session-card-wrap {
+  position: relative;
+}
 .session-delete-btn {
   position: absolute;
-  top: 0.3rem;
-  right: 0.3rem;
+  top: 10px;
+  right: 10px;
   z-index: 2;
   padding: 0.25rem;
   line-height: 0;
   color: var(--muted);
   opacity: 1;
 }
-.session-delete-btn:hover { color: var(--bad); }
+.session-delete-btn:hover {
+  color: var(--bad);
+}
 .session-delete-prompt {
   position: absolute;
-  top: 0.3rem;
-  right: 0.3rem;
+  top: 10px;
+  right: 10px;
   z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   background: var(--panel-solid);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
   padding: 0.2rem 0.3rem;
   font-size: 0.75rem;
   animation: session-fade-in var(--duration-fast) var(--ease-out) both;
 }
-@keyframes session-fade-in { from { opacity: 0; transform: translateY(-1px); } to { opacity: 1; transform: none; } }
+@keyframes session-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-1px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 /* Hide delete affordance on hover-capable pointers until the card is hovered/focused; always visible on touch. */
 @media (hover: hover) {
-  .session-card-wrap .session-delete-btn { opacity: 0; }
+  .session-card-wrap .session-delete-btn {
+    opacity: 0;
+  }
   .session-card-wrap:hover .session-delete-btn,
-  .session-card-wrap:focus-within .session-delete-btn { opacity: 1; }
+  .session-card-wrap:focus-within .session-delete-btn {
+    opacity: 1;
+  }
+}
+
+/* ---- Mobile (375px) ---- */
+@media (max-width: 480px) {
+  .sessions-wrap,
+  .sessions-loading {
+    padding-inline: 12px;
+  }
+  .qs-composer {
+    padding: 12px;
+  }
+  .qs-bar {
+    gap: 6px;
+  }
+  .qs-bar-left {
+    flex-wrap: wrap;
+    gap: 6px;
+    overflow: visible;
+  }
+  .qs-chip {
+    max-width: 100%;
+  }
+  /* ponytail: on very tight widths, drop the model id so the meta row never clips mid-glyph. */
+  .session-meta .session-model {
+    display: none;
+  }
 }

@@ -161,45 +161,72 @@ export function Repos({ onCreated }: { onCreated: (id: string) => void }) {
   if (phase === "connect") {
     return (
       <div className="rp-connect">
-        <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
-        </svg>
-        <h3>Connect GitHub to import repos</h3>
-        <p>Atelier reads your repositories so you can spin up a workspace in one click. We store your GitHub token to clone on your behalf.</p>
-        <Button variant="primary" onClick={() => { window.location.href = "/auth/github/login"; }}>
-          Connect GitHub
-        </Button>
+        <div className="rp-connect-card">
+          <div className="rp-connect-mark">
+            <svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+            </svg>
+          </div>
+          <h3>Connect GitHub to import repos</h3>
+          <p>Atelier reads your repositories so you can spin up a workspace in one click. We store your GitHub token to clone on your behalf.</p>
+          <Button variant="primary" className="rp-connect-btn" onClick={() => { window.location.href = "/auth/github/login"; }}>
+            Connect GitHub
+          </Button>
+          <p className="rp-connect-note">Read-only repo list · token stored encrypted</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="rp-wrap">
-      <input
-        className="rp-search"
-        placeholder="Search repositories…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
+      <div className="rp-search-wrap">
+        <svg className="rp-search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+          <circle cx="7" cy="7" r="5" />
+          <path d="m11 11 3 3" strokeLinecap="round" />
+        </svg>
+        <input
+          className="rp-search"
+          placeholder="Search repositories…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
       {repos.length === 0 ? (
         <div className="rp-empty">No repositories found on this account.</div>
       ) : filtered.length === 0 ? (
         <div className="rp-empty">No repositories match “{query.trim()}”.</div>
       ) : (
         <ul className="rp-list">
-          {filtered.map((r) => (
+          {filtered.map((r) => {
+            const slashIdx = r.full_name.indexOf("/");
+            const owner = slashIdx >= 0 ? r.full_name.slice(0, slashIdx + 1) : "";
+            const basename = slashIdx >= 0 ? r.full_name.slice(slashIdx + 1) : r.full_name;
+            return (
             <li key={r.id}>
               <button
                 type="button"
                 className={`rp-repo${r.id === selectedId ? " selected" : ""}`}
                 onClick={() => setSelectedId(r.id === selectedId ? null : r.id)}
               >
-                <span className="rp-repo-name">{r.full_name}</span>
+                <span className="rp-repo-name">
+                  {owner && <span className="rp-repo-owner">{owner}</span>}
+                  <span className="rp-repo-basename">{basename}</span>
+                </span>
                 <span className="rp-repo-meta">
-                  <span className={`rp-badge ${r.private ? "rp-badge-private" : "rp-badge-public"}`}>
-                    {r.private ? "private" : "public"}
+                  {r.private && (
+                    <span className="rp-badge rp-badge-private">private</span>
+                  )}
+                  <span className="rp-repo-default">
+                    <svg className="rp-branch-icon" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                      <circle cx="4" cy="3.5" r="1.5" />
+                      <circle cx="4" cy="12.5" r="1.5" />
+                      <circle cx="12" cy="3.5" r="1.5" />
+                      <path d="M4 5v6" />
+                      <path d="M12 5c0 3-4 2-4 5" />
+                    </svg>
+                    {r.default_branch}
                   </span>
-                  <span className="rp-repo-default">default: {r.default_branch}</span>
                 </span>
               </button>
               {r.id === selectedId && (
@@ -301,7 +328,8 @@ export function Repos({ onCreated }: { onCreated: (id: string) => void }) {
                 </div>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

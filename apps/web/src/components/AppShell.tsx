@@ -42,6 +42,28 @@ const ICONS = {
   ),
 } as const;
 
+const LOGOMARK = (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+    <rect width="20" height="20" rx="5" fill="url(#atelier-mark)" />
+    <path d="M6 14 L10 5.5 L14 14" stroke="#fffdf9" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    <line x1="7.4" y1="11.2" x2="12.6" y2="11.2" stroke="#fffdf9" strokeWidth={1.8} strokeLinecap="round" />
+    <defs>
+      <linearGradient id="atelier-mark" x1="0" y1="0" x2="20" y2="20" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#a07bff" />
+        <stop offset="1" stopColor="#8b45e6" />
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
+const LOGOUT_ICON = (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M15 17l5-5-5-5" />
+    <path d="M20 12H9" />
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+  </svg>
+);
+
 const NAV: { id: ShellView["kind"]; label: string; icon: JSX.Element }[] = [
   { id: "repos", label: "Repos", icon: ICONS.repos },
   { id: "list", label: "Workspaces", icon: ICONS.list },
@@ -64,13 +86,18 @@ export function AppShell({
   return (
     <div className="app-shell">
       <aside className="shell-sidebar">
-        <div className="shell-wordmark">Atelier</div>
+        <div className="shell-wordmark">
+          {LOGOMARK}
+          <span>Atelier</span>
+        </div>
         <nav className="shell-nav">
           {NAV.map((t) => (
             <button
               key={t.id}
               className={"shell-nav-item" + (view.kind === t.id ? " active" : "")}
               onClick={() => setView({ kind: t.id } as ShellView)}
+              aria-label={t.label}
+              aria-current={view.kind === t.id ? "page" : undefined}
             >
               {t.icon}
               <span>{t.label}</span>
@@ -82,19 +109,30 @@ export function AppShell({
             className={"shell-nav-item" + (view.kind === "settings" ? " active" : "")}
             onClick={() => setView({ kind: "settings" })}
             aria-label="Settings"
+            aria-current={view.kind === "settings" ? "page" : undefined}
           >
             {ICONS.settings}
             <span>Settings</span>
           </button>
-          <span className="small muted">{user?.login ?? "account"}</span>
-          <button className="ghost small" onClick={onLogout}>
-            Log out
-          </button>
+          <div className="shell-account">
+            <span className="shell-avatar" aria-hidden="true">
+              {(user?.login ?? "A").charAt(0).toUpperCase()}
+            </span>
+            <span className="shell-user-email" title={user?.login ?? "account"}>
+              {user?.login ?? "account"}
+            </span>
+            <button className="shell-logout" onClick={onLogout} aria-label="Log out" title="Log out">
+              {LOGOUT_ICON}
+            </button>
+          </div>
         </div>
       </aside>
 
       <header className="shell-mobile-header">
-        <div className="shell-wordmark">Atelier</div>
+        <div className="shell-wordmark">
+          {LOGOMARK}
+          <span>Atelier</span>
+        </div>
         <InstallPrompt />
       </header>
 
@@ -106,6 +144,8 @@ export function AppShell({
             key={t.id}
             className={"shell-tab" + (view.kind === t.id ? " active" : "")}
             onClick={() => setView({ kind: t.id } as ShellView)}
+            aria-label={t.label}
+            aria-current={view.kind === t.id ? "page" : undefined}
           >
             {t.icon}
             <span>{t.label}</span>
@@ -116,6 +156,7 @@ export function AppShell({
           className={"shell-tab" + (view.kind === "settings" ? " active" : "")}
           onClick={() => setView({ kind: "settings" })}
           aria-label="Settings"
+          aria-current={view.kind === "settings" ? "page" : undefined}
         >
           {ICONS.settings}
           <span>Settings</span>

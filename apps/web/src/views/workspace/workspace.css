@@ -32,144 +32,145 @@
 .ws-topbar {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.9rem;
-  background: var(--ide-sidebar);
-  border-bottom: 1px solid var(--color-graphite);
+  gap: 0.5rem;
+  padding: 0 12px;
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-thin-blur);
+  border-bottom: 1px solid var(--glass-border);
   flex-shrink: 0;
-  min-height: 48px;
+  min-height: 44px;
 }
-.ws-back {
+/* Ghost 32px icon button — shared by back + overflow triggers. */
+.ws-back,
+.ws-overflow-btn {
   background: transparent;
   border: none;
-  color: var(--color-steel);
+  color: var(--muted);
   cursor: pointer;
-  padding: 0.3rem 0.5rem;
-  border-radius: var(--radius-sm);
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 0.85rem;
-  display: flex;
+  font-size: 1rem;
+  display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  justify-content: center;
+  flex-shrink: 0;
   transition: color var(--duration-fast) var(--ease-out),
               background var(--duration-fast) var(--ease-out);
 }
-.ws-back:hover { color: var(--color-almost-white); background: var(--panel-2); }
+.ws-back:hover,
+.ws-overflow-btn:hover { color: var(--text); background: var(--panel-2); }
 .ws-title {
   margin: 0;
-  font-size: 0.95rem;
-  font-weight: 550;
-  letter-spacing: -0.01em;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
-.ws-live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ok);
-  display: inline-block;
+
+/* Model + state chip — single state indicator (replaces ws-badge + ws-live-dot).
+   12px mono pill with a 6px colored dot; the dot pulses when the session is
+   running/streaming. */
+.ws-state-chip {
   flex-shrink: 0;
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0.18rem 0.55rem;
+  white-space: nowrap;
+}
+.ws-state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.ws-state-dot.tone-ok   { background: var(--ok); }
+.ws-state-dot.tone-warn { background: var(--warn); }
+.ws-state-dot.tone-bad  { background: var(--bad); }
+.ws-state-dot.tone-idle { background: var(--muted); }
+.ws-state-dot.live {
+  background: var(--accent);
   animation: ws-pulse 2.4s infinite;
 }
-.ws-live-dot.off { background: var(--muted); animation: none; opacity: 0.6; }
 
-/* Autonomy toggle — landing's "flip on autopilot". Segmented control; the
-   active segment fills violet. auto=run freely, review=approve each change,
-   plan=plan-only (no edits). */
+/* Autonomy toggle — landing's "flip on autopilot". Segmented control;
+   auto=run freely, review=approve each change, plan=plan-only (no edits). */
 .ws-mode-toggle {
   display: inline-flex;
-  gap: 1px;
+  gap: 2px;
   flex-shrink: 0;
-  padding: 1px;
+  padding: 2px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--ide-violet-border);
-  border: 1px solid var(--ide-violet-border);
 }
 .ws-mode-btn {
   border: none;
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 0.72rem;
-  font-weight: 500;
-  padding: 0.18rem 0.5rem;
-  border-radius: calc(var(--radius-md) - 1px);
+  font-size: 12px;
+  height: 26px;
+  padding: 0 0.6rem;
+  border-radius: calc(var(--radius-md) - 2px);
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease-out),
               background var(--duration-fast) var(--ease-out);
-  letter-spacing: 0.02em;
 }
 .ws-mode-btn:hover { color: var(--text); }
+/* ponytail: --bg-contrast exists in tokens.css, but var(--panel-solid) reads as
+   the raised surface on the track in dark mode — use it for active segments. */
 .ws-mode-btn.active {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--panel-solid);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 @keyframes ws-pulse {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 50%, transparent); }
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); }
   70% { box-shadow: 0 0 0 5px transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
-
-/* ── IDE chrome: traffic dots + active badge (landing hero-mockup__chrome) ──
-   Dots are the landing's red/yellow/green, softened for the dark-violet surface. */
-.ws-chrome-dots {
-  display: inline-flex;
-  gap: 0.36rem;
-  align-items: center;
-  padding-right: 0.2rem;
+@keyframes ws-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
-.ws-chrome-dots .ws-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  display: block;
-}
-.ws-chrome-dots .ws-dot.red    { background: #c8806f; }
-.ws-chrome-dots .ws-dot.yellow { background: #c4a96a; }
-.ws-chrome-dots .ws-dot.green  { background: #8aab73; }
 
-/* Active badge: "model · state" pill, accent-tinted like hero-mockup__badge. */
-.ws-badge {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.02em;
-  color: var(--accent);
-  background: var(--ide-violet-tint);
-  border: 1px solid var(--ide-violet-border);
-  border-radius: var(--radius-full);
-  padding: 0.12rem 0.55rem;
-  text-transform: lowercase;
-}
-.ws-badge.tone-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
-.ws-badge.tone-bad  { color: var(--bad);  border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
-.ws-badge.tone-ok   { color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
-
-/* ── Body: opencode iframe | right rail (landing hero grid, Cursor-like) ──
-   ponytail: min-width 0 on every flex child so long paths/diff lines
-   truncate instead of blowing the grid out. */
+/* ── Body: opencode iframe | right rail — inset panels on the deep bg. ── */
 .ws-body {
   flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 8px;
+  padding: 8px;
   overflow: hidden;
   min-height: 0;
+  background: var(--bg);
 }
 
-/* ── opencode web UI (embedded) ── fills the center column with opencode's own
-   web UI, served same-origin via the /sessions/:id/opencode/ proxy. The iframe
-   is borderless and full-bleed so it reads as a native pane, not a frame. */
+/* ── opencode web UI (embedded) ── rounded panel; the iframe fills it. */
 .ws-opencode {
   min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  background: var(--bg);
+  background: var(--panel-solid, #161616);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
 }
 .ws-opencode-frame {
   flex: 1;
@@ -178,6 +179,37 @@
   border: none;
   display: block;
   min-height: 0;
+}
+/* Readiness placeholder — shown until the workspace endpoint responds 200. */
+.ws-opencode-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 2rem;
+  min-height: 100%;
+  text-align: center;
+}
+.ws-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  display: block;
+  animation: ws-spin 0.8s linear infinite;
+}
+.ws-loading-title {
+  margin-top: 14px;
+  font-size: 14px;
+  color: var(--text);
+}
+.ws-loading-sub {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
 }
 .ws-opencode-ended {
   position: absolute;
@@ -190,6 +222,9 @@
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(2px);
 }
+/* ponytail: ws-endbar-text's flex:1 is for the horizontal end bar; inside the
+   centered ended card it would smear the column to both edges. */
+.ws-opencode-ended .ws-endbar-text { flex: none; }
 
 /* ── End-of-session bar (replaces composer form when terminal) ── */
 .ws-endbar-text {
@@ -218,13 +253,14 @@
 .ws-endbar-cta:active:not(:disabled) { transform: scale(0.96); }
 .ws-endbar-cta:disabled { opacity: 0.5; cursor: default; }
 
-/* ── Right rail ── */
+/* ── Right rail ── rounded panel matching .ws-opencode. */
 .ws-rail {
-  width: 300px;
+  width: 340px;
   min-width: 0;
   flex-shrink: 0;
-  border-left: 1px solid var(--color-graphite);
-  background: var(--ide-sidebar);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid, #161616);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -279,20 +315,21 @@
 }
 .ws-browser-bar {
   display: flex;
-  gap: 0.3rem;
+  gap: 0.4rem;
   flex-shrink: 0;
 }
 .ws-browser-refresh {
   flex-shrink: 0;
-  width: 1.8rem;
-  height: 1.8rem;
-  border: 1px solid var(--ide-violet-border);
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
   background: transparent;
   color: var(--muted);
   border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 0.9rem;
   line-height: 1;
+  padding: 0;
   transition: color var(--duration-fast) var(--ease-out),
               border-color var(--duration-fast) var(--ease-out),
               transform var(--duration-press) var(--ease-spring-soft);
@@ -303,25 +340,50 @@
   flex: 1;
   min-width: 0;
   background: var(--ide-input-bg);
-  border: 1px solid var(--ide-violet-border);
+  border: 1px solid var(--border);
   color: var(--text);
   border-radius: var(--radius-md);
   padding: 0 0.5rem;
   font: inherit;
-  font-size: 0.78rem;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  height: 28px;
+  font-family: var(--font-mono);
   outline: none;
   transition: border-color var(--duration-fast) var(--ease-out);
 }
 .ws-browser-url:focus { border-color: var(--accent); }
+.ws-browser-frame-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: var(--bg);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.ws-browser-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+}
 .ws-browser-frame {
   flex: 1;
   min-height: 0;
   width: 100%;
-  border: 1px solid var(--color-graphite);
+  height: 100%;
+  border: none;
   border-radius: var(--radius-md);
-  background: #fff;
+  background: var(--bg);
+  color-scheme: dark;
+  display: block;
 }
+.ws-browser-frame.loading { display: none; }
 
 /* ── Mobile segmented control ── */
 .ws-mobile-tabs {
@@ -334,26 +396,28 @@
 .ws-mobile-seg {
   flex: 1;
   display: flex;
-  gap: 0.2rem;
+  gap: 2px;
+  padding: 2px;
   background: var(--panel-2);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 0.2rem;
 }
 .ws-mobile-tab {
   flex: 1;
   background: transparent;
   border: none;
   color: var(--muted);
-  padding: 0.45rem;
-  border-radius: var(--radius-sm);
+  height: 26px;
+  padding: 0 0.6rem;
+  border-radius: calc(var(--radius-md) - 2px);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 12px;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-out),
               color var(--duration-fast) var(--ease-out);
 }
 .ws-mobile-tab.active {
-  background: var(--bg);
+  background: var(--panel-solid);
   color: var(--text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
@@ -369,24 +433,25 @@
   right: 0;
   z-index: 50;
   min-width: 180px;
-  background: var(--panel-solid);
-  border: 1px solid var(--color-graphite);
-  border-radius: var(--radius-md);
-  padding: 0.3rem;
+  background: var(--glass-thick);
+  backdrop-filter: var(--glass-thick-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 4px;
   box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 2px;
 }
 .ws-overflow-item {
   text-align: left;
   background: transparent;
   border: none;
   color: var(--text);
-  padding: 0.5rem 0.6rem;
-  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 0.84rem;
+  font-size: 13px;
   cursor: pointer;
   width: 100%;
   transition: background var(--duration-fast) var(--ease-out);
@@ -395,18 +460,21 @@
 .ws-overflow-item.danger { color: var(--bad); }
 .ws-overflow-item:disabled { opacity: 0.5; cursor: default; }
 
-/* ── Mobile (<1000px): single visible pane per segment ── */
-@media (max-width: 999px) {
+/* ── Mobile (<900px): single visible pane per segment, full-bleed ── */
+@media (max-width: 899px) {
   .ws-mobile-tabs { display: block; }
   .ws-body {
     position: relative;
     grid-template-columns: 1fr;
+    padding: 0;
+    gap: 0;
   }
   .ws-opencode,
   .ws-rail {
     width: 100%;
     min-width: 0;
     border: none;
+    border-radius: 0;
     position: absolute;
     inset: 0;
   }
@@ -426,7 +494,8 @@
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   .ws-msg,
-  .ws-live-dot,
+  .ws-state-dot.live,
+  .ws-spinner,
   .ws-tool-dot.running,
   .ws-typing-dot { animation: none !important; }
   .ws-tool-chevron,

@@ -114,10 +114,11 @@ test.describe("Settings Plan section", () => {
 
     await gotoSettings(page);
     const plan = page.locator(".st-section").filter({ hasText: "Plan" });
-    await plan.locator("select").selectOption("Pro");
+    // SANDBOX_TIERS render <option value="pro">Pro</option> — select by id.
+    await plan.locator("select").selectOption("pro");
     await plan.getByRole("button", { name: "Upgrade" }).click();
 
-    await expect.poll(() => checkoutBody).toEqual({ product: "sandbox", tier: "Pro" });
+    await expect.poll(() => checkoutBody).toEqual({ product: "sandbox", tier: "pro" });
     // window.location.href = url drives external Stripe redirects; asserting the
     // request body + absence of an error covers the user interaction end-to-end.
   });
@@ -153,10 +154,11 @@ test.describe("Settings Plan section", () => {
 
     await gotoSettings(page);
     const plan = page.locator(".st-section").filter({ hasText: "Plan" });
-    await plan.locator("select").selectOption("Large");
+    // VPS_SIZES render <option value="large">Large</option> — select by id.
+    await plan.locator("select").selectOption("large");
     await plan.getByRole("button", { name: "Upgrade" }).click();
 
-    await expect.poll(() => checkoutBody).toEqual({ product: "vps", size: "Large" });
+    await expect.poll(() => checkoutBody).toEqual({ product: "vps", size: "large" });
     // window.location.href = url drives external Stripe redirects; asserting the
     // request body + absence of an error covers the user interaction end-to-end.
   });
