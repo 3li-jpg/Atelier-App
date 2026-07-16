@@ -179,4 +179,22 @@ export const api = {
   setCompute: (provider: ComputeProvider, api_key: string) =>
     req<{ ok: boolean }>("/account/compute", { method: "PUT", body: JSON.stringify({ provider, api_key }) }),
   clearCompute: () => req<{ ok: boolean }>("/account/compute", { method: "DELETE" }),
+  getLegal: () =>
+    req<{ doc_id: string; version: string; effective: string; title: string }[]>("/legal"),
+  getLegalDoc: (id: string) =>
+    req<{ doc_id: string; version: string; effective: string; title: string; body: string }>(
+      `/legal/${encodeURIComponent(id)}`,
+    ),
+  acceptLegal: (docId: string, version: string) =>
+    req<{ ok: boolean }>("/legal/accept", {
+      method: "POST",
+      body: JSON.stringify({ docId, version }),
+    }),
+  exportAccount: () => req<unknown>("/account/export"),
+  deleteAccount: () => req<{ ok: boolean; job_id: string }>("/account/delete", { method: "POST" }),
+  setConsent: (analytics: boolean) =>
+    req<{ ok: boolean }>("/account/consent", { method: "POST", body: JSON.stringify({ analytics }) }),
+  reportAbuse: (r: {
+    type: string; target_ref: string; reporter_email: string; reporter_name: string; details: string;
+  }) => req<{ id: string }>("/abuse/report", { method: "POST", body: JSON.stringify(r) }),
 };

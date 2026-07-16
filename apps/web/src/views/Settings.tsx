@@ -222,6 +222,59 @@ export function Settings({ onLogout }: { onLogout: () => void }) {
         </section>
       )}
 
+      {/* PRIVACY & DATA */}
+      {account && (
+        <section className="st-section st-danger">
+          <header className="st-section-head">
+            <h2 className="st-section-title">Privacy & Data</h2>
+            <p className="st-section-desc">Export your data or delete your account.</p>
+          </header>
+          <div className="st-row-actions">
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                try {
+                  const blob = new Blob([JSON.stringify(await api.exportAccount(), null, 2)], {
+                    type: "application/json",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "atelier-export.json";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch (e) {
+                  toast.push(humanizeApiError(e).message, "error");
+                }
+              }}
+            >
+              Export my data
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                const typed = window.prompt(
+                  `Type your email to confirm deletion: ${account.user.login}`,
+                );
+                if (typed === null) return;
+                if (typed !== account.user.login) {
+                  toast.push("Email did not match", "error");
+                  return;
+                }
+                try {
+                  await api.deleteAccount();
+                  window.location.href = "/";
+                } catch (e) {
+                  toast.push(humanizeApiError(e).message, "error");
+                }
+              }}
+            >
+              Delete account
+            </Button>
+          </div>
+        </section>
+      )}
+
       {/* SIGN OUT */}
       <section className="st-section st-danger">
         <header className="st-section-head">
