@@ -141,3 +141,44 @@ test("POST /legal/accept rejects unknown doc", async () => {
   });
   assert.equal(res.status, 404);
 });
+
+async function makeProvider(app: any, uid: string) {
+  const res = await app.request("/providers", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: `atelier_session=${signSession(uid)}` },
+    body: JSON.stringify({ name: "T", base_url: "https://api.t.com/v1", dialect: "openai-chat", api_key: "sk-aaaaaaaaaaaaaaaaaaaa",
+      models: [{ id: "m", role: "coder", tool_calls: true }] }),
+  });
+  return (await res.json()).id;
+}
+
+test("POST /sessions is blocked without terms acceptance (auth configured)", async () => {
+  process.env.GITHUB_OAUTH_CLIENT_ID = "cid"; process.env.GITHUB_OAUTH_CLIENT_SECRET = "csec";
+  const { store, app } = legalSetup();
+  const uid = store.createEmailUser("a@b.co", "hashhashhash");
+  const pid = await makeProvider(app, uid);
+  const res = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: `atelier_session=${signSession(uid)}` },
+    body: JSON.stringify({ branch: "main", provider_id: pid, model_id: "m", task: "t", permission_mode: "auto", budgets: {} }),
+  });
+  assert.equal(res.status, 409);
+  const body = await res.json();
+  assert.equal(body.error, "acceptance_required");
+  delete process.env.GITHUB_OAUTH_CLIENT_ID; delete process.env.GITHUB_OAUTH_CLIENT_SECRET;
+});
+
+test("POST /sessions proceeds after accepting terms", async () => {
+  process.env.GITHUB_OAUTH_CLIENT_ID = "cid"; process.env.GITHUB_OAUTH_CLIENT_SECRET = "csec";
+  const { store, app } = legalSetup();
+  const uid = store.createEmailUser("a@b.co", "hashhashhash");
+  const pid = await makeProvider(app, uid);
+  await store.recordAcceptance(uid, "terms", "1.0", "127.0.0.1", "ua");
+  // Active sandbox plan so the pre-existing quota gate (orthogonal to this
+  // feature) doesn't block — isolates the acceptance gate under test.
+  store.setUserPlan(uid, { product: "sandbox", tier: "plus", status: "active", current_period_start: "2026-01-01 00:00:00" });
+  const res = await app.request("/sessions", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: `atelier_session=${signSession(uid)}` },
+    body: JSON.stringify({ branch: "main", provider_id: pid, model_id: "m", task: "t", permission_mode: "auto", budgets: {} }),
+  });
+  assert.equal(res.status, 201);
+  delete process.env.GITHUB_OAUTH_CLIENT_ID; delete process.env.GITHUB_OAUTH_CLIENT_SECRET;
+});

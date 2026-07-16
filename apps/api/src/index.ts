@@ -395,6 +395,15 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
       ? (await store.getUser(uid))?.role === "admin"
       : uid === OWNER_ID;
     if (uid !== undefined && authConfigured() && !isAdmin) {
+      // ponytail: terms acceptance is required before a user's first billable
+      // action — gated on "no plan row yet" so existing subscribers (who
+      // pre-date this gate, including the billing test fixtures) aren't blocked.
+      // Upgrade to "every authed user" once acceptance is recorded at signup.
+      const existingPlan = await store.getUserPlan(uid);
+      if (!existingPlan) {
+        const missing = await requireAcceptances(store, uid, ["terms"]);
+        if (missing.length) return c.json({ error: "acceptance_required", missing }, 409);
+      }
       const quota = await checkSandboxQuota(uid);
       if (!quota.ok) return c.json(quota.body, quota.status as 402);
       // Explicit size from Cloud Agents launch modal wins over the tier default.
@@ -772,6 +781,11 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
   app.post("/billing/checkout", async (c) => {
     const uid = uidOf(c);
     if (!uid) return c.json({ error: "unauthorized" }, 401);
+    // ponytail: same first-time-user acceptance gate as /sessions (see above).
+    if (authConfigured() && !(await store.getUserPlan(uid))) {
+      const missing = await requireAcceptances(store, uid, ["terms"]);
+      if (missing.length) return c.json({ error: "acceptance_required", missing }, 409);
+    }
     const body = await c.req.json().catch(() => null) as { product?: string; tier?: string; size?: string } | null;
     if (!body) return c.json({ error: "invalid json" }, 400);
     if (body.product !== "sandbox" && body.product !== "vps") return c.json({ error: "product must be sandbox or vps" }, 400);
