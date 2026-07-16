@@ -138,8 +138,9 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
         }
       }
     }
-    const owner = uid === OWNER_ID;
-    const user = uid ? (owner ? { login: "owner" } : await store.getUser(uid)) : null;
+    const user = uid ? (uid === OWNER_ID ? { login: "owner" } : await store.getUser(uid)) : null;
+    // owner = the static-token backdoor identity OR a user with role 'admin'.
+    const owner = uid === OWNER_ID || user?.role === "admin";
     return c.json({ oauth: oauthEnabled(), authed: Boolean(uid), owner, user });
   });
 
@@ -359,7 +360,11 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     // Only enforce sandbox billing when the app is in a real multi-user/auth
     // configuration. In open dev/owner-alpha mode (no AUTH_TOKEN and no OAuth
     // configured) existing tests expect sessions to just work.
-    if (uid !== undefined && authConfigured()) {
+    // Admins (role='admin') bypass the plan/quota gate entirely.
+    const isAdmin = uid !== undefined && uid !== OWNER_ID
+      ? (await store.getUser(uid))?.role === "admin"
+      : uid === OWNER_ID;
+    if (uid !== undefined && authConfigured() && !isAdmin) {
       const quota = await checkSandboxQuota(uid);
       if (!quota.ok) return c.json(quota.body, quota.status as 402);
       if (quota.tierSpec) {

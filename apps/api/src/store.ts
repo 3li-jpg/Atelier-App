@@ -44,6 +44,7 @@ export class Store {
     safeAlter(this.db, "alter table users add column plan text default 'free'");
     safeAlter(this.db, "alter table users add column compute_provider text");
     safeAlter(this.db, "alter table users add column compute_key_ciphertext blob");
+    safeAlter(this.db, "alter table users add column role text default 'user'");
     safeAlter(this.db, "alter table sessions add column sandbox_provider text");
     safeAlter(this.db, "alter table sessions add column toolsets text");
     safeAlter(this.db, "alter table sessions add column cpus integer");
@@ -101,7 +102,7 @@ export class Store {
   }
 
   getUser(id: string): any {
-    return this.db.prepare("select id,github_id,login,name,avatar_url from users where id = ?").get(id) ?? null;
+    return this.db.prepare("select id,github_id,login,name,avatar_url,role from users where id = ?").get(id) ?? null;
   }
 
   // --- Email/password auth ---

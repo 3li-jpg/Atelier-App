@@ -54,6 +54,7 @@ export class PgStore {
       alter table users add column if not exists plan text default 'free';
       alter table users add column if not exists compute_provider text;
       alter table users add column if not exists compute_key_ciphertext bytea;
+      alter table users add column if not exists role text default 'user';
       alter table providers add column if not exists headers text;
       alter table sessions add column if not exists sandbox_provider text;
       alter table sessions add column if not exists toolsets text;
@@ -108,7 +109,7 @@ export class PgStore {
   }
 
   async getUser(id: string): Promise<any> {
-    const [row] = await this.sql`select id,github_id,login,name,avatar_url from users where id = ${id}`;
+    const [row] = await this.sql`select id,github_id,login,name,avatar_url,role from users where id = ${id}`;
     return row ?? null;
   }
 
