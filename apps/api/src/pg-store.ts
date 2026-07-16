@@ -95,6 +95,10 @@ export class PgStore {
         user_id text, doc_id text, version text, accepted_at text,
         ip text, user_agent text,
         primary key (user_id, doc_id, version));
+
+      create table if not exists audit_log (
+        id bigserial primary key, ts text, actor text,
+        action text, target text, meta text);
     `);
     return this;
   }
@@ -280,6 +284,11 @@ export class PgStore {
 
   async deleteAcceptances(userId: string): Promise<void> {
     await this.sql`delete from legal_acceptances where user_id = ${userId}`;
+  }
+
+  async appendAudit(e: { actor: string; action: string; target: string; meta: object }): Promise<void> {
+    await this.sql`insert into audit_log (ts, actor, action, target, meta)
+      values (${utcNow()}, ${e.actor}, ${e.action}, ${e.target}, ${JSON.stringify(e.meta ?? {})})`;
   }
 
   // ---- Billing methods (task 1 of 5) ----

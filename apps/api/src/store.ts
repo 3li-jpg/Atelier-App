@@ -93,6 +93,12 @@ export class Store {
         ip text, user_agent text,
         primary key (user_id, doc_id, version));
     `);
+
+    this.db.exec(`
+      create table if not exists audit_log (
+        id integer primary key autoincrement, ts text, actor text,
+        action text, target text, meta text);
+    `);
   }
 
   upsertUser(githubId: number, login: string, name: string | null, avatarUrl: string | null): string {
@@ -398,5 +404,10 @@ export class Store {
 
   async deleteAcceptances(userId: string): Promise<void> {
     this.db.prepare("delete from legal_acceptances where user_id = ?").run(userId);
+  }
+
+  async appendAudit(e: { actor: string; action: string; target: string; meta: object }): Promise<void> {
+    this.db.prepare(`insert into audit_log (ts, actor, action, target, meta) values (datetime('now'),?,?,?,?)`)
+      .run(e.actor, e.action, e.target, JSON.stringify(e.meta ?? {}));
   }
 }
