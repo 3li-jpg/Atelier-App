@@ -57,3 +57,15 @@ test("GET /account/export returns a bundle without secrets", async () => {
   assert.ok(!serialized.includes("github_token_ciphertext"));
   assert.ok(!serialized.includes("compute_key_ciphertext"));
 });
+
+test("POST /account/consent records the analytics choice", async () => {
+  const { store, app } = setup();
+  const uid = store.createEmailUser("a@b.co", "hashhashhash");
+  const res = await app.request("/account/consent", {
+    method: "POST", headers: { "Content-Type": "application/json", Cookie: `atelier_session=${signSession(uid)}` },
+    body: JSON.stringify({ analytics: false }),
+  });
+  assert.equal(res.status, 200);
+  const row: any = (store as any).db.prepare("select * from consent where user_id = ?").get(uid);
+  assert.equal(row.analytics, 0);
+});

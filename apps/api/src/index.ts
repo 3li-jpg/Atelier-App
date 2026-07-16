@@ -905,6 +905,14 @@ export function buildApp(store: AnyStore, orch: Orchestrator) {
     return c.json({ ok: true, job_id: uid }, 202);
   });
 
+  app.post("/account/consent", async (c) => {
+    const uid = uidOf(c);
+    if (!uid) return c.json({ error: "unauthorized" }, 401);
+    const body = await c.req.json().catch(() => null) as { analytics?: boolean } | null;
+    await store.setConsent(uid, Boolean(body?.analytics));
+    return c.json({ ok: true });
+  });
+
   // ---- Billing (task 1 of 5) ----
   app.post("/billing/checkout", async (c) => {
     const uid = uidOf(c);

@@ -103,6 +103,8 @@ export class PgStore {
       create table if not exists abuse_reports (
         id text primary key, type text, target_ref text, reporter_email text,
         reporter_name text, details text, status text default 'open', created_at text);
+
+      create table if not exists consent (user_id text primary key, analytics boolean, accepted_at text);
     `);
     return this;
   }
@@ -314,6 +316,11 @@ export class PgStore {
   }
   async setUserRole(userId: string, role: string): Promise<void> {
     await this.sql`update users set role = ${role} where id = ${userId}`;
+  }
+
+  async setConsent(userId: string, analytics: boolean): Promise<void> {
+    await this.sql`insert into consent (user_id, analytics, accepted_at) values (${userId}, ${analytics}, ${utcNow()})
+      on conflict (user_id) do update set analytics=excluded.analytics, accepted_at=${utcNow()}`;
   }
 
   async deleteEventsOlderThan(days: number): Promise<void> {

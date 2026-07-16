@@ -105,6 +105,8 @@ export class Store {
         id text primary key, type text, target_ref text, reporter_email text,
         reporter_name text, details text, status text default 'open', created_at text);
     `);
+
+    this.db.exec(`create table if not exists consent (user_id text primary key, analytics integer, accepted_at text)`);
   }
 
   upsertUser(githubId: number, login: string, name: string | null, avatarUrl: string | null): string {
@@ -435,6 +437,11 @@ export class Store {
   }
   async setUserRole(userId: string, role: string): Promise<void> {
     this.db.prepare("update users set role = ? where id = ?").run(role, userId);
+  }
+
+  async setConsent(userId: string, analytics: boolean): Promise<void> {
+    this.db.prepare(`insert into consent (user_id, analytics, accepted_at) values (?,?,datetime('now'))
+      on conflict(user_id) do update set analytics=excluded.analytics, accepted_at=datetime('now')`).run(userId, analytics ? 1 : 0);
   }
 
   async anonymizeUser(userId: string): Promise<void> {
