@@ -10,6 +10,7 @@ import { Store } from "./store.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import { buildApp } from "./index.ts";
 import { signSession } from "./auth.ts";
+import { currentVersion } from "./legal.ts";
 
 class FakeSandbox implements SandboxProvider {
   created: any[] = [];
@@ -43,6 +44,10 @@ function enableAuth(t: any) {
 
 function makeProvider(store: Store, uid: string, app: any) {
   return async () => {
+    // ponytail: pre-record terms acceptance so the unconditional acceptance
+    // gate (widened from first-time-only) doesn't 409 these session-create
+    // fixtures — they're testing the quota gate, not the consent gate.
+    await store.recordAcceptance(uid, "terms", currentVersion("terms"), "127.0.0.1", "test");
     const res = await app.request("/providers", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: `atelier_session=${signSession(uid)}` },

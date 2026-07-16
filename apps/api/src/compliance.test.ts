@@ -4,9 +4,13 @@ process.env.DB_PATH = ":memory:";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Store } from "./store.ts";
 import { audit, notify } from "./audit.ts";
 import { Orchestrator } from "./orchestrator.ts";
+import { SUBPROCESSORS, getDocBody } from "./legal.ts";
 
 class FakeSandbox { destroyed:string[]=[]; async create(){return{id:"m",provider:"fake"}} async destroy(ref:any){this.destroyed.push(ref.id)} async suspend(){} async resume(){} async stop(){} async status(){return"started"} async waitFor(){} async listMachines(){return[]} }
 
@@ -57,4 +61,15 @@ test("notify stubs to console.warn when no SMTP env", async () => {
   // should not throw
   await notify("ip@studioatelier.ca", "report", "body");
   assert.ok(true);
+});
+
+test("subprocessors.md mentions every configured subprocessor", () => {
+  // subprocessors.md is not in LEGAL_DOCS (it's referenced by privacy/dpa) —
+  // read it directly so the sync check is independent of the route.
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const path = join(HERE, "..", "..", "..", "content", "legal", "subprocessors.md");
+  const md = readFileSync(path, "utf8");
+  for (const s of SUBPROCESSORS) {
+    assert.ok(md.includes(s.name), `subprocessors.md missing ${s.name}`);
+  }
 });
